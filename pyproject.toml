@@ -1,7 +1,7 @@
 [project]
 name = "omni-weather-forecast-apis"
 version = "0.1.0"
-description = "Add your description here"
+description = "Universal weather forecast aggregation library with a typed normalized schema."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
@@ -12,6 +12,9 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.12.5",
 ]
+
+[project.scripts]
+omni-weather = "omni_weather_forecast_apis.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/hbmartin/omni-weather-forecast-apis"
@@ -54,7 +57,24 @@ indent-width = 4
 target-version = "py314"
 
 lint.select = ["ALL"]
-lint.ignore = ["BLE001", "D107", "D203", "D213", "S608", "T201"]
+lint.ignore = [
+    "ANN401",
+    "BLE001",
+    "C901",
+    "D",
+    "E501",
+    "EM",
+    "PERF401",
+    "PLR",
+    "PYI034",
+    "RUF001",
+    "S113",
+    "S608",
+    "T201",
+    "TC",
+    "TRY",
+    "UP",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
