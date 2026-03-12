@@ -1,12 +1,18 @@
-"""omni-weather-forecast-apis — Universal Weather Forecast Aggregation Library."""
+"""Core type definitions for omni-weather-forecast-apis."""
 
-import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
-from omni_weather_forecast_apis.client import OmniWeatherClient, create_omni_weather
-from omni_weather_forecast_apis.plugins import get_plugin, list_plugins, register_plugin
 from omni_weather_forecast_apis.types.config import (
     OmniWeatherConfig,
     ProviderRegistration,
     RateLimitConfig,
+)
+from omni_weather_forecast_apis.types.plugin import (
+    PluginCapabilities,
+    PluginFetchError,
+    PluginFetchParams,
+    PluginFetchResult,
+    PluginFetchSuccess,
+    PluginInstance,
+    WeatherPlugin,
 )
 from omni_weather_forecast_apis.types.schema import (
     AlertSeverity,
@@ -41,8 +47,13 @@ __all__ = [
     "Granularity",
     "MinutelyDataPoint",
     "ModelSource",
-    "OmniWeatherClient",
     "OmniWeatherConfig",
+    "PluginCapabilities",
+    "PluginFetchError",
+    "PluginFetchParams",
+    "PluginFetchResult",
+    "PluginFetchSuccess",
+    "PluginInstance",
     "ProviderError",
     "ProviderErrorDetail",
     "ProviderId",
@@ -54,8 +65,5 @@ __all__ = [
     "WeatherAlert",
     "WeatherCondition",
     "WeatherDataPoint",
-    "create_omni_weather",
-    "get_plugin",
-    "list_plugins",
-    "register_plugin",
+    "WeatherPlugin",
 ]
