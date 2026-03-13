@@ -15,7 +15,12 @@ from omni_weather_forecast_apis.types import (
 
 @pytest.mark.asyncio
 async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
-    instance = _MeteosourceInstance(MeteosourceConfig(api_key="test-key"))
+    instance = _MeteosourceInstance(
+        MeteosourceConfig(
+            api_key="test-key",
+            sections=["minutely", "hourly", "daily", "alerts"],
+        ),
+    )
     payload = {
         "minutely": {
             "data": [
@@ -66,30 +71,34 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
                 {
                     "day": "2024-01-01",
                     "all_day": {
-                        "summary": "Light rain",
-                        "icon": 6,
                         "temperature_max": 14.0,
                         "temperature_min": 6.0,
-                        "wind": {
-                            "speed": 5.0,
-                            "gust": 8.0,
-                            "angle": 180,
-                        },
-                        "precipitation": {
-                            "total": 8.0,
-                            "rain": 7.0,
-                        },
-                        "probability": {
-                            "precipitation": 60,
-                        },
-                        "cloud_cover": {
-                            "total": 70,
-                        },
-                        "visibility": 10.0,
-                        "humidity": 80,
-                        "pressure": 1015,
-                        "uv_index": 3.0,
+                        "wind": {},
+                        "precipitation": {},
+                        "probability": {},
+                        "cloud_cover": {},
                     },
+                    "summary": "Light rain",
+                    "icon": 6,
+                    "wind": {
+                        "speed": 5.0,
+                        "gust": 8.0,
+                        "angle": 180,
+                    },
+                    "precipitation": {
+                        "total": 8.0,
+                        "rain": 7.0,
+                    },
+                    "probability": {
+                        "precipitation": 60,
+                    },
+                    "cloud_cover": {
+                        "total": 70,
+                    },
+                    "visibility": 10.0,
+                    "humidity": 80,
+                    "pressure": 1015,
+                    "uv_index": 3.0,
                     "astro": {
                         "sun": {
                             "rise": "2024-01-01T07:00:00Z",
@@ -150,4 +159,5 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
     assert forecast.daily[0].condition == WeatherCondition.RAIN
     assert forecast.daily[0].precipitation_sum == 8.0
     assert forecast.daily[0].rain_sum == 7.0
+    assert forecast.daily[0].cloud_cover_mean == 70.0
     assert forecast.daily[0].pressure_sea_mean == 1015.0

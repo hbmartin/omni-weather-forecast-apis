@@ -8,8 +8,10 @@ from omni_weather_forecast_apis.plugins.open_meteo import (
     open_meteo_plugin,
 )
 from omni_weather_forecast_apis.types import (
+    ErrorCode,
     Granularity,
     OpenMeteoConfig,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchSuccess,
     ProviderId,
@@ -127,7 +129,39 @@ class TestOpenMeteoInstance:
             )
             result = await instance.fetch_forecast(params, client)
 
-        assert result.status == "error"
+        assert isinstance(result, PluginFetchError)
+        assert result.code == ErrorCode.NETWORK
+
+    @pytest.mark.asyncio
+    async def test_fetch_empty_models_defaults_to_best_match(self) -> None:
+        instance = OpenMeteoInstance(OpenMeteoConfig(models=[]))
+        transport = httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "hourly": {
+                        "time": ["2024-01-01T00:00"],
+                        "temperature_2m": [18.0],
+                        "weather_code": [0],
+                        "is_day": [1],
+                    },
+                },
+            ),
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(
+                PluginFetchParams(
+                    latitude=34.0,
+                    longitude=-117.0,
+                    granularity=[Granularity.HOURLY],
+                ),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        assert len(result.forecasts) == 1
+        assert result.forecasts[0].source.model == "best_match"
+        assert result.forecasts[0].hourly[0].temperature == 18.0
 
     @pytest.mark.asyncio
     async def test_fetch_converts_units(self, instance: OpenMeteoInstance) -> None:
@@ -176,5 +210,5 @@ class TestOpenMeteoInstance:
         assert captured_params["wind_speed_unit"] == "ms"
         forecast = result.forecasts[0]
         assert forecast.minutely[0].precipitation_intensity == 2.0
-        assert forecast.hourly[0].snow == 12.0
+        assert forecast.hourly[0].snow == 1.2
         assert forecast.daily[0].snowfall_sum == 23.0

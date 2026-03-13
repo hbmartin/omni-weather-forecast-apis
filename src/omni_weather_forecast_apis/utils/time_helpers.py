@@ -58,7 +58,7 @@ def parse_date(value: str | date | datetime | None) -> date | None:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
     if isinstance(value, datetime):
-        return value.date()
+        return ensure_utc(value).date()
     normalized = value.strip()
     if normalized.endswith("Z"):
         normalized = f"{normalized[:-1]}+00:00"
@@ -67,4 +67,4 @@ def parse_date(value: str | date | datetime | None) -> date | None:
     try:
         return date.fromisoformat(normalized)
     except ValueError:
-        return datetime.fromisoformat(normalized).date()
+        return ensure_utc(datetime.fromisoformat(normalized)).date()

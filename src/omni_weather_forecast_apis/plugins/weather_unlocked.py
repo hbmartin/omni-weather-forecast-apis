@@ -63,9 +63,9 @@ def _normalize_date(date_value: Any) -> str:
             ) from exc
 
 
-def _time_components(time_value: Any) -> tuple[int, int]:
+def _time_components(time_value: Any) -> tuple[int, int] | None:
     if time_value in (None, ""):
-        return 0, 0
+        return None
     if isinstance(time_value, str) and ":" in time_value:
         hour_text, minute_text, *_unused_rest = time_value.strip().split(":")
         try:
@@ -93,18 +93,23 @@ def _rounded_coordinate(value: float) -> str:
 
 def _normalize_datetime(date_value: Any, time_value: Any) -> str:
     normalized_date = _normalize_date(date_value)
-    hour, minute = _time_components(time_value)
+    if (components := _time_components(time_value)) is None:
+        raise ValueError("Weather Unlocked time must be present")
+    hour, minute = components
     return f"{normalized_date}T{hour:02d}:{minute:02d}:00"
 
 
 def _combine_clock(date_value: Any, clock_value: Any) -> str | None:
-    if clock_value is None:
+    if clock_value in (None, ""):
         return None
     try:
         normalized_date = _normalize_date(date_value)
-        hour, minute = _time_components(clock_value)
+        components = _time_components(clock_value)
     except ValueError:
         return None
+    if components is None:
+        return None
+    hour, minute = components
     return f"{normalized_date}T{hour:02d}:{minute:02d}:00"
 
 
@@ -121,6 +126,16 @@ def _wind_speed(
     if kmh is not None:
         return ms_from_kmh(kmh)
     return None
+
+
+def _normalized_day_date(day: dict[str, Any]) -> str | None:
+    date_value = first_present(day, "date", "date_local")
+    if not isinstance(date_value, str):
+        return None
+    try:
+        return _normalize_date(date_value)
+    except ValueError:
+        return None
 
 
 class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
@@ -192,20 +207,21 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     def _parse_hourly(self, payload: dict[str, Any]) -> list[Any]:
         points: list[Any] = []
         for day in self._days(payload):
-            date_value = first_present(day, "date", "date_local")
-            if not isinstance(date_value, str):
+            if (normalized_date := _normalized_day_date(day)) is None:
                 continue
-            normalized_date = _normalize_date(date_value)
             timeframes = day.get("Timeframes") or day.get("timeframes")
             if not isinstance(timeframes, list):
                 continue
             for timeframe in timeframes:
                 if not isinstance(timeframe, dict):
                     continue
-                timestamp = _normalize_datetime(
-                    normalized_date,
-                    first_present(timeframe, "time", "time_hm"),
-                )
+                try:
+                    timestamp = _normalize_datetime(
+                        normalized_date,
+                        first_present(timeframe, "time", "time_hm"),
+                    )
+                except ValueError:
+                    continue
                 condition_text = first_present(
                     timeframe,
                     "wx_desc",
@@ -278,10 +294,8 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     def _parse_daily(self, payload: dict[str, Any]) -> list[Any]:
         points: list[Any] = []
         for day in self._days(payload):
-            date_value = first_present(day, "date", "date_local")
-            if not isinstance(date_value, str):
+            if (normalized_date := _normalized_day_date(day)) is None:
                 continue
-            normalized_date = _normalize_date(date_value)
             condition_text = first_present(day, "wx_desc", "phrase", "weather_desc")
             points.append(
                 build_daily_point(

@@ -104,6 +104,8 @@ def _probability(entry: Mapping[str, Any]) -> float | None:
 def _local_start_date(period: Mapping[str, Any]) -> str | None:
     start_time = period.get("startTime")
     if not isinstance(start_time, str):
+        if isinstance(start_time, bool):
+            return None
         if not isinstance(start_time, (int, float, datetime)):
             return None
         if (start := parse_datetime(start_time)) is None:
@@ -126,8 +128,8 @@ def _alert_url(
     properties: Mapping[str, Any],
 ) -> str | None:
     for candidate in (feature.get("id"), feature.get("@id"), properties.get("@id")):
-        if isinstance(candidate, str) and candidate:
-            return candidate
+        if isinstance(candidate, str) and (normalized := candidate.strip()):
+            return normalized
     return None
 
 

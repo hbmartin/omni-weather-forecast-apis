@@ -85,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout-ms",
         type=float,
         default=None,
-        help="Override per-provider timeout in milliseconds",
+        help="Override the default request timeout in milliseconds",
     )
     return parser
 
