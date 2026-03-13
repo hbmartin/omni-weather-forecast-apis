@@ -215,19 +215,21 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
 
 def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
     all_day = _as_mapping(entry.get("all_day"))
-    wind = _as_mapping(_first_of(all_day.get("wind"), entry.get("wind")))
+    wind = _as_mapping(all_day.get("wind") or entry.get("wind"))
     precipitation = _as_mapping(
-        _first_of(all_day.get("precipitation"), entry.get("precipitation")),
+        all_day.get("precipitation") or entry.get("precipitation"),
     )
     probability = _as_mapping(
-        _first_of(all_day.get("probability"), entry.get("probability")),
+        all_day.get("probability") or entry.get("probability"),
     )
     cloud_cover = _as_mapping(
-        _first_of(all_day.get("cloud_cover"), entry.get("cloud_cover")),
+        all_day.get("cloud_cover") or entry.get("cloud_cover"),
     )
     sun = _as_mapping(_nested_value(entry, "astro", "sun"))
     moon = _as_mapping(_nested_value(entry, "astro", "moon"))
-    condition, summary, _unused_code = _condition(all_day or entry)
+    condition, summary, _unused_code = _condition(all_day)
+    if condition is None and summary is None:
+        condition, summary, _unused_code = _condition(entry)
     return build_daily_point(
         first_present(entry, "day", "date"),
         temperature_max=as_float(

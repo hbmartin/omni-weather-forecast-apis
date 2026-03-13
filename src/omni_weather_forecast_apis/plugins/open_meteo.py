@@ -235,7 +235,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
     def _parse_payloads(self, payload: dict[str, Any] | list[Any]) -> list[Any]:
         data = payload if isinstance(payload, dict) else {}
         forecasts: list[Any] = []
-        for model in self.config.models:
+        for model in self.config.models or ["best_match"]:
             forecasts.append(
                 build_source_forecast(
                     ProviderId.OPEN_METEO,
@@ -297,7 +297,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                         row.get("precipitation_probability"),
                     ),
                     rain=as_float(row.get("rain")),
-                    snow=_millimeters_from_centimeters(row.get("snowfall")),
+                    snow=as_float(row.get("snowfall")),
                     cloud_cover=as_float(row.get("cloud_cover")),
                     cloud_cover_low=as_float(row.get("cloud_cover_low")),
                     cloud_cover_mid=as_float(row.get("cloud_cover_mid")),

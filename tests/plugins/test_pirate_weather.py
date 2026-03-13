@@ -56,3 +56,4 @@ async def test_fetch_preserves_zero_precip_and_skips_alerts_without_start() -> N
     assert forecast.hourly[0].precipitation == 0.0
     assert forecast.hourly[0].rain is None
     assert len(forecast.alerts) == 1
+    assert forecast.alerts[0].event == "Winter Weather Advisory"

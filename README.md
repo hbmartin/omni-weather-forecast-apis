@@ -1,14 +1,35 @@
 # omni-weather-forecast-apis
 
-`omni-weather-forecast-apis` is an async Python library that fans out forecast requests across multiple providers and normalizes the results into one typed schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+
+Async Python library that fans out forecast requests across multiple weather providers and normalizes the results into one typed Pydantic schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
 
 ## Features
 
-- Async orchestrator with partial-failure tolerance.
-- Common Pydantic schema for minutely, hourly, daily, and alert data.
-- Provider plugin architecture with typed config validation.
-- Global concurrency and request-per-second limiting plus per-provider overrides.
-- CLI that loads a TOML config, requires `--lat` and `--lon`, and persists normalized output to SQLite.
+- **Multi-provider fan-out** with async orchestration and partial-failure tolerance
+- **Typed normalized schema** — common Pydantic models for minutely, hourly, daily, and alert data
+- **Plugin architecture** — 13 providers with typed per-provider config validation
+- **Rate limiting** — global concurrency and RPS limits with per-provider overrides
+- **CLI** — loads a TOML config, queries providers, and persists normalized output to SQLite
+
+## Supported Providers
+
+| Provider | Plugin ID | API Key | Notes |
+|----------|-----------|---------|-------|
+| [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | Free tier; multiple forecast models |
+| [MET Norway](https://api.met.no/) | `met_norway` | No | Requires `user_agent` identification |
+| [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | No | US coverage only; requires `user_agent` |
+| [OpenWeather](https://openweathermap.org/api) | `openweather` | Yes | |
+| [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Yes | |
+| [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Yes | |
+| [Visual Crossing](https://www.visualcrossing.com/) | `visual_crossing` | Yes | |
+| [Weatherbit](https://www.weatherbit.io/) | `weatherbit` | Yes | |
+| [Meteosource](https://www.meteosource.com/) | `meteosource` | Yes | |
+| [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Yes | Dark Sky-compatible API |
+| [Stormglass](https://stormglass.io/) | `stormglass` | Yes | Hourly only; multi-model |
+| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Yes | Requires `app_id` + `app_key` |
+| Google Weather | `google_weather` | — | Placeholder; currently unavailable |
 
 ## Installation
 
@@ -90,8 +111,6 @@ asyncio.run(main())
 
 ## CLI Usage
 
-The CLI requires a config file plus `--lat` and `--lon`, and writes normalized results into SQLite.
-
 ```bash
 uv run omni-weather \
   --config ./config.toml \
@@ -100,53 +119,48 @@ uv run omni-weather \
   --sqlite ./forecasts.sqlite
 ```
 
-Optional flags:
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--config PATH` | Yes | — | Path to TOML configuration file |
+| `--lat FLOAT` | Yes | — | Latitude (-90 to 90) |
+| `--lon FLOAT` | Yes | — | Longitude (-180 to 180) |
+| `--sqlite PATH` | Yes | — | SQLite database output path |
+| `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
+| `--granularity GRAN` | No | hourly + daily | `minutely`, `hourly`, or `daily`; repeatable |
+| `--language LANG` | No | `en` | Provider language preference |
+| `--include-raw` | No | off | Persist raw provider payloads |
+| `--timeout-ms MS` | No | config value | Override per-provider timeout |
 
-- `--provider <slug>`: limit the run to one or more configured providers.
-- `--granularity hourly --granularity daily`: request specific granularities.
-- `--language en`: provider language preference.
-- `--include-raw`: persist raw provider payloads.
-- `--timeout-ms 15000`: override the request timeout.
+**Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` configuration or runtime error.
 
 ## SQLite Output
 
 The CLI creates a normalized database with these tables:
 
-- `forecast_runs`
-- `provider_results`
-- `source_forecasts`
-- `minutely_points`
-- `hourly_points`
-- `daily_points`
-- `alerts`
-
-Each run stores the request metadata, one row per provider result, one row per model/source forecast, and time-series rows for each granularity.
-
-## Supported Providers
-
-- `openweather`
-- `open_meteo`
-- `nws`
-- `weatherapi`
-- `tomorrow_io`
-- `visual_crossing`
-- `weatherbit`
-- `meteosource`
-- `pirate_weather`
-- `met_norway`
-- `google_weather` (placeholder adapter; currently unavailable)
-- `stormglass`
-- `weather_unlocked`
+| Table | Contents |
+|-------|----------|
+| `forecast_runs` | Request metadata per invocation |
+| `provider_results` | One row per provider outcome (success or error) |
+| `source_forecasts` | One row per model/source forecast within a provider |
+| `minutely_points` | Precipitation intensity at minute intervals |
+| `hourly_points` | Normalized hourly forecast rows |
+| `daily_points` | Normalized daily summary rows |
+| `alerts` | Weather alerts and warnings |
 
 ## Development
 
-The repository instructions require these commands after changes:
-
 ```bash
+# Lint and type-check
 uv run black src
 uv run ruff check src --fix
 uv run pyrefly check src
 uv run ty check src
+
+# Complexity and tests
 uv run lizard -Eduplicate src
 uv run pytest tests/
 ```
+
+## License
+
+[Apache 2.0](LICENSE)
