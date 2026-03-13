@@ -51,7 +51,7 @@ _WEATHERBIT_CONDITION_MAP: dict[int, WeatherCondition] = {
     230: WeatherCondition.THUNDERSTORM_RAIN,
     231: WeatherCondition.THUNDERSTORM_RAIN,
     232: WeatherCondition.THUNDERSTORM_HEAVY,
-    233: WeatherCondition.THUNDERSTORM_HEAVY,
+    233: WeatherCondition.HAIL,
     300: WeatherCondition.DRIZZLE,
     301: WeatherCondition.DRIZZLE,
     302: WeatherCondition.DRIZZLE,

@@ -297,7 +297,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                         row.get("precipitation_probability"),
                     ),
                     rain=as_float(row.get("rain")),
-                    snow=as_float(row.get("snowfall")),
+                    snow=_millimeters_from_centimeters(row.get("snowfall")),
                     cloud_cover=as_float(row.get("cloud_cover")),
                     cloud_cover_low=as_float(row.get("cloud_cover_low")),
                     cloud_cover_mid=as_float(row.get("cloud_cover_mid")),

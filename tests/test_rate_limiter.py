@@ -45,3 +45,33 @@ def test_composite_rate_limiter_serializes_on_semaphore() -> None:
     peak_active = asyncio.run(scenario())
 
     assert peak_active == 1
+
+
+def test_composite_rate_limiter_waits_for_semaphore_before_buckets() -> None:
+    class RecordingBucket(TokenBucketRateLimiter):
+        def __init__(self) -> None:
+            super().__init__(rate=1, max_tokens=1)
+            self.calls = 0
+
+        async def acquire(self) -> None:
+            self.calls += 1
+
+    async def scenario() -> tuple[int, int]:
+        bucket = RecordingBucket()
+        semaphore = asyncio.Semaphore(0)
+        limiter = CompositeRateLimiter(semaphore, bucket)
+        task = asyncio.create_task(_consume_slot(limiter))
+        await asyncio.sleep(0.01)
+        calls_while_blocked = bucket.calls
+        semaphore.release()
+        await asyncio.wait_for(task, timeout=0.1)
+        return calls_while_blocked, bucket.calls
+
+    async def _consume_slot(limiter: CompositeRateLimiter) -> None:
+        async with limiter.slot():
+            return
+
+    calls_while_blocked, total_calls = asyncio.run(scenario())
+
+    assert calls_while_blocked == 0
+    assert total_calls == 1

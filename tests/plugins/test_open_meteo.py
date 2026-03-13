@@ -210,5 +210,5 @@ class TestOpenMeteoInstance:
         assert captured_params["wind_speed_unit"] == "ms"
         forecast = result.forecasts[0]
         assert forecast.minutely[0].precipitation_intensity == 2.0
-        assert forecast.hourly[0].snow == 1.2
+        assert forecast.hourly[0].snow == 12.0
         assert forecast.daily[0].snowfall_sum == 23.0

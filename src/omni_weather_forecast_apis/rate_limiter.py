@@ -60,7 +60,7 @@ class CompositeRateLimiter:
     async def slot(self) -> AsyncGenerator[None, None]:
         """Acquire all configured limiter primitives."""
 
-        for bucket in self._buckets:
-            await bucket.acquire()
         async with self._semaphore:
+            for bucket in self._buckets:
+                await bucket.acquire()
             yield
