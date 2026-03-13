@@ -129,9 +129,9 @@ uv run omni-weather \
 | `--granularity GRAN` | No | hourly + daily | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | `en` | Provider language preference |
 | `--include-raw` | No | off | Persist raw provider payloads |
-| `--timeout-ms MS` | No | config value | Override per-provider timeout |
+| `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
 
-**Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` configuration or runtime error.
+**Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
 
 ## SQLite Output
 
