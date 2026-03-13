@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from omni_weather_forecast_apis.mapping import condition_from_text
@@ -100,6 +101,36 @@ def _probability(entry: Mapping[str, Any]) -> float | None:
     return normalize_probability(probability.get("value"))
 
 
+def _local_start_date(period: Mapping[str, Any]) -> str | None:
+    start_time = period.get("startTime")
+    if not isinstance(start_time, str):
+        if not isinstance(start_time, (int, float, datetime)):
+            return None
+        if (start := parse_datetime(start_time)) is None:
+            return None
+        return start.date().isoformat()
+
+    normalized = start_time.strip()
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized).date().isoformat()
+    except ValueError:
+        if (start := parse_datetime(start_time)) is None:
+            return None
+        return start.date().isoformat()
+
+
+def _alert_url(
+    feature: Mapping[str, Any],
+    properties: Mapping[str, Any],
+) -> str | None:
+    for candidate in (feature.get("id"), feature.get("@id"), properties.get("@id")):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return None
+
+
 def _parse_hour(period: Mapping[str, Any]) -> WeatherDataPoint:
     short_forecast = period.get("shortForecast")
     return build_hourly_point(
@@ -123,10 +154,8 @@ def _parse_hour(period: Mapping[str, Any]) -> WeatherDataPoint:
 def _combine_daily_periods(periods: list[Mapping[str, Any]]) -> list[DailyDataPoint]:
     combined: dict[str, dict[str, Any]] = {}
     for period in periods:
-        start = parse_datetime(period.get("startTime"))
-        if start is None:
+        if (key := _local_start_date(period)) is None:
             continue
-        key = start.date().isoformat()
         bucket = combined.setdefault(key, {"date": key})
         if period.get("isDaytime") is True:
             bucket["temperature_max"] = _temperature(period)
@@ -266,7 +295,7 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
                     end=properties.get("ends"),
                     description=str(properties.get("description") or ""),
                     severity=properties.get("severity"),
-                    url=properties.get("instruction"),
+                    url=_alert_url(feature, properties),
                 )
                 for feature in alerts_raw.get("features", [])
                 if isinstance(feature, Mapping)

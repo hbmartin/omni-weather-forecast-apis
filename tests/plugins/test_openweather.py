@@ -3,6 +3,7 @@
 import httpx
 import pytest
 import pytest_asyncio
+from pydantic import ValidationError
 
 from omni_weather_forecast_apis.plugins.openweather import openweather_plugin
 from omni_weather_forecast_apis.types import (
@@ -26,7 +27,7 @@ class TestOpenWeatherPlugin:
         assert config.api_key == "test-key"
 
     def test_validate_config_missing_key(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             openweather_plugin.validate_config({})
 
 
@@ -77,7 +78,7 @@ class TestOpenWeatherInstance:
         }
 
         transport = httpx.MockTransport(
-            lambda req: httpx.Response(200, json=mock_response),
+            lambda _request: httpx.Response(200, json=mock_response),
         )
         async with httpx.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
@@ -97,7 +98,7 @@ class TestOpenWeatherInstance:
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance: PluginInstance) -> None:
         transport = httpx.MockTransport(
-            lambda req: httpx.Response(401, json={"message": "unauthorized"}),
+            lambda _request: httpx.Response(401, json={"message": "unauthorized"}),
         )
         async with httpx.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(

@@ -29,6 +29,7 @@ from omni_weather_forecast_apis.types import (
     WeatherCondition,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.utils import parse_date
 
 if TYPE_CHECKING:
     import httpx
@@ -38,6 +39,7 @@ _CAPABILITIES = PluginCapabilities(
     granularity_minutely=True,
     granularity_hourly=True,
     granularity_daily=True,
+    max_horizon_minutely_hours=1,
     max_horizon_hourly_hours=120,
     max_horizon_daily_days=6,
 )
@@ -66,19 +68,41 @@ _WEATHER_CODE_MAP: dict[int, WeatherCondition] = {
     7102: WeatherCondition.HAIL,
     8000: WeatherCondition.THUNDERSTORM,
 }
+_TIMELINE_ALIASES: dict[str, tuple[str, ...]] = {
+    "1m": ("1m", "minutely"),
+    "1h": ("1h", "hourly"),
+    "1d": ("1d", "daily"),
+}
+
+
+def _timeline_items(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, Mapping)]
+    if isinstance(value, Mapping) and isinstance(value.get("intervals"), list):
+        return [item for item in value["intervals"] if isinstance(item, Mapping)]
+    return []
 
 
 def _timeline_list(raw: dict[str, Any], timestep: str) -> list[Mapping[str, Any]]:
     timelines = raw.get("timelines")
     if isinstance(timelines, Mapping):
-        timeline = timelines.get(timestep)
-        if isinstance(timeline, list):
-            return [item for item in timeline if isinstance(item, Mapping)]
+        for alias in _TIMELINE_ALIASES.get(timestep, (timestep,)):
+            if alias not in timelines:
+                continue
+            if items := _timeline_items(timelines.get(alias)):
+                return items
     if isinstance(timelines, list):
+        aliases = set(_TIMELINE_ALIASES.get(timestep, (timestep,)))
         for entry in timelines:
-            if isinstance(entry, Mapping) and entry.get("timestep") == timestep:
-                intervals = entry.get("intervals", [])
-                return [item for item in intervals if isinstance(item, Mapping)]
+            if not isinstance(entry, Mapping):
+                continue
+            if (
+                entry.get("timestep") not in aliases
+                and entry.get("name") not in aliases
+            ):
+                continue
+            if items := _timeline_items(entry.get("intervals")):
+                return items
     return []
 
 
@@ -98,6 +122,45 @@ def _condition_from_values(
     return (
         _WEATHER_CODE_MAP.get(normalized_code) if normalized_code is not None else None
     ), normalized_code
+
+
+def _sum_present(*values: object) -> float | None:
+    total = 0.0
+    seen = False
+    for value in values:
+        if (numeric := as_float(value)) is not None:
+            total += numeric
+            seen = True
+    return total if seen else None
+
+
+def _daily_date(value: object) -> object:
+    if isinstance(value, str) and (parsed := parse_date(value)) is not None:
+        return parsed
+    return value
+
+
+def _daily_precipitation_sum(values: Mapping[str, Any]) -> float | None:
+    if (
+        total := as_float(
+            first_present(
+                values,
+                "precipitationAccumulation",
+                "precipitationAccumulationSum",
+            ),
+        )
+    ) is not None:
+        return total
+    return _sum_present(
+        first_present(values, "rainAccumulation", "rainAccumulationSum"),
+        first_present(values, "snowAccumulation", "snowAccumulationSum"),
+        first_present(values, "sleetAccumulation", "sleetAccumulationSum"),
+        first_present(
+            values,
+            "freezingRainAccumulation",
+            "freezingRainAccumulationSum",
+        ),
+    )
 
 
 def _parse_minutely(entry: Mapping[str, Any]) -> MinutelyDataPoint:
@@ -157,7 +220,7 @@ def _parse_daily(entry: Mapping[str, Any]) -> DailyDataPoint:
         values = {}
     condition, _ = _condition_from_values(values)
     return build_daily_point(
-        entry["startTime"],
+        _daily_date(entry["startTime"]),
         temperature_max=as_float(values.get("temperatureMax")),
         temperature_min=as_float(values.get("temperatureMin")),
         apparent_temperature_max=as_float(values.get("temperatureApparentMax")),
@@ -165,12 +228,16 @@ def _parse_daily(entry: Mapping[str, Any]) -> DailyDataPoint:
         wind_speed_max=as_float(values.get("windSpeedMax")),
         wind_gust_max=as_float(values.get("windGustMax")),
         wind_direction_dominant=as_float(values.get("windDirection")),
-        precipitation_sum=as_float(values.get("precipitationIntensityAvg")),
+        precipitation_sum=_daily_precipitation_sum(values),
         precipitation_probability_max=normalize_probability(
             values.get("precipitationProbabilityMax"),
         ),
-        rain_sum=as_float(values.get("rainAccumulation")),
-        snowfall_sum=as_float(values.get("snowAccumulation")),
+        rain_sum=as_float(
+            first_present(values, "rainAccumulation", "rainAccumulationSum"),
+        ),
+        snowfall_sum=as_float(
+            first_present(values, "snowAccumulation", "snowAccumulationSum"),
+        ),
         cloud_cover_mean=as_float(values.get("cloudCoverAvg")),
         uv_index_max=as_float(values.get("uvIndexMax")),
         visibility_min=as_float(values.get("visibilityMin")),
@@ -223,21 +290,32 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
                 raw=raw,
             )
 
-        minutely = [
-            _parse_minutely(item)
-            for item in _timeline_list(raw, "1m")
-            if "startTime" in item
-        ]
-        hourly = [
-            _parse_hourly(item)
-            for item in _timeline_list(raw, "1h")
-            if "startTime" in item
-        ]
-        daily = [
-            _parse_daily(item)
-            for item in _timeline_list(raw, "1d")
-            if "startTime" in item
-        ]
+        minutely: list[MinutelyDataPoint] = []
+        for item in _timeline_list(raw, "1m"):
+            if "startTime" not in item:
+                continue
+            try:
+                minutely.append(_parse_minutely(item))
+            except KeyError, TypeError, ValueError:
+                continue
+
+        hourly: list[WeatherDataPoint] = []
+        for item in _timeline_list(raw, "1h"):
+            if "startTime" not in item:
+                continue
+            try:
+                hourly.append(_parse_hourly(item))
+            except KeyError, TypeError, ValueError:
+                continue
+
+        daily: list[DailyDataPoint] = []
+        for item in _timeline_list(raw, "1d"):
+            if "startTime" not in item:
+                continue
+            try:
+                daily.append(_parse_daily(item))
+            except KeyError, TypeError, ValueError:
+                continue
         return self._success(
             [
                 build_source_forecast(

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from typing import overload
+
 from omni_weather_forecast_apis.plugins.google_weather import google_weather_plugin
 from omni_weather_forecast_apis.plugins.met_norway import met_norway_plugin
 from omni_weather_forecast_apis.plugins.meteosource import meteosource_plugin
@@ -17,7 +20,7 @@ from omni_weather_forecast_apis.plugins.weatherapi import weatherapi_plugin
 from omni_weather_forecast_apis.plugins.weatherbit import weatherbit_plugin
 from omni_weather_forecast_apis.types import ProviderId, WeatherPlugin
 
-REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
+_INITIAL_REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
     openweather_plugin,
     open_meteo_plugin,
     nws_plugin,
@@ -33,8 +36,35 @@ REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
     weather_unlocked_plugin,
 )
 PLUGIN_REGISTRY: dict[ProviderId, WeatherPlugin] = {
-    plugin.id: plugin for plugin in REGISTERED_PLUGINS
+    plugin.id: plugin for plugin in _INITIAL_REGISTERED_PLUGINS
 }
+
+
+class _RegisteredPluginsView(Sequence[WeatherPlugin]):
+    @overload
+    def __getitem__(self, index: int) -> WeatherPlugin: ...
+
+    @overload
+    def __getitem__(
+        self,
+        index: slice[int | None],
+    ) -> Sequence[WeatherPlugin]: ...
+
+    def __getitem__(
+        self,
+        index: int | slice[int | None],
+    ) -> WeatherPlugin | Sequence[WeatherPlugin]:
+        plugins = tuple(PLUGIN_REGISTRY.values())
+        return plugins[index]
+
+    def __iter__(self) -> Iterator[WeatherPlugin]:
+        return iter(PLUGIN_REGISTRY.values())
+
+    def __len__(self) -> int:
+        return len(PLUGIN_REGISTRY)
+
+
+REGISTERED_PLUGINS: Sequence[WeatherPlugin] = _RegisteredPluginsView()
 
 
 def get_plugin(plugin_id: ProviderId) -> WeatherPlugin:

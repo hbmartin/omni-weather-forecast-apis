@@ -59,7 +59,7 @@ class TestOpenMeteoInstance:
         }
 
         transport = httpx.MockTransport(
-            lambda req: httpx.Response(200, json=mock_response),
+            lambda _request: httpx.Response(200, json=mock_response),
         )
         async with httpx.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
@@ -97,7 +97,7 @@ class TestOpenMeteoInstance:
         }
 
         transport = httpx.MockTransport(
-            lambda req: httpx.Response(200, json=mock_response),
+            lambda _request: httpx.Response(200, json=mock_response),
         )
         async with httpx.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
@@ -117,7 +117,7 @@ class TestOpenMeteoInstance:
     @pytest.mark.asyncio
     async def test_fetch_http_error(self, instance: OpenMeteoInstance) -> None:
         transport = httpx.MockTransport(
-            lambda req: httpx.Response(500, json={"error": "server error"}),
+            lambda _request: httpx.Response(500, json={"error": "server error"}),
         )
         async with httpx.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
@@ -128,3 +128,53 @@ class TestOpenMeteoInstance:
             result = await instance.fetch_forecast(params, client)
 
         assert result.status == "error"
+
+    @pytest.mark.asyncio
+    async def test_fetch_converts_units(self, instance: OpenMeteoInstance) -> None:
+        captured_params: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured_params["wind_speed_unit"] = request.url.params["wind_speed_unit"]
+            return httpx.Response(
+                200,
+                json={
+                    "minutely_15": {
+                        "time": ["2024-01-01T00:00"],
+                        "precipitation": [0.5],
+                        "precipitation_probability": [25],
+                    },
+                    "hourly": {
+                        "time": ["2024-01-01T00:00"],
+                        "temperature_2m": [10.0],
+                        "weather_code": [71],
+                        "snowfall": [1.2],
+                    },
+                    "daily": {
+                        "time": ["2024-01-01"],
+                        "temperature_2m_max": [12.0],
+                        "temperature_2m_min": [5.0],
+                        "weather_code": [71],
+                        "snowfall_sum": [2.3],
+                    },
+                },
+            )
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            params = PluginFetchParams(
+                latitude=34.0,
+                longitude=-117.0,
+                granularity=[
+                    Granularity.MINUTELY,
+                    Granularity.HOURLY,
+                    Granularity.DAILY,
+                ],
+            )
+            result = await instance.fetch_forecast(params, client)
+
+        assert isinstance(result, PluginFetchSuccess)
+        assert captured_params["wind_speed_unit"] == "ms"
+        forecast = result.forecasts[0]
+        assert forecast.minutely[0].precipitation_intensity == 2.0
+        assert forecast.hourly[0].snow == 12.0
+        assert forecast.daily[0].snowfall_sum == 23.0

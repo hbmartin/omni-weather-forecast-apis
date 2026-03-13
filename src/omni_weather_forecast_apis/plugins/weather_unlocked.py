@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any, Final
 
 import httpx
@@ -30,26 +31,81 @@ from omni_weather_forecast_apis.types import (
 WEATHER_UNLOCKED_BASE_URL: Final = "https://api.weatherunlocked.com/api/forecast"
 
 
-def _normalize_datetime(date_value: Any, time_value: Any) -> str:
+def _normalize_date(date_value: Any) -> str:
     if not isinstance(date_value, str):
         raise ValueError("Weather Unlocked day date must be a string")
-    time_numeric = int(as_float(time_value) or 0)
-    hour = time_numeric // 100
-    minute = time_numeric % 100
-    return f"{date_value}T{hour:02d}:{minute:02d}:00"
+    normalized = date_value.strip()
+    try:
+        if "T" in normalized or " " in normalized:
+            return (
+                datetime.fromisoformat(
+                    normalized.replace("Z", "+00:00").replace(" ", "T", 1),
+                )
+                .date()
+                .isoformat()
+            )
+        return date.fromisoformat(normalized).isoformat()
+    except ValueError:
+        try:
+            day_text, month_text, year_text = normalized.split("/")
+            return date(
+                year=int(year_text),
+                month=int(month_text),
+                day=int(day_text),
+            ).isoformat()
+        except ValueError as exc:
+            raise ValueError(
+                "Weather Unlocked day date must be ISO or DD/MM/YYYY",
+            ) from exc
+        except (TypeError, AttributeError) as exc:
+            raise ValueError(
+                "Weather Unlocked day date must be ISO or DD/MM/YYYY",
+            ) from exc
+
+
+def _time_components(time_value: Any) -> tuple[int, int]:
+    if time_value in (None, ""):
+        return 0, 0
+    if isinstance(time_value, str) and ":" in time_value:
+        hour_text, minute_text, *_unused_rest = time_value.strip().split(":")
+        try:
+            hour = int(hour_text)
+            minute = int(minute_text)
+        except ValueError as exc:
+            raise ValueError(
+                "Weather Unlocked time must contain numeric HH:MM",
+            ) from exc
+    else:
+        numeric = as_float(time_value)
+        if numeric is None:
+            raise ValueError("Weather Unlocked time must be parseable")
+        clock = int(numeric)
+        hour = clock // 100
+        minute = clock % 100
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError("Weather Unlocked time must be within 00:00-23:59")
+    return hour, minute
+
+
+def _rounded_coordinate(value: float) -> str:
+    return f"{value:.4f}"
+
+
+def _normalize_datetime(date_value: Any, time_value: Any) -> str:
+    normalized_date = _normalize_date(date_value)
+    hour, minute = _time_components(time_value)
+    return f"{normalized_date}T{hour:02d}:{minute:02d}:00"
 
 
 def _combine_clock(date_value: Any, clock_value: Any) -> str | None:
-    if not isinstance(date_value, str) or clock_value is None:
+    if clock_value is None:
         return None
-    if isinstance(clock_value, str) and ":" in clock_value:
-        return f"{date_value}T{clock_value}:00"
-    numeric = as_float(clock_value)
-    if numeric is None:
+    try:
+        normalized_date = _normalize_date(date_value)
+        hour, minute = _time_components(clock_value)
+    except ValueError:
         return None
-    hour = int(numeric) // 100
-    minute = int(numeric) % 100
-    return f"{date_value}T{hour:02d}:{minute:02d}:00"
+    return f"{normalized_date}T{hour:02d}:{minute:02d}:00"
 
 
 def _wind_speed(
@@ -93,7 +149,11 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     ) -> PluginFetchResult:
         payload, error = await self._get_json(
             client,
-            f"{WEATHER_UNLOCKED_BASE_URL}/{params.latitude},{params.longitude}",
+            (
+                f"{WEATHER_UNLOCKED_BASE_URL}/"
+                f"{_rounded_coordinate(params.latitude)},"
+                f"{_rounded_coordinate(params.longitude)}"
+            ),
             params={
                 "app_id": self.config.app_id,
                 "app_key": self.config.app_key,
@@ -135,6 +195,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
             date_value = first_present(day, "date", "date_local")
             if not isinstance(date_value, str):
                 continue
+            normalized_date = _normalize_date(date_value)
             timeframes = day.get("Timeframes") or day.get("timeframes")
             if not isinstance(timeframes, list):
                 continue
@@ -142,7 +203,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                 if not isinstance(timeframe, dict):
                     continue
                 timestamp = _normalize_datetime(
-                    date_value,
+                    normalized_date,
                     first_present(timeframe, "time", "time_hm"),
                 )
                 condition_text = first_present(
@@ -220,10 +281,11 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
             date_value = first_present(day, "date", "date_local")
             if not isinstance(date_value, str):
                 continue
+            normalized_date = _normalize_date(date_value)
             condition_text = first_present(day, "wx_desc", "phrase", "weather_desc")
             points.append(
                 build_daily_point(
-                    date_value,
+                    normalized_date,
                     temperature_max=as_float(
                         first_present(day, "temp_max_c", "maxtemp_c", "tempMaxC"),
                     ),
@@ -258,11 +320,11 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                     ),
                     summary=condition_text if isinstance(condition_text, str) else None,
                     sunrise=_combine_clock(
-                        date_value,
+                        normalized_date,
                         first_present(day, "sunrise_time", "sunrise"),
                     ),
                     sunset=_combine_clock(
-                        date_value,
+                        normalized_date,
                         first_present(day, "sunset_time", "sunset"),
                     ),
                 ),

@@ -109,7 +109,6 @@ def _parse_forecast_day(entry: Mapping[str, Any]) -> DailyDataPoint:
             day.get("daily_chance_of_rain") or day.get("daily_chance_of_snow"),
         ),
         rain_sum=as_float(day.get("totalprecip_mm")),
-        cloud_cover_mean=as_float(day.get("avgvis_km")),
         uv_index_max=as_float(day.get("uv")),
         visibility_min=as_float(day.get("avgvis_km")),
         humidity_mean=as_float(day.get("avghumidity")),
@@ -161,7 +160,7 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
             for day in forecast_days
             if isinstance(day, Mapping)
             for hour in day.get("hour", [])
-            if isinstance(hour, Mapping)
+            if isinstance(hour, Mapping) and "time_epoch" in hour
         ]
         daily = [
             _parse_forecast_day(day)
@@ -180,7 +179,6 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
                 end=entry.get("expires"),
                 description=str(entry.get("desc") or entry.get("instruction") or ""),
                 severity=entry.get("severity"),
-                url=entry.get("instruction"),
             )
             for entry in alert_entries
             if isinstance(entry, Mapping) and "effective" in entry

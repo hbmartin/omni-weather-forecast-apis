@@ -30,11 +30,8 @@ def _summary_block(entry: dict[str, Any]) -> dict[str, Any] | None:
     data = entry.get("data")
     if not isinstance(data, dict):
         return None
-    for key in ("next_1_hours", "next_6_hours", "next_12_hours"):
-        candidate = data.get(key)
-        if isinstance(candidate, dict):
-            return candidate
-    return None
+    candidate = data.get("next_1_hours")
+    return candidate if isinstance(candidate, dict) else None
 
 
 def _symbol_to_day_flag(symbol_code: str | None) -> bool | None:
@@ -101,8 +98,8 @@ class METNorwayInstance(BasePluginInstance[METNorwayConfig]):
 
     def _request_params(self, params: PluginFetchParams) -> dict[str, float | int]:
         request_params: dict[str, float | int] = {
-            "lat": params.latitude,
-            "lon": params.longitude,
+            "lat": round(params.latitude, 4),
+            "lon": round(params.longitude, 4),
         }
         if self.config.altitude is not None:
             request_params["altitude"] = self.config.altitude

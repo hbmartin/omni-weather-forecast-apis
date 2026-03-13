@@ -75,8 +75,8 @@ class OmniWeatherClient:
                     "Provider plugin is not registered."
                 )
                 continue
-            validated_config = plugin.validate_config(registration.config)
             try:
+                validated_config = plugin.validate_config(registration.config)
                 instance = await plugin.initialize(validated_config)
             except Exception as exc:
                 self._initialization_errors[registration.plugin_id] = (
@@ -352,7 +352,7 @@ def _resolve_timeout_ms(
 ) -> float:
     if provider_timeout_ms is not None:
         return provider_timeout_ms
-    if "timeout_ms" in request.model_fields_set:
+    if request.timeout_ms is not None:
         return request.timeout_ms
     return default_timeout_ms
 

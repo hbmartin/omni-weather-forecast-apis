@@ -127,6 +127,18 @@ def _parse_is_day(value: Any) -> bool | None:
     return bool(int(numeric))
 
 
+def _hourly_rate_from_quarter_hour_sum(value: Any) -> float | None:
+    if (numeric := as_float(value)) is None:
+        return None
+    return numeric * 4
+
+
+def _millimeters_from_centimeters(value: Any) -> float | None:
+    if (numeric := as_float(value)) is None:
+        return None
+    return numeric * 10
+
+
 class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
     """Configured Open-Meteo provider."""
 
@@ -176,6 +188,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             "latitude": params.latitude,
             "longitude": params.longitude,
             "timezone": "UTC",
+            "wind_speed_unit": "ms",
         }
         if self.config.api_key is not None:
             request_params["apikey"] = self.config.api_key
@@ -249,7 +262,9 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             points.append(
                 build_minutely_point(
                     row["time"],
-                    precipitation_intensity=as_float(row.get("precipitation")),
+                    precipitation_intensity=_hourly_rate_from_quarter_hour_sum(
+                        row.get("precipitation"),
+                    ),
                     precipitation_probability=normalize_probability(
                         row.get("precipitation_probability"),
                     ),
@@ -282,7 +297,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                         row.get("precipitation_probability"),
                     ),
                     rain=as_float(row.get("rain")),
-                    snow=as_float(row.get("snowfall")),
+                    snow=_millimeters_from_centimeters(row.get("snowfall")),
                     cloud_cover=as_float(row.get("cloud_cover")),
                     cloud_cover_low=as_float(row.get("cloud_cover_low")),
                     cloud_cover_mid=as_float(row.get("cloud_cover_mid")),
@@ -330,7 +345,9 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                         row.get("precipitation_probability_max"),
                     ),
                     rain_sum=as_float(row.get("rain_sum")),
-                    snowfall_sum=as_float(row.get("snowfall_sum")),
+                    snowfall_sum=_millimeters_from_centimeters(
+                        row.get("snowfall_sum"),
+                    ),
                     cloud_cover_mean=as_float(row.get("cloud_cover_mean")),
                     uv_index_max=as_float(row.get("uv_index_max")),
                     visibility_min=(
