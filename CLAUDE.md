@@ -1,4 +1,4 @@
-- Always run `uv run black src; uv run ruff check src --fix; uv run pyrefly check src; uv run ty check src` after making changes.
+- Always run `uv run ruff check src --fix; uv run pyrefly check src; uv run ty check src` after making changes.
 - Run `uv run lizard -Eduplicate src; uv run pytest tests/` after finishing implementation.
 - Any user facing changes (e.g. new CLI flags) should be documented in the `README.md`.
 - Use `uv` not `python` for running scripts.

@@ -1,7 +1,12 @@
 # omni-weather-forecast-apis
 
+[![PyPI](https://img.shields.io/pypi/v/omni-weather-forecast-apis.svg)](https://pypi.org/project/omni-weather-forecast-apis/)
+[![CI](https://github.com/hbmartin/omni-weather-forecast-apis/actions/workflows/ci.yml/badge.svg)](https://github.com/hbmartin/omni-weather-forecast-apis/actions/workflows/ci.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with pyrefly](https://img.shields.io/badge/🪲-pyrefly-fe8801.svg)](https://pyrefly.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hbmartin/omni-weather-forecast-apis)
 
 Async Python library that fans out forecast requests across multiple weather providers and normalizes the results into one typed Pydantic schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
 
