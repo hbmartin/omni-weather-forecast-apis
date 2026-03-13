@@ -7,6 +7,8 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
+import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
+
 
 class ProviderId(str, Enum):
     """Every supported provider has a stable slug."""
@@ -249,6 +251,8 @@ class WeatherAlert(BaseModel):
 class SourceForecast(BaseModel):
     """A complete normalized forecast for one model or provider source."""
 
+    model_config = ConfigDict(frozen=True)
+
     source: ModelSource = Field(description="Provider/model identity")
     minutely: list[MinutelyDataPoint] = Field(default_factory=list)
     hourly: list[WeatherDataPoint] = Field(default_factory=list)
@@ -269,6 +273,8 @@ class ErrorCode(str, Enum):
 class ProviderErrorDetail(BaseModel):
     """Structured provider error payload."""
 
+    model_config = ConfigDict(frozen=True)
+
     code: ErrorCode
     message: str
     http_status: int | None = Field(
@@ -283,6 +289,8 @@ class ProviderErrorDetail(BaseModel):
 
 class ProviderSuccess(BaseModel):
     """Successful provider response."""
+
+    model_config = ConfigDict(frozen=True)
 
     status: Literal["success"] = "success"
     provider: ProviderId
@@ -334,6 +342,8 @@ class ForecastResponseRequest(BaseModel):
 
 class ForecastResponse(BaseModel):
     """Public aggregated response."""
+
+    model_config = ConfigDict(frozen=True)
 
     request: ForecastResponseRequest
     results: list[ProviderResult]

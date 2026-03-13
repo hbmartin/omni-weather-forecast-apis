@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -31,6 +32,8 @@ from omni_weather_forecast_apis.types import (
     ProviderSuccess,
 )
 from omni_weather_forecast_apis.utils import utc_now
+
+logger = logging.getLogger("omni_weather_forecast_apis")
 
 
 class OmniWeatherClient:
@@ -253,6 +256,11 @@ class OmniWeatherClient:
         latency_ms = (time.perf_counter() - started_at) * 1000
         match result:
             case PluginFetchError():
+                logger.warning(
+                    "Provider %s returned error: %s",
+                    provider_id.value,
+                    result.message,
+                )
                 return ProviderError(
                     provider=provider_id,
                     error=ProviderErrorDetail(
@@ -264,6 +272,11 @@ class OmniWeatherClient:
                     ),
                 )
             case _:
+                logger.info(
+                    "Provider %s succeeded in %.0fms",
+                    provider_id.value,
+                    latency_ms,
+                )
                 return ProviderSuccess(
                     provider=provider_id,
                     forecasts=result.forecasts,
