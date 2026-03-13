@@ -134,7 +134,7 @@ Each run stores the request metadata, one row per provider result, one row per m
 - `meteosource`
 - `pirate_weather`
 - `met_norway`
-- `google_weather`
+- `google_weather` (placeholder adapter; currently unavailable)
 - `stormglass`
 - `weather_unlocked`
 

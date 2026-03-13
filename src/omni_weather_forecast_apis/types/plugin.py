@@ -13,6 +13,12 @@ from omni_weather_forecast_apis.types.schema import (
 )
 
 
+class ProviderConfigModel(BaseModel):
+    """Base model for provider-specific config payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PluginCapabilities(BaseModel):
     """Describes what a provider supports."""
 
@@ -100,7 +106,7 @@ class PluginInstance(Protocol):
         """Return provider capabilities metadata."""
 
 
-class OpenWeatherConfig(BaseModel):
+class OpenWeatherConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     exclude: list[str] | None = Field(
         None,
@@ -109,71 +115,71 @@ class OpenWeatherConfig(BaseModel):
     units: Literal["standard", "metric", "imperial"] = "metric"
 
 
-class OpenMeteoConfig(BaseModel):
+class OpenMeteoConfig(ProviderConfigModel):
     api_key: str | None = None
     models: list[str] = Field(default_factory=lambda: ["best_match"])
     extra_hourly_vars: list[str] | None = None
     extra_daily_vars: list[str] | None = None
 
 
-class NWSGridOverride(BaseModel):
+class NWSGridOverride(ProviderConfigModel):
     office: str
     grid_x: int
     grid_y: int
 
 
-class NWSConfig(BaseModel):
+class NWSConfig(ProviderConfigModel):
     user_agent: str = Field(min_length=1)
     grid_override: NWSGridOverride | None = None
 
 
-class WeatherAPIConfig(BaseModel):
+class WeatherAPIConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     days: int = Field(default=7, ge=1, le=14)
     aqi: bool = False
     alerts: bool = True
 
 
-class TomorrowIOConfig(BaseModel):
+class TomorrowIOConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     fields: list[str] | None = None
 
 
-class VisualCrossingConfig(BaseModel):
+class VisualCrossingConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     include: str = "hours,days,alerts"
 
 
-class WeatherbitConfig(BaseModel):
+class WeatherbitConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     hours: int = Field(default=48, ge=1, le=240)
     units: Literal["M", "S", "I"] = "M"
 
 
-class MeteosourceConfig(BaseModel):
+class MeteosourceConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     sections: list[str] = Field(
         default_factory=lambda: ["current", "hourly", "daily"],
     )
 
 
-class PirateWeatherConfig(BaseModel):
+class PirateWeatherConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     extend_hourly: bool = False
     version: Literal["1", "2"] = "2"
 
 
-class METNorwayConfig(BaseModel):
+class METNorwayConfig(ProviderConfigModel):
     user_agent: str = Field(min_length=1)
     altitude: int | None = None
     variant: Literal["compact", "complete"] = "complete"
 
 
-class GoogleWeatherConfig(BaseModel):
-    api_key: str = Field(min_length=1)
+class GoogleWeatherConfig(ProviderConfigModel):
+    api_key: str | None = None
 
 
-class StormglassConfig(BaseModel):
+class StormglassConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     sources: list[str] = Field(default_factory=lambda: ["sg"])
     params: list[str] = Field(
@@ -191,7 +197,7 @@ class StormglassConfig(BaseModel):
     )
 
 
-class WeatherUnlockedConfig(BaseModel):
+class WeatherUnlockedConfig(ProviderConfigModel):
     app_id: str = Field(min_length=1)
     app_key: str = Field(min_length=1)
     lang: str | None = None

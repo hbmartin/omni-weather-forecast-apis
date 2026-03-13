@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -30,7 +31,7 @@ def test_data_points_are_frozen() -> None:
         condition=WeatherCondition.CLEAR,
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         point.temperature = 25.0
 
 
@@ -57,6 +58,22 @@ def test_minutely_point_shape() -> None:
 
     assert point.precipitation_intensity == 1.2
     assert point.precipitation_probability == 0.3
+
+
+def test_weather_data_point_normalizes_timestamps_to_utc() -> None:
+    point = WeatherDataPoint(
+        timestamp=datetime(2026, 3, 12, 12, tzinfo=timezone(timedelta(hours=-7))),
+        timestamp_unix=1,
+        condition=WeatherCondition.CLEAR,
+    )
+
+    assert point.timestamp == datetime(2026, 3, 12, 19, tzinfo=UTC)
+
+
+def test_request_timeout_defaults_to_config_resolution() -> None:
+    request = ForecastRequest(latitude=34.0, longitude=-118.0)
+
+    assert request.timeout_ms is None
 
 
 def test_provider_enum_contains_expected_slug() -> None:

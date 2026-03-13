@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -26,7 +25,7 @@ from omni_weather_forecast_apis.types import (
 
 
 class DummyConfig(BaseModel):
-    token: str = "ok"
+    token: str = "ok"  # noqa: S105
 
 
 class SuccessInstance:
@@ -188,7 +187,7 @@ def test_unconfigured_requested_provider_returns_error(
 ) -> None:
     monkeypatch.setattr(
         "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: {},
+        dict,
     )
     client = OmniWeatherClient(
         OmniWeatherConfig(

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from datetime import date as calendar_date
-from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
+
+
+def _normalize_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+UTCDateTime = Annotated[datetime, AfterValidator(_normalize_utc_datetime)]
 
 
 class ProviderId(str, Enum):
@@ -79,7 +88,7 @@ class WeatherDataPoint(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    timestamp: datetime = Field(description="UTC timestamp")
+    timestamp: UTCDateTime = Field(description="UTC timestamp")
     timestamp_unix: int = Field(description="Unix timestamp (seconds)")
     temperature: float | None = Field(None, description="Air temperature at 2m, °C")
     apparent_temperature: float | None = Field(
@@ -150,7 +159,7 @@ class MinutelyDataPoint(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    timestamp: datetime = Field(description="UTC timestamp")
+    timestamp: UTCDateTime = Field(description="UTC timestamp")
     timestamp_unix: int = Field(description="Unix timestamp (seconds)")
     precipitation_intensity: float | None = Field(
         None,
@@ -211,10 +220,10 @@ class DailyDataPoint(BaseModel):
         description="Most representative condition",
     )
     summary: str | None = Field(None, description="Provider summary text")
-    sunrise: datetime | None = Field(None, description="Sunrise UTC timestamp")
-    sunset: datetime | None = Field(None, description="Sunset UTC timestamp")
-    moonrise: datetime | None = Field(None, description="Moonrise UTC timestamp")
-    moonset: datetime | None = Field(None, description="Moonset UTC timestamp")
+    sunrise: UTCDateTime | None = Field(None, description="Sunrise UTC timestamp")
+    sunset: UTCDateTime | None = Field(None, description="Sunset UTC timestamp")
+    moonrise: UTCDateTime | None = Field(None, description="Moonrise UTC timestamp")
+    moonset: UTCDateTime | None = Field(None, description="Moonset UTC timestamp")
     moon_phase: float | None = Field(None, ge=0, le=1, description="Moon phase 0–1")
     daylight_duration: float | None = Field(
         None,
@@ -241,8 +250,8 @@ class WeatherAlert(BaseModel):
 
     sender_name: str
     event: str
-    start: datetime
-    end: datetime | None = None
+    start: UTCDateTime
+    end: UTCDateTime | None = None
     description: str
     severity: AlertSeverity | None = None
     url: str | None = None
@@ -295,7 +304,7 @@ class ProviderSuccess(BaseModel):
     status: Literal["success"] = "success"
     provider: ProviderId
     forecasts: list[SourceForecast]
-    fetched_at: datetime
+    fetched_at: UTCDateTime
     latency_ms: float
     raw: Any | None = None
 
@@ -321,7 +330,7 @@ class ForecastRequest(BaseModel):
     )
     language: str = Field(default="en", min_length=1)
     include_raw: bool = False
-    timeout_ms: float = Field(default=10_000, gt=0)
+    timeout_ms: float | None = Field(default=None, gt=0)
     providers: list[ProviderId] | None = None
 
 
@@ -348,5 +357,5 @@ class ForecastResponse(BaseModel):
     request: ForecastResponseRequest
     results: list[ProviderResult]
     summary: ForecastResponseSummary
-    completed_at: datetime
+    completed_at: UTCDateTime
     total_latency_ms: float

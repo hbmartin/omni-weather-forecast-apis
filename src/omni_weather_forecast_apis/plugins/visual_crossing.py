@@ -44,6 +44,27 @@ _CAPABILITIES = PluginCapabilities(
 )
 
 
+def _first_alert_time(*values: object) -> str | int | float | None:
+    for value in values:
+        if isinstance(value, (str, int, float)):
+            return value
+    return None
+
+
+def _is_daylight(
+    entry: Mapping[str, Any],
+    day: Mapping[str, Any],
+) -> bool | None:
+    timestamp = entry.get("datetimeEpoch")
+    sunrise = day.get("sunriseEpoch")
+    sunset = day.get("sunsetEpoch")
+    if not isinstance(timestamp, int):
+        return None
+    if not isinstance(sunrise, int) or not isinstance(sunset, int):
+        return None
+    return sunrise <= timestamp < sunset
+
+
 def _parse_hour(
     entry: Mapping[str, Any],
     day: Mapping[str, Any],
@@ -70,7 +91,6 @@ def _parse_hour(
         pressure_sea=as_float(entry.get("pressure")),
         precipitation=as_float(entry.get("precip")),
         precipitation_probability=normalize_probability(entry.get("precipprob")),
-        rain=as_float(entry.get("precip")),
         cloud_cover=as_float(entry.get("cloudcover")),
         visibility=as_float(entry.get("visibility")),
         uv_index=as_float(entry.get("uvindex")),
@@ -80,14 +100,7 @@ def _parse_hour(
         ),
         condition_original=conditions if isinstance(conditions, str) else None,
         condition_code_original=icon if isinstance(icon, str) else None,
-        is_day=(
-            (
-                entry["datetimeEpoch"] >= day.get("sunriseEpoch", 0)
-                and entry["datetimeEpoch"] < day.get("sunsetEpoch", 0)
-            )
-            if isinstance(entry.get("datetimeEpoch"), int)
-            else None
-        ),
+        is_day=_is_daylight(entry, day),
     )
 
 
@@ -112,7 +125,6 @@ def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
         wind_direction_dominant=as_float(entry.get("winddir")),
         precipitation_sum=as_float(entry.get("precip")),
         precipitation_probability_max=normalize_probability(entry.get("precipprob")),
-        rain_sum=as_float(entry.get("precip")),
         cloud_cover_mean=as_float(entry.get("cloudcover")),
         uv_index_max=as_float(entry.get("uvindex")),
         visibility_min=as_float(entry.get("visibility")),
@@ -174,19 +186,21 @@ class _VisualCrossingInstance(BasePluginInstance[VisualCrossingConfig]):
             build_alert(
                 sender_name=str(entry.get("source") or "Visual Crossing"),
                 event=str(entry.get("event") or "Alert"),
-                start=(
-                    entry["onsetEpoch"]
-                    if entry.get("onsetEpoch") is not None
-                    else entry["onset"]
-                ),
-                end=entry.get("endsEpoch") or entry.get("ends"),
+                start=start,
+                end=_first_alert_time(entry.get("endsEpoch"), entry.get("ends")),
                 description=str(entry.get("description") or ""),
                 severity=entry.get("severity"),
                 url=entry.get("link"),
             )
             for entry in raw.get("alerts", [])
             if isinstance(entry, Mapping)
-            and ("onsetEpoch" in entry or "onset" in entry)
+            if (
+                start := _first_alert_time(
+                    entry.get("onsetEpoch"),
+                    entry.get("onset"),
+                )
+            )
+            is not None
         ]
         return self._success(
             [

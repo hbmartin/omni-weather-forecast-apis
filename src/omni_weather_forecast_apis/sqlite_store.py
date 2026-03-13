@@ -19,6 +19,7 @@ def save_forecast_response(
     """Persist one normalized forecast response into SQLite."""
 
     connection = sqlite3.connect(database_path)
+    connection.execute("PRAGMA foreign_keys = ON")
     try:
         _create_schema(connection)
         run_id = _insert_run(connection, response)

@@ -73,6 +73,31 @@ def _normalize_wind_speed(value: float | None, units: str) -> float | None:
     return value
 
 
+def _sum_present(*values: float | None) -> float | None:
+    present_values = [value for value in values if value is not None]
+    if not present_values:
+        return None
+    return sum(present_values)
+
+
+def _is_daylight(entry: Mapping[str, Any]) -> bool | None:
+    dt = entry.get("dt")
+    sunrise = entry.get("sunrise")
+    sunset = entry.get("sunset")
+    if not isinstance(dt, int):
+        return None
+    if not isinstance(sunrise, int) or not isinstance(sunset, int):
+        return None
+    return sunrise <= dt < sunset
+
+
+def _first_tag(tags: object) -> str | None:
+    if not isinstance(tags, list) or not tags:
+        return None
+    first_tag = tags[0]
+    return first_tag if isinstance(first_tag, str) else None
+
+
 def _parse_weather_block(
     entry: Mapping[str, Any],
 ) -> tuple[str | None, int | None, WeatherCondition | None]:
@@ -120,11 +145,7 @@ def _parse_hourly_entry(
         wind_gust=_normalize_wind_speed(as_float(entry.get("wind_gust")), units),
         wind_direction=as_float(entry.get("wind_deg")),
         pressure_sea=as_float(entry.get("pressure")),
-        precipitation=(
-            (rain_amount or 0.0) + (snow_amount or 0.0)
-            if rain_amount is not None or snow_amount is not None
-            else as_float(entry.get("pop"))
-        ),
+        precipitation=_sum_present(rain_amount, snow_amount),
         precipitation_probability=normalize_probability(entry.get("pop")),
         rain=rain_amount,
         snow=snow_amount,
@@ -136,12 +157,7 @@ def _parse_hourly_entry(
         condition=fallback_condition(mapped_condition, description),
         condition_original=description,
         condition_code_original=code,
-        is_day=(
-            entry.get("dt", 0) >= entry.get("sunrise", 0)
-            and entry.get("dt", 0) < entry.get("sunset", 0)
-            if isinstance(entry.get("dt"), int)
-            else None
-        ),
+        is_day=_is_daylight(entry),
     )
 
 
@@ -153,6 +169,8 @@ def _parse_daily_entry(
     description, _code, mapped_condition = _parse_weather_block(entry)
     temperature = entry.get("temp")
     feels_like = entry.get("feels_like")
+    rain_amount = as_float(entry.get("rain"))
+    snow_amount = as_float(entry.get("snow"))
     return build_daily_point(
         entry["dt"],
         temperature_max=_normalize_temperature(
@@ -190,10 +208,10 @@ def _parse_daily_entry(
         wind_speed_max=_normalize_wind_speed(as_float(entry.get("wind_speed")), units),
         wind_gust_max=_normalize_wind_speed(as_float(entry.get("wind_gust")), units),
         wind_direction_dominant=as_float(entry.get("wind_deg")),
-        precipitation_sum=as_float(entry.get("rain")) or as_float(entry.get("snow")),
+        precipitation_sum=_sum_present(rain_amount, snow_amount),
         precipitation_probability_max=normalize_probability(entry.get("pop")),
-        rain_sum=as_float(entry.get("rain")),
-        snowfall_sum=as_float(entry.get("snow")),
+        rain_sum=rain_amount,
+        snowfall_sum=snow_amount,
         cloud_cover_mean=as_float(entry.get("clouds")),
         uv_index_max=as_float(entry.get("uvi")),
         humidity_mean=as_float(entry.get("humidity")),
@@ -278,11 +296,7 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
                 start=entry["start"],
                 end=entry.get("end"),
                 description=str(entry.get("description") or ""),
-                url=(
-                    entry.get("tags", [None])[0]
-                    if isinstance(entry.get("tags"), list)
-                    else None
-                ),
+                url=_first_tag(entry.get("tags")),
             )
             for entry in raw.get("alerts", [])
             if isinstance(entry, Mapping) and "start" in entry

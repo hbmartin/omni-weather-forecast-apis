@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any, Final
 
 import httpx
@@ -66,6 +65,13 @@ def _sender_name(alert: dict[str, Any]) -> str:
     if isinstance(regions, str):
         return regions
     return str(alert.get("title", "pirate_weather"))
+
+
+def _first_alert_time(*values: object) -> str | int | float | None:
+    for value in values:
+        if isinstance(value, (str, int, float)):
+            return value
+    return None
 
 
 class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
@@ -167,6 +173,9 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             if not isinstance(row, dict):
                 continue
             condition, condition_original, condition_code = _condition_for_entry(row)
+            precip_accumulation = as_float(row.get("precipAccumulation"))
+            precip_intensity = as_float(row.get("precipIntensity"))
+            precip_type = row.get("precipType")
             points.append(
                 build_hourly_point(
                     row["time"],
@@ -178,12 +187,19 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     wind_gust=as_float(row.get("windGust")),
                     wind_direction=as_float(row.get("windBearing")),
                     pressure_sea=as_float(row.get("pressure")),
-                    precipitation=as_float(row.get("precipAccumulation"))
-                    or as_float(row.get("precipIntensity")),
+                    precipitation=(
+                        precip_accumulation
+                        if precip_accumulation is not None
+                        else precip_intensity
+                    ),
                     precipitation_probability=normalize_probability(
                         row.get("precipProbability"),
                     ),
-                    rain=as_float(row.get("precipIntensity")),
+                    rain=(
+                        precip_intensity
+                        if isinstance(precip_type, str) and precip_type == "rain"
+                        else None
+                    ),
                     snow=as_float(row.get("snowAccumulation")),
                     cloud_cover=_scaled_percent(row.get("cloudCover")),
                     visibility=as_float(row.get("visibility")),
@@ -228,7 +244,6 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     precipitation_probability_max=normalize_probability(
                         row.get("precipProbability"),
                     ),
-                    rain_sum=as_float(row.get("precipAccumulation")),
                     snowfall_sum=as_float(row.get("snowAccumulation")),
                     cloud_cover_mean=_scaled_percent(row.get("cloudCover")),
                     uv_index_max=as_float(row.get("uvIndex")),
@@ -255,23 +270,23 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
         for alert in alerts:
             if not isinstance(alert, dict):
                 continue
-            start = (
-                alert.get("time")
-                or alert.get("starts")
-                or alert.get("expires")
-                or int(datetime.now(tz=UTC).timestamp())
-            )
-            parsed_alerts.append(
-                build_alert(
-                    sender_name=_sender_name(alert),
-                    event=str(alert.get("title", "Alert")),
-                    start=start,
-                    end=alert.get("expires"),
-                    description=str(alert.get("description", "")),
-                    severity=alert.get("severity"),
-                    url=alert.get("uri"),
-                ),
-            )
+            start = _first_alert_time(alert.get("time"), alert.get("starts"))
+            if start is None:
+                continue
+            try:
+                parsed_alerts.append(
+                    build_alert(
+                        sender_name=_sender_name(alert),
+                        event=str(alert.get("title") or "Alert"),
+                        start=start,
+                        end=alert.get("expires"),
+                        description=str(alert.get("description", "")),
+                        severity=alert.get("severity"),
+                        url=alert.get("uri"),
+                    ),
+                )
+            except TypeError, ValueError:
+                continue
         return parsed_alerts
 
 

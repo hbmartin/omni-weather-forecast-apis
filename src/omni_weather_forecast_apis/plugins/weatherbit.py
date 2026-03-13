@@ -5,10 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from omni_weather_forecast_apis.mapping import (
-    OPENWEATHER_CONDITION_MAP,
-    condition_from_text,
-)
+from omni_weather_forecast_apis.mapping import condition_from_text
 from omni_weather_forecast_apis.mapping.units import (
     celsius_from_fahrenheit,
     mm_from_inches,
@@ -32,6 +29,7 @@ from omni_weather_forecast_apis.types import (
     PluginFetchResult,
     ProviderId,
     WeatherbitConfig,
+    WeatherCondition,
     WeatherDataPoint,
 )
 
@@ -46,6 +44,46 @@ _CAPABILITIES = PluginCapabilities(
     max_horizon_hourly_hours=240,
     max_horizon_daily_days=16,
 )
+_WEATHERBIT_CONDITION_MAP: dict[int, WeatherCondition] = {
+    200: WeatherCondition.THUNDERSTORM_RAIN,
+    201: WeatherCondition.THUNDERSTORM_RAIN,
+    202: WeatherCondition.THUNDERSTORM_HEAVY,
+    230: WeatherCondition.THUNDERSTORM_RAIN,
+    231: WeatherCondition.THUNDERSTORM_RAIN,
+    232: WeatherCondition.THUNDERSTORM_HEAVY,
+    233: WeatherCondition.HAIL,
+    300: WeatherCondition.DRIZZLE,
+    301: WeatherCondition.DRIZZLE,
+    302: WeatherCondition.DRIZZLE,
+    500: WeatherCondition.LIGHT_RAIN,
+    501: WeatherCondition.RAIN,
+    502: WeatherCondition.HEAVY_RAIN,
+    511: WeatherCondition.FREEZING_RAIN,
+    520: WeatherCondition.LIGHT_RAIN,
+    521: WeatherCondition.RAIN,
+    522: WeatherCondition.HEAVY_RAIN,
+    600: WeatherCondition.LIGHT_SNOW,
+    601: WeatherCondition.SNOW,
+    602: WeatherCondition.HEAVY_SNOW,
+    610: WeatherCondition.SLEET,
+    611: WeatherCondition.SLEET,
+    612: WeatherCondition.SLEET,
+    621: WeatherCondition.LIGHT_SNOW,
+    622: WeatherCondition.HEAVY_SNOW,
+    623: WeatherCondition.LIGHT_SNOW,
+    700: WeatherCondition.HAZE,
+    711: WeatherCondition.SMOKE,
+    721: WeatherCondition.HAZE,
+    731: WeatherCondition.DUST,
+    741: WeatherCondition.FOG,
+    751: WeatherCondition.FOG,
+    800: WeatherCondition.CLEAR,
+    801: WeatherCondition.MOSTLY_CLEAR,
+    802: WeatherCondition.PARTLY_CLOUDY,
+    803: WeatherCondition.MOSTLY_CLOUDY,
+    804: WeatherCondition.OVERCAST,
+    900: WeatherCondition.UNKNOWN,
+}
 
 
 def _normalize_temperature(value: float | None, units: str) -> float | None:
@@ -77,6 +115,15 @@ def _parse_condition(weather: object) -> tuple[str | None, int | None]:
     )
 
 
+def _map_condition(
+    description: str | None,
+    code: int | None,
+) -> WeatherCondition | None:
+    if code is None:
+        return condition_from_text(description)
+    return _WEATHERBIT_CONDITION_MAP.get(code, condition_from_text(description))
+
+
 def _parse_hour(entry: Mapping[str, Any], units: str) -> WeatherDataPoint:
     description, code = _parse_condition(entry.get("weather"))
     return build_hourly_point(
@@ -89,9 +136,10 @@ def _parse_hour(entry: Mapping[str, Any], units: str) -> WeatherDataPoint:
         dew_point=_normalize_temperature(as_float(entry.get("dewpt")), units),
         humidity=as_float(entry.get("rh")),
         wind_speed=_normalize_wind(as_float(entry.get("wind_spd")), units),
-        wind_gust=_normalize_wind(as_float(entry.get("gust")), units),
+        wind_gust=_normalize_wind(as_float(entry.get("wind_gust_spd")), units),
         wind_direction=as_float(entry.get("wind_dir")),
-        pressure_sea=as_float(entry.get("pres")),
+        pressure_sea=as_float(entry.get("slp")),
+        pressure_surface=as_float(entry.get("pres")),
         precipitation=_normalize_precipitation(as_float(entry.get("precip")), units),
         precipitation_probability=normalize_probability(entry.get("pop")),
         rain=_normalize_precipitation(as_float(entry.get("precip")), units),
@@ -100,11 +148,7 @@ def _parse_hour(entry: Mapping[str, Any], units: str) -> WeatherDataPoint:
         cloud_cover=as_float(entry.get("clouds")),
         visibility=as_float(entry.get("vis")),
         uv_index=as_float(entry.get("uv")),
-        condition=(
-            OPENWEATHER_CONDITION_MAP.get(code)
-            if code is not None
-            else condition_from_text(description)
-        ),
+        condition=_map_condition(description, code),
         condition_original=description,
         condition_code_original=code,
     )
@@ -139,11 +183,7 @@ def _parse_day(entry: Mapping[str, Any], units: str) -> DailyDataPoint:
         visibility_min=as_float(entry.get("vis")),
         humidity_mean=as_float(entry.get("rh")),
         pressure_sea_mean=as_float(entry.get("slp")),
-        condition=(
-            OPENWEATHER_CONDITION_MAP.get(code)
-            if code is not None
-            else condition_from_text(description)
-        ),
+        condition=_map_condition(description, code),
         summary=description,
         sunrise=entry.get("sunrise_ts"),
         sunset=entry.get("sunset_ts"),

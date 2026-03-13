@@ -58,5 +58,13 @@ def parse_date(value: str | date | datetime | None) -> date | None:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
     if isinstance(value, datetime):
-        return ensure_utc(value).date()
-    return date.fromisoformat(value)
+        return value.date()
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        return date.fromisoformat(normalized)
+    except ValueError:
+        return datetime.fromisoformat(normalized).date()

@@ -14,8 +14,15 @@ class TokenBucketRateLimiter:
     """
 
     def __init__(self, rate: float, max_tokens: int | None = None) -> None:
+        if rate <= 0:
+            raise ValueError("rate must be positive")
+        resolved_max_tokens = (
+            max(1, int(rate * 2)) if max_tokens is None else max_tokens
+        )
+        if resolved_max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
         self._rate = rate
-        self._max_tokens = max_tokens or max(1, int(rate * 2))
+        self._max_tokens = resolved_max_tokens
         self._tokens = float(self._max_tokens)
         self._last_refill = time.monotonic()
         self._lock = asyncio.Lock()
@@ -53,7 +60,7 @@ class CompositeRateLimiter:
     async def slot(self) -> AsyncGenerator[None, None]:
         """Acquire all configured limiter primitives."""
 
-        for bucket in self._buckets:
-            await bucket.acquire()
         async with self._semaphore:
+            for bucket in self._buckets:
+                await bucket.acquire()
             yield

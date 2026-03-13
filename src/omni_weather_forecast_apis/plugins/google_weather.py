@@ -21,6 +21,7 @@ _CAPABILITIES = PluginCapabilities(
     granularity_minutely=False,
     granularity_hourly=False,
     granularity_daily=False,
+    requires_api_key=False,
 )
 
 
