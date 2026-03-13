@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import Any, Final
 
 import httpx
@@ -127,19 +127,6 @@ def _parse_is_day(value: Any) -> bool | None:
     return bool(int(numeric))
 
 
-def _model_name(
-    payload: dict[str, Any],
-    configured_models: Sequence[str],
-    index: int,
-) -> str:
-    for key in ("model", "model_name", "requested_model"):
-        if isinstance(payload.get(key), str):
-            return payload[key]
-    if index < len(configured_models):
-        return configured_models[index]
-    return ProviderId.OPEN_METEO.value
-
-
 class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
     """Configured Open-Meteo provider."""
 
@@ -216,18 +203,39 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             request_params["minutely_15"] = ",".join(DEFAULT_MINUTELY_FIELDS)
         return request_params
 
+    def _get_section(
+        self,
+        data: dict[str, Any],
+        section: str,
+        model: str,
+    ) -> dict[str, Any] | None:
+        """Get a data section, handling multi-model key suffixes.
+
+        Open-Meteo returns flat keys with model suffixes for multi-model
+        requests (e.g. ``hourly_ecmwf``, ``daily_gfs``).  For the default
+        ``best_match`` model the un-suffixed key is used.
+        """
+        if model != "best_match" and f"{section}_{model}" in data:
+            return data[f"{section}_{model}"]
+        return data.get(section)
+
     def _parse_payloads(self, payload: dict[str, Any] | list[Any]) -> list[Any]:
-        raw_payloads = payload if isinstance(payload, list) else [payload]
-        parsed_payloads = [item for item in raw_payloads if isinstance(item, dict)]
+        data = payload if isinstance(payload, dict) else {}
         forecasts: list[Any] = []
-        for index, item in enumerate(parsed_payloads):
+        for model in self.config.models:
             forecasts.append(
                 build_source_forecast(
                     ProviderId.OPEN_METEO,
-                    model=_model_name(item, self.config.models, index),
-                    minutely=self._parse_minutely(item.get("minutely_15")),
-                    hourly=self._parse_hourly(item.get("hourly")),
-                    daily=self._parse_daily(item.get("daily")),
+                    model=model,
+                    minutely=self._parse_minutely(
+                        self._get_section(data, "minutely_15", model),
+                    ),
+                    hourly=self._parse_hourly(
+                        self._get_section(data, "hourly", model),
+                    ),
+                    daily=self._parse_daily(
+                        self._get_section(data, "daily", model),
+                    ),
                 ),
             )
         return forecasts
