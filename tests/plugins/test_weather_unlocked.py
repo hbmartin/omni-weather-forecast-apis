@@ -3,12 +3,14 @@
 import httpx
 import pytest
 
-from omni_weather_forecast_apis.plugins.weather_unlocked import WeatherUnlockedInstance
+from omni_weather_forecast_apis.plugins.weather_unlocked import (
+    WeatherUnlockedConfig,
+    WeatherUnlockedInstance,
+)
 from omni_weather_forecast_apis.types import (
     Granularity,
     PluginFetchParams,
     PluginFetchSuccess,
-    WeatherUnlockedConfig,
 )
 
 

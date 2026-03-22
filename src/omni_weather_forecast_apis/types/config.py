@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from omni_weather_forecast_apis.types.schema import ProviderId
+from omni_weather_forecast_apis.types.schema import Granularity, ProviderId
 
 
 class ProviderRegistration(BaseModel):
@@ -39,3 +39,9 @@ class OmniWeatherConfig(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     sqlite: str | None = None
+    granularity: list[Granularity] = Field(
+        default=[Granularity.MINUTELY, Granularity.HOURLY, Granularity.DAILY],
+    )
+    language: str = "en"
+    include_raw: bool = False
+    debug: bool = False

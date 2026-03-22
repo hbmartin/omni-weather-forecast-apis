@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -162,10 +161,20 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             latency_ms REAL NOT NULL DEFAULT 0,
             error_code TEXT,
             http_status INTEGER,
+            extra_json TEXT,
             logged_at TEXT NOT NULL
         );
         """,
     )
+    _ensure_provider_logs_columns(connection)
+
+
+def _ensure_provider_logs_columns(connection: sqlite3.Connection) -> None:
+    provider_log_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(provider_logs)")
+    }
+    if "extra_json" not in provider_log_columns:
+        connection.execute("ALTER TABLE provider_logs ADD COLUMN extra_json TEXT")
 
 
 def _insert_run(connection: sqlite3.Connection, response: ForecastResponse) -> int:
@@ -501,8 +510,8 @@ def save_provider_logs(
             """
             INSERT INTO provider_logs (
                 run_id, provider, phase, message,
-                latency_ms, error_code, http_status, logged_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                latency_ms, error_code, http_status, extra_json, logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -513,7 +522,8 @@ def save_provider_logs(
                     event.latency_ms,
                     event.error_code.value if event.error_code is not None else None,
                     event.http_status,
-                    datetime.now(UTC).isoformat(),
+                    _json_dump(event.extra) if event.extra else None,
+                    event.timestamp.isoformat(),
                 )
                 for event in events
             ],

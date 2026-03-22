@@ -4,13 +4,13 @@ import httpx
 import pytest
 
 from omni_weather_forecast_apis.plugins.open_meteo import (
+    OpenMeteoConfig,
     OpenMeteoInstance,
     open_meteo_plugin,
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     Granularity,
-    OpenMeteoConfig,
     PluginFetchError,
     PluginFetchParams,
     PluginFetchSuccess,

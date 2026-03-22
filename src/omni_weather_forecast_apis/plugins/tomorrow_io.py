@@ -25,14 +25,21 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    TomorrowIOConfig,
     WeatherCondition,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 from omni_weather_forecast_apis.utils import parse_date
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class TomorrowIOConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    fields: list[str] | None = None
 
 _FORECAST_URL = "https://api.tomorrow.io/v4/weather/forecast"
 _CAPABILITIES = PluginCapabilities(

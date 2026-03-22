@@ -21,7 +21,6 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
     ErrorCode,
-    MeteosourceConfig,
     MinutelyDataPoint,
     PluginCapabilities,
     PluginFetchParams,
@@ -30,9 +29,19 @@ from omni_weather_forecast_apis.types import (
     WeatherCondition,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class MeteosourceConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    sections: list[str] = Field(
+        default_factory=lambda: ["current", "hourly", "daily"],
+    )
 
 _POINT_URL = "https://www.meteosource.com/api/v1/free/point"
 _CAPABILITIES = PluginCapabilities(

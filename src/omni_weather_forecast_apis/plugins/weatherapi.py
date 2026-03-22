@@ -24,12 +24,22 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    WeatherAPIConfig,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class WeatherAPIConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    days: int = Field(default=7, ge=1, le=14)
+    aqi: bool = False
+    alerts: bool = True
+
 
 _FORECAST_URL = "https://api.weatherapi.com/v1/forecast.json"
 _CAPABILITIES = PluginCapabilities(

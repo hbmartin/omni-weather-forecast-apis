@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any, Final
 
 import httpx
+from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import ms_from_kmh
 from omni_weather_forecast_apis.plugins._base import (
@@ -25,8 +26,15 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    WeatherUnlockedConfig,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+
+
+class WeatherUnlockedConfig(ProviderConfigModel):
+    app_id: str = Field(min_length=1)
+    app_key: str = Field(min_length=1)
+    lang: str | None = None
+
 
 WEATHER_UNLOCKED_BASE_URL: Final = "https://api.weatherunlocked.com/api/forecast"
 

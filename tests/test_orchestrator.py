@@ -20,6 +20,7 @@ from omni_weather_forecast_apis.types import (
     PluginFetchResult,
     PluginFetchSuccess,
     ProviderId,
+    ProviderLogEvent,
     ProviderRegistration,
 )
 
@@ -215,3 +216,30 @@ def test_unconfigured_requested_provider_returns_error(
     error_code = asyncio.run(scenario())
 
     assert error_code == ErrorCode.NOT_AVAILABLE.value
+
+
+def test_emit_log_swallows_hook_errors(caplog: pytest.LogCaptureFixture) -> None:
+    received_events: list[ProviderLogEvent] = []
+
+    def failing_hook(event: ProviderLogEvent) -> None:
+        del event
+        raise RuntimeError("hook failed")
+
+    def collecting_hook(event: ProviderLogEvent) -> None:
+        received_events.append(event)
+
+    client = OmniWeatherClient(
+        OmniWeatherConfig(providers=[]),
+        log_hooks=[failing_hook, collecting_hook],
+    )
+    event = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="start",
+        message="Fetching forecast",
+    )
+
+    with caplog.at_level("ERROR", logger="omni_weather_forecast_apis"):
+        client._emit_log(event)
+
+    assert received_events == [event]
+    assert "Log hook failed for provider open_meteo (start)" in caplog.text

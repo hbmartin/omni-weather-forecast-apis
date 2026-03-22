@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from omni_weather_forecast_apis.types.schema import (
     ErrorCode,
@@ -106,98 +106,3 @@ class PluginInstance(Protocol):
         """Return provider capabilities metadata."""
 
 
-class OpenWeatherConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    exclude: list[str] | None = Field(
-        None,
-        description="Blocks to exclude: current, minutely, hourly, daily, alerts",
-    )
-    units: Literal["standard", "metric", "imperial"] = "metric"
-
-
-class OpenMeteoConfig(ProviderConfigModel):
-    api_key: str | None = None
-    models: list[str] = Field(default_factory=lambda: ["best_match"])
-    extra_hourly_vars: list[str] | None = None
-    extra_daily_vars: list[str] | None = None
-
-
-class NWSGridOverride(ProviderConfigModel):
-    office: str
-    grid_x: int
-    grid_y: int
-
-
-class NWSConfig(ProviderConfigModel):
-    user_agent: str = Field(min_length=1)
-    grid_override: NWSGridOverride | None = None
-
-
-class WeatherAPIConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    days: int = Field(default=7, ge=1, le=14)
-    aqi: bool = False
-    alerts: bool = True
-
-
-class TomorrowIOConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    fields: list[str] | None = None
-
-
-class VisualCrossingConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    include: str = "hours,days,alerts"
-
-
-class WeatherbitConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    hours: int = Field(default=48, ge=1, le=240)
-    units: Literal["M", "S", "I"] = "M"
-
-
-class MeteosourceConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    sections: list[str] = Field(
-        default_factory=lambda: ["current", "hourly", "daily"],
-    )
-
-
-class PirateWeatherConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    extend_hourly: bool = False
-    version: Literal["1", "2"] = "2"
-
-
-class METNorwayConfig(ProviderConfigModel):
-    user_agent: str = Field(min_length=1)
-    altitude: int | None = None
-    variant: Literal["compact", "complete"] = "complete"
-
-
-class GoogleWeatherConfig(ProviderConfigModel):
-    api_key: str | None = None
-
-
-class StormglassConfig(ProviderConfigModel):
-    api_key: str = Field(min_length=1)
-    sources: list[str] = Field(default_factory=lambda: ["sg"])
-    params: list[str] = Field(
-        default_factory=lambda: [
-            "airTemperature",
-            "humidity",
-            "pressure",
-            "windSpeed",
-            "windDirection",
-            "windGust",
-            "cloudCover",
-            "precipitation",
-            "visibility",
-        ],
-    )
-
-
-class WeatherUnlockedConfig(ProviderConfigModel):
-    app_id: str = Field(min_length=1)
-    app_key: str = Field(min_length=1)
-    lang: str | None = None

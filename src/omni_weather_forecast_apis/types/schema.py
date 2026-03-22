@@ -18,6 +18,10 @@ def _normalize_utc_datetime(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 UTCDateTime = Annotated[datetime, AfterValidator(_normalize_utc_datetime)]
 
 
@@ -370,6 +374,7 @@ class ProviderLogEvent:
     provider: ProviderId
     phase: Literal["start", "success", "error"]
     message: str
+    timestamp: datetime = field(default_factory=_utc_now)
     latency_ms: float = 0.0
     error_code: ErrorCode | None = None
     http_status: int | None = None

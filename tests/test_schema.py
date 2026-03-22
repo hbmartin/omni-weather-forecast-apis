@@ -11,6 +11,7 @@ from omni_weather_forecast_apis.types import (
     Granularity,
     MinutelyDataPoint,
     ProviderId,
+    ProviderLogEvent,
     WeatherCondition,
     WeatherDataPoint,
 )
@@ -78,3 +79,16 @@ def test_request_timeout_defaults_to_config_resolution() -> None:
 
 def test_provider_enum_contains_expected_slug() -> None:
     assert ProviderId.OPEN_METEO.value == "open_meteo"
+
+
+def test_provider_log_event_defaults_timestamp_to_utc() -> None:
+    before = datetime.now(UTC)
+    event = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="start",
+        message="Fetching forecast",
+    )
+    after = datetime.now(UTC)
+
+    assert before <= event.timestamp <= after
+    assert event.timestamp.tzinfo == UTC

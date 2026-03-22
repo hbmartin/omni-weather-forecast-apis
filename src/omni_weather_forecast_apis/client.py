@@ -174,7 +174,14 @@ class OmniWeatherClient:
 
     def _emit_log(self, event: ProviderLogEvent) -> None:
         for hook in self._log_hooks:
-            hook(event)
+            try:
+                hook(event)
+            except Exception:
+                logger.exception(
+                    "Log hook failed for provider %s (%s)",
+                    event.provider.value,
+                    event.phase,
+                )
 
     async def _fetch_one_provider(
         self,

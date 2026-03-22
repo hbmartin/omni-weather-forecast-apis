@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 import httpx
+from pydantic import Field
 
 from omni_weather_forecast_apis.plugins._base import (
     BasePlugin,
@@ -20,8 +21,27 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    StormglassConfig,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+
+
+class StormglassConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    sources: list[str] = Field(default_factory=lambda: ["sg"])
+    params: list[str] = Field(
+        default_factory=lambda: [
+            "airTemperature",
+            "humidity",
+            "pressure",
+            "windSpeed",
+            "windDirection",
+            "gust",
+            "cloudCover",
+            "precipitation",
+            "visibility",
+        ],
+    )
+
 
 STORMGLASS_URL: Final = "https://api.stormglass.io/v2/weather/point"
 
@@ -110,7 +130,7 @@ class StormglassInstance(BasePluginInstance[StormglassConfig]):
                     temperature=_value_for_source(row.get("airTemperature"), source),
                     humidity=_value_for_source(row.get("humidity"), source),
                     wind_speed=_value_for_source(row.get("windSpeed"), source),
-                    wind_gust=_value_for_source(row.get("windGust"), source),
+                    wind_gust=_value_for_source(row.get("gust"), source),
                     wind_direction=_value_for_source(row.get("windDirection"), source),
                     pressure_sea=_value_for_source(row.get("pressure"), source),
                     precipitation=_value_for_source(row.get("precipitation"), source),
