@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from datetime import date as calendar_date
 from enum import Enum
@@ -359,3 +361,19 @@ class ForecastResponse(BaseModel):
     summary: ForecastResponseSummary
     completed_at: UTCDateTime
     total_latency_ms: float
+
+
+@dataclass(frozen=True)
+class ProviderLogEvent:
+    """Structured log event emitted by the client for each provider interaction."""
+
+    provider: ProviderId
+    phase: Literal["start", "success", "error"]
+    message: str
+    latency_ms: float = 0.0
+    error_code: ErrorCode | None = None
+    http_status: int | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+LogHook: TypeAlias = Callable[[ProviderLogEvent], None]

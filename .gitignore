@@ -241,3 +241,5 @@ cython_debug/
 *.HEIC
 *.db
 reviews_triage
+*.sqlite
+config.toml

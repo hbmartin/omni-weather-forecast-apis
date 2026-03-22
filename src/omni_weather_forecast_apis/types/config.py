@@ -36,3 +36,6 @@ class OmniWeatherConfig(BaseModel):
     providers: list[ProviderRegistration]
     rate_limiting: RateLimitConfig = Field(default_factory=RateLimitConfig)
     default_timeout_ms: float = Field(default=10_000, gt=0)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    sqlite: str | None = None
