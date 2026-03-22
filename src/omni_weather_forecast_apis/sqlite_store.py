@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from omni_weather_forecast_apis.types import (
     ForecastResponse,
     ProviderError,
+    ProviderLogEvent,
     ProviderSuccess,
 )
 
@@ -149,6 +151,18 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             description TEXT NOT NULL,
             severity TEXT,
             url TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER REFERENCES forecast_runs(id) ON DELETE SET NULL,
+            provider TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            message TEXT NOT NULL,
+            latency_ms REAL NOT NULL DEFAULT 0,
+            error_code TEXT,
+            http_status INTEGER,
+            logged_at TEXT NOT NULL
         );
         """,
     )
@@ -470,6 +484,43 @@ def _insert_alerts(
             for alert in alerts
         ],
     )
+
+
+def save_provider_logs(
+    database_path: str | Path,
+    events: list[ProviderLogEvent],
+    run_id: int | None = None,
+) -> None:
+    """Persist provider log events into the provider_logs table."""
+
+    connection = sqlite3.connect(database_path)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        _create_schema(connection)
+        connection.executemany(
+            """
+            INSERT INTO provider_logs (
+                run_id, provider, phase, message,
+                latency_ms, error_code, http_status, logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    run_id,
+                    event.provider.value,
+                    event.phase,
+                    event.message,
+                    event.latency_ms,
+                    event.error_code.value if event.error_code is not None else None,
+                    event.http_status,
+                    datetime.now(UTC).isoformat(),
+                )
+                for event in events
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _optional_isoformat(value: Any) -> str | None:

@@ -19,6 +19,7 @@ from omni_weather_forecast_apis.types import (
     ForecastResponseRequest,
     ForecastResponseSummary,
     Granularity,
+    LogHook,
     OmniWeatherConfig,
     PluginCapabilities,
     PluginFetchError,
@@ -27,6 +28,7 @@ from omni_weather_forecast_apis.types import (
     ProviderError,
     ProviderErrorDetail,
     ProviderId,
+    ProviderLogEvent,
     ProviderRegistration,
     ProviderResult,
     ProviderSuccess,
@@ -39,8 +41,14 @@ logger = logging.getLogger("omni_weather_forecast_apis")
 class OmniWeatherClient:
     """Main async aggregation client."""
 
-    def __init__(self, config: OmniWeatherConfig) -> None:
+    def __init__(
+        self,
+        config: OmniWeatherConfig,
+        *,
+        log_hooks: list[LogHook] | None = None,
+    ) -> None:
         self._config = config
+        self._log_hooks: list[LogHook] = log_hooks or []
         self._instances: dict[ProviderId, PluginInstance] = {}
         self._provider_registrations: dict[ProviderId, ProviderRegistration] = {}
         self._initialization_errors: dict[ProviderId, str] = {}
@@ -164,6 +172,10 @@ class OmniWeatherClient:
             if registration.enabled
         ]
 
+    def _emit_log(self, event: ProviderLogEvent) -> None:
+        for hook in self._log_hooks:
+            hook(event)
+
     async def _fetch_one_provider(
         self,
         provider_id: ProviderId,
@@ -210,6 +222,11 @@ class OmniWeatherClient:
                 started_at,
             )
 
+        self._emit_log(ProviderLogEvent(
+            provider=provider_id,
+            phase="start",
+            message=f"Fetching forecast from {provider_id.value}",
+        ))
         params = PluginFetchParams(
             latitude=request.latitude,
             longitude=request.longitude,
@@ -232,6 +249,14 @@ class OmniWeatherClient:
                 async with asyncio.timeout(timeout_ms / 1000):
                     result = await instance.fetch_forecast(params, client)
         except TimeoutError:
+            latency_ms = (time.perf_counter() - started_at) * 1000
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="error",
+                message=f"Request exceeded timeout of {timeout_ms} ms.",
+                latency_ms=latency_ms,
+                error_code=ErrorCode.TIMEOUT,
+            ))
             return self._provider_error(
                 provider_id,
                 ErrorCode.TIMEOUT,
@@ -239,6 +264,14 @@ class OmniWeatherClient:
                 started_at,
             )
         except httpx.HTTPError as exc:
+            latency_ms = (time.perf_counter() - started_at) * 1000
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="error",
+                message=str(exc),
+                latency_ms=latency_ms,
+                error_code=ErrorCode.NETWORK,
+            ))
             return self._provider_error(
                 provider_id,
                 ErrorCode.NETWORK,
@@ -246,9 +279,18 @@ class OmniWeatherClient:
                 started_at,
             )
         except Exception as exc:
+            latency_ms = (time.perf_counter() - started_at) * 1000
+            error_code = _exception_error_code(exc)
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="error",
+                message=str(exc),
+                latency_ms=latency_ms,
+                error_code=error_code,
+            ))
             return self._provider_error(
                 provider_id,
-                _exception_error_code(exc),
+                error_code,
                 str(exc),
                 started_at,
             )
@@ -261,6 +303,14 @@ class OmniWeatherClient:
                     provider_id.value,
                     result.message,
                 )
+                self._emit_log(ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=result.message,
+                    latency_ms=latency_ms,
+                    error_code=result.code,
+                    http_status=result.http_status,
+                ))
                 return ProviderError(
                     provider=provider_id,
                     error=ProviderErrorDetail(
@@ -277,6 +327,12 @@ class OmniWeatherClient:
                     provider_id.value,
                     latency_ms,
                 )
+                self._emit_log(ProviderLogEvent(
+                    provider=provider_id,
+                    phase="success",
+                    message=f"Succeeded in {latency_ms:.0f}ms",
+                    latency_ms=latency_ms,
+                ))
                 return ProviderSuccess(
                     provider=provider_id,
                     forecasts=result.forecasts,
@@ -319,10 +375,14 @@ class OmniWeatherClient:
         )
 
 
-async def create_omni_weather(config: OmniWeatherConfig) -> OmniWeatherClient:
+async def create_omni_weather(
+    config: OmniWeatherConfig,
+    *,
+    log_hooks: list[LogHook] | None = None,
+) -> OmniWeatherClient:
     """Create and initialize an OmniWeather client."""
 
-    client = OmniWeatherClient(config)
+    client = OmniWeatherClient(config, log_hooks=log_hooks)
     await client.initialize()
     return client
 

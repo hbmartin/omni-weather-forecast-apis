@@ -78,6 +78,9 @@ uv sync
 The client and CLI both use a TOML configuration file that matches `OmniWeatherConfig`.
 
 ```toml
+latitude = 40.7128
+longitude = -74.0060
+sqlite = "forecasts.sqlite"
 default_timeout_ms = 10000
 
 [rate_limiting]
@@ -189,14 +192,15 @@ uv run omni-weather \
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--config PATH` | Yes | — | Path to TOML configuration file |
-| `--lat FLOAT` | Yes | — | Latitude (-90 to 90) |
-| `--lon FLOAT` | Yes | — | Longitude (-180 to 180) |
-| `--sqlite PATH` | Yes | — | SQLite database output path |
+| `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
+| `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
+| `--sqlite PATH` | No | config value | SQLite database output path; overrides config |
 | `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
 | `--granularity GRAN` | No | hourly + daily | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | `en` | Provider language preference |
 | `--include-raw` | No | off | Persist raw provider payloads |
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
+| `--debug` | No | off | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database |
 
 **Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
 
@@ -311,6 +315,7 @@ The CLI creates a normalized database with these tables:
 | `hourly_points` | Normalized hourly forecast rows |
 | `daily_points` | Normalized daily summary rows |
 | `alerts` | Weather alerts and warnings |
+| `provider_logs` | Per-provider success/failure log entries per run |
 
 ## Development
 
