@@ -40,7 +40,7 @@ class OmniWeatherConfig(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     sqlite: str | None = None
     granularity: list[Granularity] = Field(
-        default=[Granularity.MINUTELY, Granularity.HOURLY, Granularity.DAILY],
+        default_factory=lambda: [Granularity.HOURLY, Granularity.DAILY],
     )
     language: str = "en"
     include_raw: bool = False

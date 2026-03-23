@@ -37,7 +37,7 @@ from omni_weather_forecast_apis.utils import parse_datetime
 
 
 class NWSGridOverride(ProviderConfigModel):
-    office: str
+    office: str = Field(min_length=1)
     grid_x: int
     grid_y: int
 

@@ -56,6 +56,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             provider TEXT NOT NULL,
             status TEXT NOT NULL,
             fetched_at TEXT,
+            fetched_at_unix INTEGER,
             latency_ms REAL NOT NULL,
             error_code TEXT,
             error_message TEXT,

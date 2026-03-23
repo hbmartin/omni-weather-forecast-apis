@@ -5,11 +5,13 @@ from datetime import UTC, date, datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
+import omni_weather_forecast_apis.types as public_types
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
     ForecastRequest,
     Granularity,
     MinutelyDataPoint,
+    OmniWeatherConfig,
     ProviderId,
     ProviderLogEvent,
     WeatherCondition,
@@ -23,6 +25,14 @@ def test_request_defaults_match_spec() -> None:
     assert request.granularity == [Granularity.HOURLY, Granularity.DAILY]
     assert request.language == "en"
     assert request.include_raw is False
+
+
+def test_config_defaults_match_request_defaults() -> None:
+    config = OmniWeatherConfig(providers=[])
+
+    assert config.granularity == [Granularity.HOURLY, Granularity.DAILY]
+    assert config.language == "en"
+    assert config.include_raw is False
 
 
 def test_data_points_are_frozen() -> None:
@@ -92,3 +102,25 @@ def test_provider_log_event_defaults_timestamp_to_utc() -> None:
 
     assert before <= event.timestamp <= after
     assert event.timestamp.tzinfo == UTC
+
+
+def test_types_module_reexports_provider_configs() -> None:
+    expected_names = {
+        "GoogleWeatherConfig",
+        "METNorwayConfig",
+        "MeteosourceConfig",
+        "NWSConfig",
+        "NWSGridOverride",
+        "OpenMeteoConfig",
+        "OpenWeatherConfig",
+        "PirateWeatherConfig",
+        "StormglassConfig",
+        "TomorrowIOConfig",
+        "VisualCrossingConfig",
+        "WeatherAPIConfig",
+        "WeatherbitConfig",
+        "WeatherUnlockedConfig",
+    }
+
+    assert expected_names.issubset(public_types.__all__)
+    assert all(hasattr(public_types, name) for name in expected_names)

@@ -5,12 +5,9 @@ import asyncio
 import sys
 import tomllib
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
 from pydantic import ValidationError
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
 
 from omni_weather_forecast_apis.client import create_omni_weather
 from omni_weather_forecast_apis.sqlite_store import (
@@ -28,6 +25,8 @@ from omni_weather_forecast_apis.types import (
     ProviderLogEvent,
     ProviderSuccess,
 )
+
+T = TypeVar("T")
 
 
 def _parse_provider_id(value: str) -> ProviderId:
@@ -84,8 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--language",
-        default="en",
-        help="Provider language preference",
+        default=None,
+        help="Provider language preference (overrides config)",
     )
     parser.add_argument(
         "--include-raw",
@@ -130,6 +129,10 @@ def _resolve_required(
         return resolved
     print(f"error: --{name} is required (via CLI flag or config file)", file=sys.stderr)
     sys.exit(2)
+
+
+def _resolve_optional(cli_value: T | None, config_value: T) -> T:
+    return cli_value if cli_value is not None else config_value
 
 
 def _setup_debug_logging(log_path: Path) -> LogHook:
@@ -191,7 +194,7 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         else config.granularity
     )
     providers = cast(list[ProviderId], parsed.provider) or None
-    language = cast(str, parsed.language) if parsed.language != "en" else config.language
+    language = _resolve_optional(cast(str | None, parsed.language), config.language)
     include_raw = cast(bool, parsed.include_raw) or config.include_raw
     request = ForecastRequest(
         latitude=latitude,
@@ -200,7 +203,10 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         language=language,
         include_raw=include_raw,
         providers=providers,
-        timeout_ms=cast(float | None, parsed.timeout_ms) or config.default_timeout_ms,
+        timeout_ms=_resolve_optional(
+            cast(float | None, parsed.timeout_ms),
+            config.default_timeout_ms,
+        ),
     )
 
     log_events: list[ProviderLogEvent] = []
@@ -230,6 +236,14 @@ async def _async_main(parsed: argparse.Namespace) -> int:
 def _print_results(
     response: ForecastResponse, run_id: int, sqlite_path: Path,
 ) -> None:
+    try:
+        from rich.console import Console  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+        from rich.text import Text  # noqa: PLC0415
+    except ImportError:
+        _print_results_plain(response, run_id, sqlite_path)
+        return
+
     console = Console()
     summary = response.summary
 
@@ -278,6 +292,38 @@ def _print_results(
                 )
 
     console.print(table)
+
+
+def _print_results_plain(
+    response: ForecastResponse, run_id: int, sqlite_path: Path,
+) -> None:
+    summary = response.summary
+    print(
+        f"Run {run_id}: {summary.succeeded}/{summary.total} succeeded "
+        f"in {response.total_latency_ms:.0f}ms",
+    )
+    print(f"Saved to {sqlite_path}")
+    for result in response.results:
+        match result:
+            case ProviderSuccess():
+                hourly = daily = minutely = alerts = 0
+                for forecast in result.forecasts:
+                    hourly += len(forecast.hourly)
+                    daily += len(forecast.daily)
+                    minutely += len(forecast.minutely)
+                    alerts += len(forecast.alerts)
+                print(
+                    f"{result.provider.value}: ok "
+                    f"latency={result.latency_ms:.0f}ms "
+                    f"hourly={hourly} daily={daily} minutely={minutely} "
+                    f"alerts={alerts}",
+                )
+            case ProviderError():
+                print(
+                    f"{result.provider.value}: fail "
+                    f"latency={result.error.latency_ms:.0f}ms "
+                    f"message={result.error.message}",
+                )
 
 
 def _load_config(path: Path) -> OmniWeatherConfig:

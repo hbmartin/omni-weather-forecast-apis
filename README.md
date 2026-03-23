@@ -81,6 +81,10 @@ The client and CLI both use a TOML configuration file that matches `OmniWeatherC
 latitude = 40.7128
 longitude = -74.0060
 sqlite = "forecasts.sqlite"
+granularity = ["hourly", "daily"]
+language = "en"
+include_raw = false
+debug = false
 default_timeout_ms = 10000
 
 [rate_limiting]
@@ -191,16 +195,16 @@ uv run omni-weather \
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--config PATH` | Yes | — | Path to TOML configuration file |
+| `--config PATH` | No | `~/.config/omni_weather_forecast_apis.toml` | Path to TOML configuration file |
 | `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
 | `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
 | `--sqlite PATH` | No | config value | SQLite database output path; overrides config |
 | `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
-| `--granularity GRAN` | No | hourly + daily | `minutely`, `hourly`, or `daily`; repeatable |
-| `--language LANG` | No | `en` | Provider language preference |
-| `--include-raw` | No | off | Persist raw provider payloads |
+| `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
+| `--language LANG` | No | config value | Provider language preference |
+| `--include-raw` | No | config value | Persist raw provider payloads |
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
-| `--debug` | No | off | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database |
+| `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database |
 
 **Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
 

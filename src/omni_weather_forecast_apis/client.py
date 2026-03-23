@@ -176,7 +176,7 @@ class OmniWeatherClient:
         for hook in self._log_hooks:
             try:
                 hook(event)
-            except Exception:
+            except (Exception,):  # noqa: B013
                 logger.exception(
                     "Log hook failed for provider %s (%s)",
                     event.provider.value,
