@@ -5,11 +5,13 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from omni_weather_forecast_apis.plugins.openweather import openweather_plugin
+from omni_weather_forecast_apis.plugins.openweather import (
+    OpenWeatherConfig,
+    openweather_plugin,
+)
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     Granularity,
-    OpenWeatherConfig,
     PluginFetchParams,
     PluginFetchSuccess,
     PluginInstance,

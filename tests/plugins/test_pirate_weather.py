@@ -3,10 +3,12 @@
 import httpx
 import pytest
 
-from omni_weather_forecast_apis.plugins.pirate_weather import PirateWeatherInstance
+from omni_weather_forecast_apis.plugins.pirate_weather import (
+    PirateWeatherConfig,
+    PirateWeatherInstance,
+)
 from omni_weather_forecast_apis.types import (
     Granularity,
-    PirateWeatherConfig,
     PluginFetchParams,
     PluginFetchSuccess,
 )

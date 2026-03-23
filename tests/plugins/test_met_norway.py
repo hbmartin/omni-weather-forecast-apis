@@ -3,10 +3,12 @@
 import httpx
 import pytest
 
-from omni_weather_forecast_apis.plugins.met_norway import METNorwayInstance
+from omni_weather_forecast_apis.plugins.met_norway import (
+    METNorwayConfig,
+    METNorwayInstance,
+)
 from omni_weather_forecast_apis.types import (
     Granularity,
-    METNorwayConfig,
     PluginFetchParams,
     PluginFetchSuccess,
 )

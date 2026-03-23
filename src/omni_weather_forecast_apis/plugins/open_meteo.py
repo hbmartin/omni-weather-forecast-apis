@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any, Final
 
 import httpx
+from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import WMO_CODE_MAP, km_from_meters
 from omni_weather_forecast_apis.plugins._base import (
@@ -21,12 +22,20 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     Granularity,
-    OpenMeteoConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+
+
+class OpenMeteoConfig(ProviderConfigModel):
+    api_key: str | None = None
+    models: list[str] = Field(default_factory=lambda: ["best_match"])
+    extra_hourly_vars: list[str] | None = None
+    extra_daily_vars: list[str] | None = None
+
 
 OPEN_METEO_URL: Final = "https://api.open-meteo.com/v1/forecast"
 DEFAULT_HOURLY_FIELDS: Final[tuple[str, ...]] = (

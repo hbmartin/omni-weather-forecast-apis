@@ -3,10 +3,12 @@
 import httpx
 import pytest
 
-from omni_weather_forecast_apis.plugins.meteosource import _MeteosourceInstance
+from omni_weather_forecast_apis.plugins.meteosource import (
+    MeteosourceConfig,
+    _MeteosourceInstance,
+)
 from omni_weather_forecast_apis.types import (
     Granularity,
-    MeteosourceConfig,
     PluginFetchParams,
     PluginFetchSuccess,
     WeatherCondition,

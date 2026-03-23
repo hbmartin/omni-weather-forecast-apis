@@ -1,6 +1,6 @@
 [project]
 name = "omni-weather-forecast-apis"
-version = "0.1.0"
+version = "0.2.0"
 description = "Universal weather forecast aggregation library with a typed normalized schema."
 readme = "README.md"
 license = { text = "Apache-2.0" }

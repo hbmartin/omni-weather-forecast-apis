@@ -315,7 +315,7 @@ The CLI creates a normalized database with these tables:
 | `hourly_points` | Normalized hourly forecast rows |
 | `daily_points` | Normalized daily summary rows |
 | `alerts` | Weather alerts and warnings |
-| `provider_logs` | Per-provider success/failure log entries per run |
+| `provider_logs` | Per-provider lifecycle log entries (`start`, `success`, `error`) per run |
 
 ## Development
 

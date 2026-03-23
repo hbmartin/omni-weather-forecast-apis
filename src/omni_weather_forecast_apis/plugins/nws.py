@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from pydantic import Field
+
 from omni_weather_forecast_apis.mapping import condition_from_text
 from omni_weather_forecast_apis.mapping.units import (
     celsius_from_fahrenheit,
@@ -24,14 +26,25 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
     ErrorCode,
-    NWSConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 from omni_weather_forecast_apis.utils import parse_datetime
+
+
+class NWSGridOverride(ProviderConfigModel):
+    office: str
+    grid_x: int
+    grid_y: int
+
+
+class NWSConfig(ProviderConfigModel):
+    user_agent: str = Field(min_length=1)
+    grid_override: NWSGridOverride | None = None
 
 if TYPE_CHECKING:
     import httpx

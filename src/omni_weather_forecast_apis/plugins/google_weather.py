@@ -7,15 +7,20 @@ from typing import TYPE_CHECKING
 from omni_weather_forecast_apis.plugins._base import BasePlugin, BasePluginInstance
 from omni_weather_forecast_apis.types import (
     ErrorCode,
-    GoogleWeatherConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+
+class GoogleWeatherConfig(ProviderConfigModel):
+    api_key: str | None = None
+
 
 _CAPABILITIES = PluginCapabilities(
     granularity_minutely=False,

@@ -24,12 +24,20 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    VisualCrossingConfig,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class VisualCrossingConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    include: str = "hours,days,alerts"
+
 
 _TIMELINE_URL = (
     "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/"

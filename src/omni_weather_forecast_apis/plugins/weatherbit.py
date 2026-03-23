@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from omni_weather_forecast_apis.mapping import condition_from_text
 from omni_weather_forecast_apis.mapping.units import (
@@ -28,13 +28,22 @@ from omni_weather_forecast_apis.types import (
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
-    WeatherbitConfig,
     WeatherCondition,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class WeatherbitConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    hours: int = Field(default=48, ge=1, le=240)
+    units: Literal["M", "S", "I"] = "M"
+
 
 _HOURLY_URL = "https://api.weatherbit.io/v2.0/forecast/hourly"
 _DAILY_URL = "https://api.weatherbit.io/v2.0/forecast/daily"

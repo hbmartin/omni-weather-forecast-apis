@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import httpx
+from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import map_met_norway_condition
 from omni_weather_forecast_apis.plugins._base import (
@@ -16,12 +17,19 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
-    METNorwayConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+
+
+class METNorwayConfig(ProviderConfigModel):
+    user_agent: str = Field(min_length=1)
+    altitude: int | None = None
+    variant: Literal["compact", "complete"] = "complete"
+
 
 MET_NORWAY_BASE_URL: Final = "https://api.met.no/weatherapi/locationforecast/2.0"
 

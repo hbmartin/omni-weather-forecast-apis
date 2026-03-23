@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import ValidationError
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
 from omni_weather_forecast_apis.client import create_omni_weather
 from omni_weather_forecast_apis.sqlite_store import (
@@ -16,12 +19,14 @@ from omni_weather_forecast_apis.sqlite_store import (
 )
 from omni_weather_forecast_apis.types import (
     ForecastRequest,
+    ForecastResponse,
     Granularity,
     LogHook,
     OmniWeatherConfig,
     ProviderError,
     ProviderId,
     ProviderLogEvent,
+    ProviderSuccess,
 )
 
 
@@ -41,9 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        required=True,
         type=Path,
-        help="Path to TOML config",
+        default=Path.home() / ".config" / "omni_weather_forecast_apis.toml",
+        help="Path to TOML config (default: ~/.config/omni_weather_forecast_apis.toml)",
     )
     parser.add_argument(
         "--lat",
@@ -120,7 +125,8 @@ def main(argv: list[str] | None = None) -> int:
 def _resolve_required(
     cli_value: object, config_value: object, name: str,
 ) -> object:
-    if (resolved := cli_value or config_value) is not None:
+    resolved = cli_value if cli_value is not None else config_value
+    if resolved is not None:
         return resolved
     print(f"error: --{name} is required (via CLI flag or config file)", file=sys.stderr)
     sys.exit(2)
@@ -176,23 +182,25 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         float, _resolve_required(parsed.lon, config.longitude, "lon"),
     )
     sqlite_path = Path(
-        cast(str, _resolve_required(parsed.sqlite, config.sqlite, "sqlite")),
+        cast(str | Path, _resolve_required(parsed.sqlite, config.sqlite, "sqlite")),
     )
     granularity_values = cast(list[str], parsed.granularity)
     granularity = (
         [Granularity(item) for item in granularity_values]
         if granularity_values
-        else [Granularity.HOURLY, Granularity.DAILY]
+        else config.granularity
     )
     providers = cast(list[ProviderId], parsed.provider) or None
+    language = cast(str, parsed.language) if parsed.language != "en" else config.language
+    include_raw = cast(bool, parsed.include_raw) or config.include_raw
     request = ForecastRequest(
         latitude=latitude,
         longitude=longitude,
         granularity=granularity,
-        language=cast(str, parsed.language),
-        include_raw=cast(bool, parsed.include_raw),
+        language=language,
+        include_raw=include_raw,
         providers=providers,
-        timeout_ms=cast(float | None, parsed.timeout_ms),
+        timeout_ms=cast(float | None, parsed.timeout_ms) or config.default_timeout_ms,
     )
 
     log_events: list[ProviderLogEvent] = []
@@ -203,7 +211,7 @@ async def _async_main(parsed: argparse.Namespace) -> int:
 
     log_hooks.append(_collector_hook)
 
-    debug: bool = cast(bool, parsed.debug)
+    debug: bool = cast(bool, parsed.debug) or config.debug
     if debug:
         log_path = sqlite_path.with_suffix(".log")
         loguru_hook = _setup_debug_logging(log_path)
@@ -215,20 +223,61 @@ async def _async_main(parsed: argparse.Namespace) -> int:
     run_id = save_forecast_response(sqlite_path, response)
     save_provider_logs(sqlite_path, log_events, run_id=run_id)
 
-    print(
-        (
-            f"saved run {run_id} to {sqlite_path} "
-            f"({response.summary.succeeded}/{response.summary.total} succeeded)"
-        ),
-        file=sys.stdout,
-    )
-    for result in response.results:
-        if isinstance(result, ProviderError):
-            print(
-                f"Provider {result.provider.value} returned error: {result.error.message}",
-                file=sys.stderr,
-            )
+    _print_results(response, run_id, sqlite_path)
     return 0 if response.summary.failed == 0 else 1
+
+
+def _print_results(
+    response: ForecastResponse, run_id: int, sqlite_path: Path,
+) -> None:
+    console = Console()
+    summary = response.summary
+
+    table = Table(
+        title=f"Run {run_id} — {summary.succeeded}/{summary.total} succeeded",
+        caption=f"Saved to {sqlite_path} in {response.total_latency_ms:.0f}ms",
+    )
+    table.add_column("Provider", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Latency", justify="right")
+    table.add_column("Hourly", justify="right")
+    table.add_column("Daily", justify="right")
+    table.add_column("Minutely", justify="right")
+    table.add_column("Alerts", justify="right")
+    table.add_column("Detail")
+
+    for result in response.results:
+        match result:
+            case ProviderSuccess():
+                hourly = daily = minutely = alerts = 0
+                for forecast in result.forecasts:
+                    hourly += len(forecast.hourly)
+                    daily += len(forecast.daily)
+                    minutely += len(forecast.minutely)
+                    alerts += len(forecast.alerts)
+                table.add_row(
+                    result.provider.value,
+                    Text("OK", style="green bold"),
+                    f"{result.latency_ms:.0f}ms",
+                    str(hourly),
+                    str(daily),
+                    str(minutely),
+                    str(alerts) if alerts else "-",
+                    f"{len(result.forecasts)} source(s)",
+                )
+            case ProviderError():
+                table.add_row(
+                    result.provider.value,
+                    Text("FAIL", style="red bold"),
+                    f"{result.error.latency_ms:.0f}ms",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    Text(result.error.message, style="red"),
+                )
+
+    console.print(table)
 
 
 def _load_config(path: Path) -> OmniWeatherConfig:

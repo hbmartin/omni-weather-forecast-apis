@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from omni_weather_forecast_apis.mapping import OPENWEATHER_CONDITION_MAP, km_from_meters
 from omni_weather_forecast_apis.mapping.units import (
@@ -29,7 +29,6 @@ from omni_weather_forecast_apis.types import (
     ErrorCode,
     Granularity,
     MinutelyDataPoint,
-    OpenWeatherConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
@@ -37,9 +36,22 @@ from omni_weather_forecast_apis.types import (
     WeatherCondition,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx
+
+from pydantic import Field
+
+
+class OpenWeatherConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    exclude: list[str] | None = Field(
+        None,
+        description="Blocks to exclude: current, minutely, hourly, daily, alerts",
+    )
+    units: Literal["standard", "metric", "imperial"] = "metric"
+
 
 _ONE_CALL_URL = "https://api.openweathermap.org/data/3.0/onecall"
 _CAPABILITIES = PluginCapabilities(

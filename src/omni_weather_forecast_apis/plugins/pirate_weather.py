@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import httpx
+from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import WMO_CODE_MAP, condition_from_text
 from omni_weather_forecast_apis.plugins._base import (
@@ -20,13 +21,20 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
-    PirateWeatherConfig,
     PluginCapabilities,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
 )
+from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 from omni_weather_forecast_apis.utils import parse_datetime
+
+
+class PirateWeatherConfig(ProviderConfigModel):
+    api_key: str = Field(min_length=1)
+    extend_hourly: bool = False
+    version: Literal["1", "2"] = "2"
+
 
 PIRATE_WEATHER_BASE_URL: Final = "https://api.pirateweather.net/forecast"
 
