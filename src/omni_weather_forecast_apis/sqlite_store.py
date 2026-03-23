@@ -26,9 +26,14 @@ def save_forecast_response(
         _create_schema(connection)
         run_id = _insert_run(connection, response)
         for result in response.results:
-            provider_result_id = _insert_provider_result(connection, run_id, result)
             if isinstance(result, ProviderSuccess):
-                _insert_forecasts(connection, provider_result_id, result)
+                fetched_at_unix = int(result.fetched_at.timestamp())
+                provider_result_id = _insert_provider_result(
+                    connection, run_id, result, fetched_at_unix,
+                )
+                _insert_forecasts(connection, provider_result_id, result, fetched_at_unix)
+            else:
+                _insert_provider_result(connection, run_id, result)
         connection.commit()
         return run_id
     finally:
@@ -276,9 +281,9 @@ def _insert_provider_result(
     connection: sqlite3.Connection,
     run_id: int,
     result: ProviderSuccess | ProviderError,
+    fetched_at_unix: int | None = None,
 ) -> int:
     if isinstance(result, ProviderSuccess):
-        fetched_at_unix = int(result.fetched_at.timestamp())
         payload = (
             run_id,
             result.provider.value,
@@ -331,8 +336,8 @@ def _insert_forecasts(
     connection: sqlite3.Connection,
     provider_result_id: int,
     result: ProviderSuccess,
+    fetched_at_unix: int,
 ) -> None:
-    fetched_at_unix = int(result.fetched_at.timestamp())
     for forecast in result.forecasts:
         cursor = connection.execute(
             """
@@ -610,7 +615,7 @@ def save_provider_logs(
 
 
 def _compute_run_cycle(fetched_at: datetime) -> str:
-    """Bucket fetched_at into the nearest 6-hour NWP cycle (00/06/12/18 UTC)."""
+    """Bucket fetched_at to the previous 6-hour NWP cycle boundary (00/06/12/18 UTC)."""
     hour_bucket = (fetched_at.hour // 6) * 6
     return fetched_at.replace(
         hour=hour_bucket, minute=0, second=0, microsecond=0, tzinfo=UTC,
