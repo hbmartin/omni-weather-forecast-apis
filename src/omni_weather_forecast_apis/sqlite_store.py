@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             status TEXT NOT NULL,
             fetched_at TEXT,
             fetched_at_unix INTEGER,
+            run_cycle TEXT,
             latency_ms REAL NOT NULL,
             error_code TEXT,
             error_message TEXT,
@@ -83,6 +85,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             source_forecast_id INTEGER NOT NULL REFERENCES source_forecasts(id) ON DELETE CASCADE,
             timestamp TEXT NOT NULL,
             timestamp_unix INTEGER NOT NULL,
+            horizon_hours REAL,
             temperature REAL,
             apparent_temperature REAL,
             dew_point REAL,
@@ -165,6 +168,67 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             extra_json TEXT,
             logged_at TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS idx_provider_results_run_provider
+            ON provider_results(run_id, provider);
+        CREATE INDEX IF NOT EXISTS idx_provider_results_run_cycle
+            ON provider_results(run_cycle);
+        CREATE INDEX IF NOT EXISTS idx_source_forecasts_provider_result
+            ON source_forecasts(provider_result_id);
+        CREATE INDEX IF NOT EXISTS idx_hourly_points_source
+            ON hourly_points(source_forecast_id);
+        CREATE INDEX IF NOT EXISTS idx_hourly_points_horizon
+            ON hourly_points(horizon_hours);
+        CREATE INDEX IF NOT EXISTS idx_hourly_points_timestamp
+            ON hourly_points(timestamp_unix);
+        CREATE INDEX IF NOT EXISTS idx_hourly_points_horizon_timestamp
+            ON hourly_points(horizon_hours, timestamp_unix);
+        CREATE INDEX IF NOT EXISTS idx_minutely_points_source_timestamp
+            ON minutely_points(source_forecast_id, timestamp_unix);
+        CREATE INDEX IF NOT EXISTS idx_daily_points_source_date
+            ON daily_points(source_forecast_id, forecast_date);
+
+        CREATE VIEW IF NOT EXISTS stacking_features AS
+        SELECT
+            hp.timestamp                    AS valid_time,
+            hp.timestamp_unix               AS valid_time_unix,
+            hp.horizon_hours,
+            pr.run_cycle,
+            pr.fetched_at,
+            pr.fetched_at_unix,
+            sf.provider,
+            sf.model,
+            fr.latitude,
+            fr.longitude,
+            hp.temperature,
+            hp.apparent_temperature,
+            hp.dew_point,
+            hp.humidity,
+            hp.wind_speed,
+            hp.wind_gust,
+            hp.wind_direction,
+            hp.pressure_sea,
+            hp.pressure_surface,
+            hp.precipitation,
+            hp.precipitation_probability,
+            hp.rain,
+            hp.snow,
+            hp.snow_depth,
+            hp.cloud_cover,
+            hp.cloud_cover_low,
+            hp.cloud_cover_mid,
+            hp.cloud_cover_high,
+            hp.visibility,
+            hp.uv_index,
+            hp.solar_radiation_ghi,
+            hp.solar_radiation_dni,
+            hp.solar_radiation_dhi,
+            hp.condition,
+            hp.is_day
+        FROM hourly_points hp
+        JOIN source_forecasts sf ON hp.source_forecast_id = sf.id
+        JOIN provider_results pr ON sf.provider_result_id = pr.id
+        JOIN forecast_runs fr    ON pr.run_id = fr.id
+        WHERE pr.status = 'success';
         """,
     )
     _ensure_provider_logs_columns(connection)
@@ -214,11 +278,14 @@ def _insert_provider_result(
     result: ProviderSuccess | ProviderError,
 ) -> int:
     if isinstance(result, ProviderSuccess):
+        fetched_at_unix = int(result.fetched_at.timestamp())
         payload = (
             run_id,
             result.provider.value,
             result.status,
             result.fetched_at.isoformat(),
+            fetched_at_unix,
+            _compute_run_cycle(result.fetched_at),
             result.latency_ms,
             None,
             None,
@@ -230,6 +297,8 @@ def _insert_provider_result(
             run_id,
             result.provider.value,
             result.status,
+            None,
+            None,
             None,
             result.error.latency_ms,
             result.error.code.value,
@@ -244,12 +313,14 @@ def _insert_provider_result(
             provider,
             status,
             fetched_at,
+            fetched_at_unix,
+            run_cycle,
             latency_ms,
             error_code,
             error_message,
             http_status,
             raw_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         payload,
     )
@@ -261,6 +332,7 @@ def _insert_forecasts(
     provider_result_id: int,
     result: ProviderSuccess,
 ) -> None:
+    fetched_at_unix = int(result.fetched_at.timestamp())
     for forecast in result.forecasts:
         cursor = connection.execute(
             """
@@ -275,7 +347,7 @@ def _insert_forecasts(
         )
         source_forecast_id = _lastrowid(cursor)
         _insert_minutely(connection, source_forecast_id, forecast.minutely)
-        _insert_hourly(connection, source_forecast_id, forecast.hourly)
+        _insert_hourly(connection, source_forecast_id, fetched_at_unix, forecast.hourly)
         _insert_daily(connection, source_forecast_id, forecast.daily)
         _insert_alerts(connection, source_forecast_id, forecast.alerts)
 
@@ -311,6 +383,7 @@ def _insert_minutely(
 def _insert_hourly(
     connection: sqlite3.Connection,
     source_forecast_id: int,
+    fetched_at_unix: int,
     points: list[Any],
 ) -> None:
     connection.executemany(
@@ -319,6 +392,7 @@ def _insert_hourly(
             source_forecast_id,
             timestamp,
             timestamp_unix,
+            horizon_hours,
             temperature,
             apparent_temperature,
             dew_point,
@@ -346,13 +420,14 @@ def _insert_hourly(
             condition_original,
             condition_code_original,
             is_day
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
                 source_forecast_id,
                 point.timestamp.isoformat(),
                 point.timestamp_unix,
+                (point.timestamp_unix - fetched_at_unix) / 3600.0,
                 point.temperature,
                 point.apparent_temperature,
                 point.dew_point,
@@ -532,6 +607,14 @@ def save_provider_logs(
         connection.commit()
     finally:
         connection.close()
+
+
+def _compute_run_cycle(fetched_at: datetime) -> str:
+    """Bucket fetched_at into the nearest 6-hour NWP cycle (00/06/12/18 UTC)."""
+    hour_bucket = (fetched_at.hour // 6) * 6
+    return fetched_at.replace(
+        hour=hour_bucket, minute=0, second=0, microsecond=0, tzinfo=UTC,
+    ).isoformat()
 
 
 def _optional_isoformat(value: Any) -> str | None:
