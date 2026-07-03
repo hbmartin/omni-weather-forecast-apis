@@ -293,7 +293,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                         url=alert.get("uri"),
                     ),
                 )
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
         return parsed_alerts
 

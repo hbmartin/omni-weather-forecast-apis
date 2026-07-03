@@ -57,6 +57,7 @@ class PluginFetchError(BaseModel):
     code: ErrorCode
     message: str
     http_status: int | None = None
+    retry_after_seconds: float | None = None
     raw: Any | None = None
 
 

@@ -67,6 +67,10 @@ dev = [
     "ruff>=0.15.5",
     "ty>=0.0.21",
 ]
+docs = [
+    "mkdocs-material>=9.6.0",
+    "mkdocstrings[python]>=0.27.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

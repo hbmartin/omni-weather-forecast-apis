@@ -1,3 +1,7 @@
+from omni_weather_forecast_apis.utils.env_config import (
+    EnvVarNotSetError,
+    resolve_env_placeholders,
+)
 from omni_weather_forecast_apis.utils.time_helpers import (
     datetime_from_unix,
     ensure_utc,
@@ -8,10 +12,12 @@ from omni_weather_forecast_apis.utils.time_helpers import (
 )
 
 __all__ = [
+    "EnvVarNotSetError",
     "datetime_from_unix",
     "ensure_utc",
     "parse_date",
     "parse_datetime",
+    "resolve_env_placeholders",
     "unix_timestamp",
     "utc_now",
 ]

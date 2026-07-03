@@ -391,21 +391,21 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
             for entry in _section_rows(raw, "minutely"):
                 try:
                     minutely.append(_parse_minutely(entry))
-                except KeyError, TypeError, ValueError:
+                except (KeyError, TypeError, ValueError):
                     continue
 
             hourly: list[WeatherDataPoint] = []
             for entry in _section_rows(raw, "hourly"):
                 try:
                     hourly.append(_parse_hour(entry))
-                except KeyError, TypeError, ValueError:
+                except (KeyError, TypeError, ValueError):
                     continue
 
             daily: list[DailyDataPoint] = []
             for entry in _section_rows(raw, "daily"):
                 try:
                     daily.append(_parse_day(entry))
-                except KeyError, TypeError, ValueError:
+                except (KeyError, TypeError, ValueError):
                     continue
 
             alerts = []
@@ -425,7 +425,7 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
                             url=entry.get("url"),
                         ),
                     )
-                except KeyError, TypeError, ValueError:
+                except (KeyError, TypeError, ValueError):
                     continue
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(

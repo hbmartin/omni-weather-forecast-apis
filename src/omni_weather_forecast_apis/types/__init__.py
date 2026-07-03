@@ -2,9 +2,11 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from omni_weather_forecast_apis.types.config import (
+    HTTPConfig,
     OmniWeatherConfig,
     ProviderRegistration,
     RateLimitConfig,
+    RetryPolicy,
 )
 from omni_weather_forecast_apis.types.plugin import (
     PluginCapabilities,
@@ -34,6 +36,7 @@ from omni_weather_forecast_apis.types.schema import (
     ProviderLogEvent,
     ProviderResult,
     ProviderSuccess,
+    ResponseHook,
     SourceForecast,
     WeatherAlert,
     WeatherCondition,
@@ -133,6 +136,7 @@ __all__ = [
     "ForecastResponseSummary",
     "GoogleWeatherConfig",
     "Granularity",
+    "HTTPConfig",
     "LogHook",
     "METNorwayConfig",
     "MeteosourceConfig",
@@ -159,6 +163,8 @@ __all__ = [
     "ProviderResult",
     "ProviderSuccess",
     "RateLimitConfig",
+    "ResponseHook",
+    "RetryPolicy",
     "SourceForecast",
     "StormglassConfig",
     "TomorrowIOConfig",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from datetime import date as calendar_date
@@ -278,6 +278,7 @@ class SourceForecast(BaseModel):
 class ErrorCode(str, Enum):
     AUTH_FAILED = "auth_failed"
     RATE_LIMITED = "rate_limited"
+    QUOTA_EXCEEDED = "quota_exceeded"
     TIMEOUT = "timeout"
     NETWORK = "network"
     PARSE = "parse"
@@ -372,7 +373,7 @@ class ProviderLogEvent:
     """Structured log event emitted by the client for each provider interaction."""
 
     provider: ProviderId
-    phase: Literal["start", "success", "error"]
+    phase: Literal["start", "retry", "success", "error"]
     message: str
     timestamp: datetime = field(default_factory=_utc_now)
     latency_ms: float = 0.0
@@ -382,3 +383,11 @@ class ProviderLogEvent:
 
 
 LogHook: TypeAlias = Callable[[ProviderLogEvent], None]
+
+ResponseHook: TypeAlias = Callable[["ForecastResponse"], "Awaitable[None] | None"]
+"""Hook invoked with every completed :class:`ForecastResponse`.
+
+Hooks may be synchronous or asynchronous. They are the primary extension
+point for external packages that post-process aggregated forecasts, e.g.
+ensemble/consensus builders or forecast-verification recorders.
+"""

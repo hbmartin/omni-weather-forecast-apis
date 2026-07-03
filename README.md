@@ -10,13 +10,18 @@
 
 Async Python library that fans out forecast requests across multiple weather providers and normalizes the results into one typed Pydantic schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
 
+📖 **[Documentation site](https://hbmartin.github.io/omni-weather-forecast-apis/)**
+
 ## Features
 
 - **Multi-provider fan-out** with async orchestration and partial-failure tolerance
 - **Typed normalized schema** — common Pydantic models for minutely, hourly, daily, and alert data
 - **Plugin architecture** — 13 providers with typed per-provider config validation
-- **Rate limiting** — global concurrency and RPS limits with per-provider overrides
-- **CLI** — loads a TOML config, queries providers, and persists normalized output to SQLite
+- **Resilient by default** — retries with exponential backoff (honoring `Retry-After`), conditional-request HTTP caching (`ETag`/`Last-Modified`/`Expires`), and explicit connection pool limits
+- **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
+- **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
+- **CLI** — loads a TOML config, queries providers, prints a table or JSON, and optionally persists normalized output to SQLite
+- **Extensible** — response hooks and a documented SQLite feature view for downstream ensemble/verification projects
 
 ## Supported Providers
 
@@ -34,7 +39,7 @@ Async Python library that fans out forecast requests across multiple weather pro
 | [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Yes | Dark Sky-compatible API |
 | [Stormglass](https://stormglass.io/) | `stormglass` | Yes | Hourly only; multi-model |
 | [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Yes | Requires `app_id` + `app_key` |
-| Google Weather | `google_weather` | — | Placeholder; currently unavailable |
+| [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Yes | Google Maps Platform Weather API |
 
 ## Quick Start
 
@@ -91,6 +96,20 @@ default_timeout_ms = 10000
 max_in_flight = 10
 max_requests_per_second = 20
 
+[retry]
+max_attempts = 3          # total attempts per provider fetch; 1 disables retries
+initial_backoff_ms = 500
+max_backoff_ms = 8000
+backoff_multiplier = 2.0
+jitter = true
+
+[http]
+max_connections = 20
+max_keepalive_connections = 10
+connect_timeout_ms = 5000
+cache_enabled = true      # conditional-request HTTP cache (ETag/Last-Modified/Expires)
+cache_max_entries = 256
+
 [[providers]]
 plugin_id = "open_meteo"
 enabled = true
@@ -104,10 +123,37 @@ config = { user_agent = "MyApp/1.0 ops@example.com", variant = "complete" }
 [[providers]]
 plugin_id = "openweather"
 enabled = true
-config = { api_key = "ow-...", units = "metric" }
+config = { api_key = "${OPENWEATHER_API_KEY}", units = "metric" }
 rate_limit_rps = 5
 timeout_ms = 8000
+max_requests_per_day = 900
 ```
+
+### Retries
+
+Transient failures — network errors, timeouts, and HTTP 429 rate limits — are retried with exponential backoff and jitter. A server-provided `Retry-After` header is honored (retries are abandoned when it exceeds 60 seconds); non-transient failures such as auth errors are never retried. Set a per-provider `retry` table on a registration to override the global policy.
+
+### HTTP caching and connection limits
+
+The shared HTTP client uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. MET Norway's terms of service require this behavior and the NWS strongly encourages it. Disable with `cache_enabled = false` under `[http]`.
+
+### Daily quotas
+
+Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt (including retries) counts one request. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
+
+### API keys from environment variables
+
+Any string value inside a provider `config` block can reference an environment variable instead of embedding a secret:
+
+```toml
+# whole-string reference
+config = { api_key = "${OPENWEATHER_API_KEY}" }
+
+# explicit marker table (equivalent)
+config = { api_key = { env = "OPENWEATHER_API_KEY" } }
+```
+
+Resolution happens at client initialization and recurses through nested tables and arrays. A placeholder naming an unset variable becomes a per-provider initialization error; other providers are unaffected. Partial interpolation (`"prefix-${VAR}"`) is not supported — only whole-string placeholders are resolved.
 
 ## Library Usage
 
@@ -191,6 +237,13 @@ uv run omni-weather \
   --provider open_meteo \
   --provider nws \
   --granularity hourly
+
+# Emit the full normalized response as JSON (no SQLite required)
+uv run omni-weather \
+  --config ./config.toml \
+  --lat 34.2484 \
+  --lon -117.1931 \
+  --format json | jq '.results[] | {provider, status}'
 ```
 
 | Flag | Required | Default | Description |
@@ -198,7 +251,8 @@ uv run omni-weather \
 | `--config PATH` | No | `~/.config/omni_weather_forecast_apis.toml` | Path to TOML configuration file |
 | `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
 | `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
-| `--sqlite PATH` | No | config value | SQLite database output path; overrides config |
+| `--sqlite PATH` | No | config value | SQLite database output path; overrides config. Persistence is skipped when neither is set |
+| `--format FMT` | No | `table` | Output format: `table` (human-readable summary) or `json` (full normalized response on stdout) |
 | `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
 | `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | config value | Provider language preference |
@@ -219,7 +273,7 @@ response.summary
 # ForecastResponseSummary(total=3, succeeded=2, failed=1)
 ```
 
-`ProviderError` includes a typed `error.code` (`AUTH_FAILED`, `RATE_LIMITED`, `TIMEOUT`, `NETWORK`, `PARSE`, `NOT_AVAILABLE`, `UNKNOWN`), a human-readable `error.message`, the `error.http_status` when available, and `error.latency_ms` for how long the request ran before failing.
+`ProviderError` includes a typed `error.code` (`AUTH_FAILED`, `RATE_LIMITED`, `QUOTA_EXCEEDED`, `TIMEOUT`, `NETWORK`, `PARSE`, `NOT_AVAILABLE`, `UNKNOWN`), a human-readable `error.message`, the `error.http_status` when available, and `error.latency_ms` for how long the request ran before failing.
 
 The CLI reflects this in exit codes: `0` means all providers succeeded, `1` means at least one failed (but partial results are still written to SQLite).
 
@@ -304,7 +358,7 @@ Each provider accepts a typed config dict. Required fields are marked with **bol
 | `pirate_weather` | **`api_key`**, `extend_hourly` (default: false), `version` (`"1"` \| `"2"`, default: `"2"`) |
 | `stormglass` | **`api_key`**, `sources` (default: `["sg"]`), `params` (list of weather variables) |
 | `weather_unlocked` | **`app_id`**, **`app_key`**, `lang`? |
-| `google_weather` | `api_key`? (placeholder, currently unavailable) |
+| `google_weather` | **`api_key`**, `hours` (1-240, default: 48), `days` (1-10, default: 10) |
 
 ## SQLite Output
 
@@ -319,7 +373,35 @@ The CLI creates a normalized database with these tables:
 | `hourly_points` | Normalized hourly forecast rows |
 | `daily_points` | Normalized daily summary rows |
 | `alerts` | Weather alerts and warnings |
-| `provider_logs` | Per-provider lifecycle log entries (`start`, `success`, `error`) per run |
+| `provider_logs` | Per-provider lifecycle log entries (`start`, `retry`, `success`, `error`) per run |
+| `provider_quota_usage` | Requests per provider per UTC day, used for daily quota enforcement |
+
+The `stacking_features` SQL view joins hourly points with their provider, model, run cycle, and forecast horizon — a ready-made feature matrix for downstream ensemble/verification work.
+
+## Extending
+
+Consensus/ensemble forecasting and forecast verification are intended to live in separate packages built on three extension points — see the [Extending guide](https://hbmartin.github.io/omni-weather-forecast-apis/extending/) for details:
+
+- **Response hooks** — sync or async callables that receive every completed `ForecastResponse`:
+
+  ```python
+  async def record_for_verification(response: ForecastResponse) -> None:
+      ...
+
+  client = await create_omni_weather(config, response_hooks=[record_for_verification])
+  ```
+
+- **Custom provider plugins** — register any `WeatherPlugin` implementation with `omni_weather_forecast_apis.plugins.register_plugin`.
+- **The SQLite feature matrix** — query the `stacking_features` view for aligned per-provider hourly forecasts with horizons and run cycles.
+
+## Documentation
+
+The documentation site is built with MkDocs from the `docs/` directory:
+
+```bash
+uv sync --group docs
+uv run mkdocs serve
+```
 
 ## Development
 
