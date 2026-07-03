@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/api-reference/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/cli/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/configuration/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/extending/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/getting-started/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+    <url>
+         <loc>https://hbmartin.github.io/omni-weather-forecast-apis/providers/</loc>
+         <lastmod>2026-07-03</lastmod>
+    </url>
+</urlset>
