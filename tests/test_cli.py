@@ -30,3 +30,26 @@ def test_build_parser_leaves_language_unset_until_resolution() -> None:
     parsed = build_parser().parse_args([])
 
     assert parsed.language is None
+
+
+def test_build_parser_defaults_to_table_format() -> None:
+    parsed = build_parser().parse_args([])
+
+    assert parsed.output_format == "table"
+
+
+def test_build_parser_accepts_json_format() -> None:
+    parsed = build_parser().parse_args(["--format", "json"])
+
+    assert parsed.output_format == "json"
+
+
+def test_build_parser_rejects_unknown_format() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--format", "yaml"])
+
+
+def test_sqlite_is_optional() -> None:
+    parsed = build_parser().parse_args([])
+
+    assert parsed.sqlite is None

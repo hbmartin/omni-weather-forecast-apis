@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
+import random
 import time
 from typing import Any
 
 import httpx
 
+from omni_weather_forecast_apis.http_cache import CachingTransport
 from omni_weather_forecast_apis.plugins import get_plugin_registry
+from omni_weather_forecast_apis.quota import InMemoryQuotaTracker, QuotaTracker
 from omni_weather_forecast_apis.rate_limiter import (
     CompositeRateLimiter,
     TokenBucketRateLimiter,
@@ -32,10 +36,17 @@ from omni_weather_forecast_apis.types import (
     ProviderRegistration,
     ProviderResult,
     ProviderSuccess,
+    ResponseHook,
+    RetryPolicy,
 )
-from omni_weather_forecast_apis.utils import utc_now
+from omni_weather_forecast_apis.utils import resolve_env_placeholders, utc_now
 
 logger = logging.getLogger("omni_weather_forecast_apis")
+
+_RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
+    {ErrorCode.NETWORK, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED},
+)
+_MAX_HONORED_RETRY_AFTER_SECONDS = 60.0
 
 
 class OmniWeatherClient:
@@ -46,9 +57,13 @@ class OmniWeatherClient:
         config: OmniWeatherConfig,
         *,
         log_hooks: list[LogHook] | None = None,
+        response_hooks: list[ResponseHook] | None = None,
+        quota_tracker: QuotaTracker | None = None,
     ) -> None:
         self._config = config
         self._log_hooks: list[LogHook] = log_hooks or []
+        self._response_hooks: list[ResponseHook] = response_hooks or []
+        self._quota_tracker: QuotaTracker = quota_tracker or InMemoryQuotaTracker()
         self._instances: dict[ProviderId, PluginInstance] = {}
         self._provider_registrations: dict[ProviderId, ProviderRegistration] = {}
         self._initialization_errors: dict[ProviderId, str] = {}
@@ -84,7 +99,8 @@ class OmniWeatherClient:
                 )
                 continue
             try:
-                validated_config = plugin.validate_config(registration.config)
+                resolved_config = resolve_env_placeholders(registration.config)
+                validated_config = plugin.validate_config(resolved_config)
                 instance = await plugin.initialize(validated_config)
             except Exception as exc:
                 self._initialization_errors[registration.plugin_id] = (
@@ -100,10 +116,29 @@ class OmniWeatherClient:
                 )
 
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(
-                follow_redirects=True,
-                timeout=None,
+            self._http_client = self._build_http_client()
+
+    def _build_http_client(self) -> httpx.AsyncClient:
+        http_config = self._config.http
+        transport: httpx.AsyncBaseTransport = httpx.AsyncHTTPTransport(
+            limits=httpx.Limits(
+                max_connections=http_config.max_connections,
+                max_keepalive_connections=http_config.max_keepalive_connections,
+            ),
+        )
+        if http_config.cache_enabled:
+            transport = CachingTransport(
+                transport,
+                max_entries=http_config.cache_max_entries,
             )
+        return httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(
+                None,
+                connect=http_config.connect_timeout_ms / 1000,
+            ),
+            transport=transport,
+        )
 
     async def close(self) -> None:
         """Close HTTP resources."""
@@ -138,7 +173,7 @@ class OmniWeatherClient:
         completed_at = utc_now()
         succeeded = sum(isinstance(item, ProviderSuccess) for item in results)
         failed = len(results) - succeeded
-        return ForecastResponse(
+        response = ForecastResponse(
             request=ForecastResponseRequest(
                 latitude=request.latitude,
                 longitude=request.longitude,
@@ -154,6 +189,8 @@ class OmniWeatherClient:
             completed_at=completed_at,
             total_latency_ms=(time.perf_counter() - started_at) * 1000,
         )
+        await self._run_response_hooks(response)
+        return response
 
     def get_provider_capabilities(self) -> dict[ProviderId, PluginCapabilities]:
         """Return capabilities for initialized providers."""
@@ -182,6 +219,15 @@ class OmniWeatherClient:
                     event.provider.value,
                     event.phase,
                 )
+
+    async def _run_response_hooks(self, response: ForecastResponse) -> None:
+        for hook in self._response_hooks:
+            try:
+                result = hook(response)
+                if inspect.isawaitable(result):
+                    await result
+            except (Exception,):  # noqa: B013
+                logger.exception("Response hook failed")
 
     async def _fetch_one_provider(
         self,
@@ -251,6 +297,67 @@ class OmniWeatherClient:
             self._global_rate_limiter,
             self._provider_limiters.get(provider_id),
         )
+        policy = registration.retry or self._config.retry
+
+        attempt = 1
+        while True:
+            quota_error = self._quota_error_or_record(
+                provider_id,
+                registration,
+                started_at,
+            )
+            if quota_error is not None:
+                return quota_error
+
+            result, retry_after_seconds = await self._attempt_fetch(
+                provider_id,
+                instance,
+                params,
+                client,
+                limiter,
+                timeout_ms,
+                started_at,
+                request,
+            )
+            if isinstance(result, ProviderSuccess):
+                return result
+            if (
+                attempt >= policy.max_attempts
+                or result.error.code not in _RETRYABLE_ERROR_CODES
+            ):
+                return result
+            delay_seconds = _compute_backoff_seconds(
+                policy,
+                attempt,
+                retry_after_seconds,
+            )
+            if delay_seconds is None:
+                return result
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="retry",
+                message=(
+                    f"Attempt {attempt}/{policy.max_attempts} failed with "
+                    f"{result.error.code.value}; retrying in {delay_seconds:.1f}s"
+                ),
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                error_code=result.error.code,
+                http_status=result.error.http_status,
+            ))
+            await asyncio.sleep(delay_seconds)
+            attempt += 1
+
+    async def _attempt_fetch(
+        self,
+        provider_id: ProviderId,
+        instance: PluginInstance,
+        params: PluginFetchParams,
+        client: httpx.AsyncClient,
+        limiter: CompositeRateLimiter,
+        timeout_ms: float,
+        started_at: float,
+        request: ForecastRequest,
+    ) -> tuple[ProviderResult, float | None]:
         try:
             async with limiter.slot():
                 async with asyncio.timeout(timeout_ms / 1000):
@@ -269,7 +376,7 @@ class OmniWeatherClient:
                 ErrorCode.TIMEOUT,
                 f"Request exceeded timeout of {timeout_ms} ms.",
                 started_at,
-            )
+            ), None
         except httpx.HTTPError as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
             self._emit_log(ProviderLogEvent(
@@ -284,7 +391,7 @@ class OmniWeatherClient:
                 ErrorCode.NETWORK,
                 str(exc),
                 started_at,
-            )
+            ), None
         except Exception as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
             error_code = _exception_error_code(exc)
@@ -300,7 +407,7 @@ class OmniWeatherClient:
                 error_code,
                 str(exc),
                 started_at,
-            )
+            ), None
 
         latency_ms = (time.perf_counter() - started_at) * 1000
         match result:
@@ -327,7 +434,7 @@ class OmniWeatherClient:
                         latency_ms=latency_ms,
                         raw=result.raw,
                     ),
-                )
+                ), result.retry_after_seconds
             case _:
                 logger.info(
                     "Provider %s succeeded in %.0fms",
@@ -346,7 +453,39 @@ class OmniWeatherClient:
                     fetched_at=utc_now(),
                     latency_ms=latency_ms,
                     raw=result.raw if request.include_raw else None,
-                )
+                ), None
+
+    def _quota_error_or_record(
+        self,
+        provider_id: ProviderId,
+        registration: ProviderRegistration,
+        started_at: float,
+    ) -> ProviderError | None:
+        limit = registration.max_requests_per_day
+        if limit is None:
+            return None
+        today = utc_now().date()
+        usage = self._quota_tracker.get_usage(provider_id, today)
+        if usage >= limit:
+            message = (
+                f"Daily quota of {limit} requests is exhausted "
+                f"({usage} recorded for {today.isoformat()})."
+            )
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="error",
+                message=message,
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                error_code=ErrorCode.QUOTA_EXCEEDED,
+            ))
+            return self._provider_error(
+                provider_id,
+                ErrorCode.QUOTA_EXCEEDED,
+                message,
+                started_at,
+            )
+        self._quota_tracker.record_request(provider_id, today)
+        return None
 
     def _resolve_target_providers(self, request: ForecastRequest) -> list[ProviderId]:
         if request.providers is None:
@@ -386,10 +525,17 @@ async def create_omni_weather(
     config: OmniWeatherConfig,
     *,
     log_hooks: list[LogHook] | None = None,
+    response_hooks: list[ResponseHook] | None = None,
+    quota_tracker: QuotaTracker | None = None,
 ) -> OmniWeatherClient:
     """Create and initialize an OmniWeather client."""
 
-    client = OmniWeatherClient(config, log_hooks=log_hooks)
+    client = OmniWeatherClient(
+        config,
+        log_hooks=log_hooks,
+        response_hooks=response_hooks,
+        quota_tracker=quota_tracker,
+    )
     await client.initialize()
     return client
 
@@ -422,6 +568,33 @@ def _resolve_timeout_ms(
     if request.timeout_ms is not None:
         return request.timeout_ms
     return default_timeout_ms
+
+
+def _compute_backoff_seconds(
+    policy: RetryPolicy,
+    attempt: int,
+    retry_after_seconds: float | None,
+) -> float | None:
+    """Return the delay before the next attempt, or None to give up.
+
+    Honors a server-provided Retry-After unless it is too far in the
+    future to be worth waiting for within one aggregation request.
+    """
+
+    backoff_seconds = (
+        min(
+            policy.initial_backoff_ms * policy.backoff_multiplier ** (attempt - 1),
+            policy.max_backoff_ms,
+        )
+        / 1000
+    )
+    if policy.jitter:
+        backoff_seconds *= 0.5 + random.random() / 2  # noqa: S311
+    if retry_after_seconds is not None:
+        if retry_after_seconds > _MAX_HONORED_RETRY_AFTER_SECONDS:
+            return None
+        backoff_seconds = max(backoff_seconds, retry_after_seconds)
+    return backoff_seconds
 
 
 def _exception_error_code(exc: Exception) -> ErrorCode:

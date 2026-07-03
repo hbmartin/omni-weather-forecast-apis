@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Generic, TypeVar
 
 import httpx
@@ -50,6 +51,24 @@ def as_float(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header into seconds (delta or HTTP-date form)."""
+
+    if value is None or not (stripped := value.strip()):
+        return None
+    try:
+        return max(0.0, float(stripped))
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(stripped)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+    return max(0.0, (retry_at - datetime.now(tz=UTC)).total_seconds())
 
 
 def first_present(mapping: Mapping[str, Any], *keys: str) -> Any | None:
@@ -405,6 +424,9 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
                 error_code,
                 message or "HTTP request failed",
                 http_status=response.status_code,
+                retry_after_seconds=parse_retry_after(
+                    response.headers.get("Retry-After"),
+                ),
                 raw=raw,
             )
 
@@ -432,12 +454,14 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
         message: str,
         *,
         http_status: int | None = None,
+        retry_after_seconds: float | None = None,
         raw: Any | None = None,
     ) -> PluginFetchError:
         return PluginFetchError(
             code=code,
             message=message,
             http_status=http_status,
+            retry_after_seconds=retry_after_seconds,
             raw=raw,
         )
 

@@ -7,6 +7,16 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from omni_weather_forecast_apis.types.schema import Granularity, ProviderId
 
 
+class RetryPolicy(BaseModel):
+    """Retry policy for transient provider failures."""
+
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    initial_backoff_ms: float = Field(default=500, gt=0)
+    max_backoff_ms: float = Field(default=8_000, gt=0)
+    backoff_multiplier: float = Field(default=2.0, ge=1.0)
+    jitter: bool = True
+
+
 class ProviderRegistration(BaseModel):
     """Configuration for one registered provider."""
 
@@ -16,6 +26,8 @@ class ProviderRegistration(BaseModel):
     config: dict[str, Any]
     rate_limit_rps: float | None = Field(default=None, gt=0)
     timeout_ms: float | None = Field(default=None, gt=0)
+    max_requests_per_day: int | None = Field(default=None, ge=1)
+    retry: RetryPolicy | None = None
     enabled: bool = True
 
 
@@ -30,11 +42,23 @@ class RateLimitConfig(BaseModel):
     max_requests_per_second: float = Field(default=20, gt=0)
 
 
+class HTTPConfig(BaseModel):
+    """Shared HTTP client settings."""
+
+    max_connections: int = Field(default=20, ge=1)
+    max_keepalive_connections: int = Field(default=10, ge=0)
+    connect_timeout_ms: float = Field(default=5_000, gt=0)
+    cache_enabled: bool = True
+    cache_max_entries: int = Field(default=256, ge=1)
+
+
 class OmniWeatherConfig(BaseModel):
     """Top-level client configuration."""
 
     providers: list[ProviderRegistration]
     rate_limiting: RateLimitConfig = Field(default_factory=RateLimitConfig)
+    retry: RetryPolicy = Field(default_factory=RetryPolicy)
+    http: HTTPConfig = Field(default_factory=HTTPConfig)
     default_timeout_ms: float = Field(default=10_000, gt=0)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)

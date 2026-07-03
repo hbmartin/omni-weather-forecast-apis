@@ -303,7 +303,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
                 continue
             try:
                 minutely.append(_parse_minutely(item))
-            except KeyError, TypeError, ValueError:
+            except (KeyError, TypeError, ValueError):
                 continue
 
         hourly: list[WeatherDataPoint] = []
@@ -312,7 +312,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
                 continue
             try:
                 hourly.append(_parse_hourly(item))
-            except KeyError, TypeError, ValueError:
+            except (KeyError, TypeError, ValueError):
                 continue
 
         daily: list[DailyDataPoint] = []
@@ -321,7 +321,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
                 continue
             try:
                 daily.append(_parse_daily(item))
-            except KeyError, TypeError, ValueError:
+            except (KeyError, TypeError, ValueError):
                 continue
         return self._success(
             [

@@ -10,6 +10,7 @@ from typing import TypeVar, cast
 from pydantic import ValidationError
 
 from omni_weather_forecast_apis.client import create_omni_weather
+from omni_weather_forecast_apis.quota import SqliteQuotaTracker
 from omni_weather_forecast_apis.sqlite_store import (
     save_forecast_response,
     save_provider_logs,
@@ -65,7 +66,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--sqlite",
         type=Path,
         default=None,
-        help="Path to the SQLite database output file (overrides config)",
+        help=(
+            "Path to the SQLite database output file (overrides config); "
+            "results are not persisted when omitted"
+        ),
+    )
+    parser.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        dest="output_format",
+        help="Output format: human-readable table or JSON on stdout (default: table)",
     )
     parser.add_argument(
         "--provider",
@@ -154,7 +165,7 @@ def _setup_debug_logging(log_path: Path) -> LogHook:
 
     def _loguru_hook(event: ProviderLogEvent) -> None:
         match event.phase:
-            case "start":
+            case "start" | "retry":
                 logger.debug("[{}] {}", event.provider.value, event.message)
             case "success":
                 logger.info(
@@ -184,9 +195,11 @@ async def _async_main(parsed: argparse.Namespace) -> int:
     longitude = cast(
         float, _resolve_required(parsed.lon, config.longitude, "lon"),
     )
-    sqlite_path = Path(
-        cast(str | Path, _resolve_required(parsed.sqlite, config.sqlite, "sqlite")),
+    sqlite_value = cast(
+        Path | str | None,
+        parsed.sqlite if parsed.sqlite is not None else config.sqlite,
     )
+    sqlite_path = Path(sqlite_value) if sqlite_value is not None else None
     granularity_values = cast(list[str], parsed.granularity)
     granularity = (
         [Granularity(item) for item in granularity_values]
@@ -219,22 +232,36 @@ async def _async_main(parsed: argparse.Namespace) -> int:
 
     debug: bool = cast(bool, parsed.debug) or config.debug
     if debug:
-        log_path = sqlite_path.with_suffix(".log")
+        log_path = (
+            sqlite_path.with_suffix(".log")
+            if sqlite_path is not None
+            else Path("omni-weather.log")
+        )
         loguru_hook = _setup_debug_logging(log_path)
         log_hooks.append(loguru_hook)
 
-    async with await create_omni_weather(config, log_hooks=log_hooks) as client:
+    quota_tracker = SqliteQuotaTracker(sqlite_path) if sqlite_path is not None else None
+    async with await create_omni_weather(
+        config,
+        log_hooks=log_hooks,
+        quota_tracker=quota_tracker,
+    ) as client:
         response = await client.forecast(request)
 
-    run_id = save_forecast_response(sqlite_path, response)
-    save_provider_logs(sqlite_path, log_events, run_id=run_id)
+    run_id: int | None = None
+    if sqlite_path is not None:
+        run_id = save_forecast_response(sqlite_path, response)
+        save_provider_logs(sqlite_path, log_events, run_id=run_id)
 
-    _print_results(response, run_id, sqlite_path)
+    if cast(str, parsed.output_format) == "json":
+        print(response.model_dump_json(indent=2))
+    else:
+        _print_results(response, run_id, sqlite_path)
     return 0 if response.summary.failed == 0 else 1
 
 
 def _print_results(
-    response: ForecastResponse, run_id: int, sqlite_path: Path,
+    response: ForecastResponse, run_id: int | None, sqlite_path: Path | None,
 ) -> None:
     try:
         from rich.console import Console  # noqa: PLC0415
@@ -247,9 +274,15 @@ def _print_results(
     console = Console()
     summary = response.summary
 
+    title_prefix = f"Run {run_id} — " if run_id is not None else ""
+    caption = (
+        f"Saved to {sqlite_path} in {response.total_latency_ms:.0f}ms"
+        if sqlite_path is not None
+        else f"Completed in {response.total_latency_ms:.0f}ms (not persisted)"
+    )
     table = Table(
-        title=f"Run {run_id} — {summary.succeeded}/{summary.total} succeeded",
-        caption=f"Saved to {sqlite_path} in {response.total_latency_ms:.0f}ms",
+        title=f"{title_prefix}{summary.succeeded}/{summary.total} succeeded",
+        caption=caption,
     )
     table.add_column("Provider", style="bold")
     table.add_column("Status", justify="center")
@@ -295,14 +328,16 @@ def _print_results(
 
 
 def _print_results_plain(
-    response: ForecastResponse, run_id: int, sqlite_path: Path,
+    response: ForecastResponse, run_id: int | None, sqlite_path: Path | None,
 ) -> None:
     summary = response.summary
+    run_prefix = f"Run {run_id}: " if run_id is not None else ""
     print(
-        f"Run {run_id}: {summary.succeeded}/{summary.total} succeeded "
+        f"{run_prefix}{summary.succeeded}/{summary.total} succeeded "
         f"in {response.total_latency_ms:.0f}ms",
     )
-    print(f"Saved to {sqlite_path}")
+    if sqlite_path is not None:
+        print(f"Saved to {sqlite_path}")
     for result in response.results:
         match result:
             case ProviderSuccess():

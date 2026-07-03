@@ -22,6 +22,7 @@ from omni_weather_forecast_apis.types import (
     ProviderId,
     ProviderLogEvent,
     ProviderRegistration,
+    RetryPolicy,
 )
 
 
@@ -169,6 +170,7 @@ def test_forecast_wraps_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
                 ),
             ],
             default_timeout_ms=1,
+            retry=RetryPolicy(max_attempts=1),
         ),
     )
 
