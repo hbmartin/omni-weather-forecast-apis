@@ -11,17 +11,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
 
@@ -31,5 +33,55 @@ jobs:
       - name: Install docs dependencies
         run: uv sync --group docs
 
+      - name: Build docs
+        run: uv run mkdocs build --strict
+
+      - name: Upload built site
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mkdocs-site
+          path: site
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      # Required only for pushing the rendered site to the gh-pages branch.
+      contents: write
+    steps:
+      - name: Download built site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mkdocs-site
+          path: site
+
       - name: Deploy to GitHub Pages
-        run: uv run mkdocs gh-deploy --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git clone --depth 1 --branch gh-pages \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            gh-pages || {
+              git init gh-pages
+              git -C gh-pages checkout --orphan gh-pages
+            }
+
+          find gh-pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R site/. gh-pages/
+          touch gh-pages/.nojekyll
+
+          git -C gh-pages add --all
+          if git -C gh-pages diff --cached --quiet; then
+            echo "No docs changes to deploy"
+            exit 0
+          fi
+
+          git -C gh-pages commit -m "Deploy docs"
+          git -C gh-pages push \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            gh-pages

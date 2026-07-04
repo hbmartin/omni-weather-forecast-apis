@@ -10,10 +10,12 @@ from omni_weather_forecast_apis.types import (
     DailyDataPoint,
     ForecastRequest,
     Granularity,
+    HTTPConfig,
     MinutelyDataPoint,
     OmniWeatherConfig,
     ProviderId,
     ProviderLogEvent,
+    RetryPolicy,
     WeatherCondition,
     WeatherDataPoint,
 )
@@ -85,6 +87,16 @@ def test_request_timeout_defaults_to_config_resolution() -> None:
     request = ForecastRequest(latitude=34.0, longitude=-118.0)
 
     assert request.timeout_ms is None
+
+
+def test_retry_policy_rejects_inverted_backoff_bounds() -> None:
+    with pytest.raises(ValidationError, match="initial_backoff_ms"):
+        RetryPolicy(initial_backoff_ms=2_000, max_backoff_ms=1_000)
+
+
+def test_http_config_rejects_inverted_connection_bounds() -> None:
+    with pytest.raises(ValidationError, match="max_keepalive_connections"):
+        HTTPConfig(max_connections=2, max_keepalive_connections=3)
 
 
 def test_provider_enum_contains_expected_slug() -> None:

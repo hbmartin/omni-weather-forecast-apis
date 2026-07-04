@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import sys
 import tomllib
 from pathlib import Path
@@ -111,7 +112,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable verbose debug output and write a log file next to the SQLite database",
+        help=(
+            "Enable verbose debug output and write a log file next to the SQLite "
+            "database, or ./omni-weather.log when --sqlite is omitted"
+        ),
     )
     return parser
 
@@ -151,38 +155,42 @@ def _setup_debug_logging(log_path: Path) -> LogHook:
 
     Returns a LogHook callback that logs ProviderLogEvents via loguru.
     """
-    from loguru import logger  # noqa: PLC0415
+    loguru_logger = importlib.import_module("loguru").logger
 
-    logger.remove()
-    logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level:<7} | {message}")
-    logger.add(
+    loguru_logger.remove()
+    loguru_logger.add(
+        sys.stderr,
+        level="DEBUG",
+        format="{time:HH:mm:ss} | {level:<7} | {message}",
+    )
+    loguru_logger.add(
         str(log_path),
         level="DEBUG",
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {message}",
         rotation="10 MB",
     )
-    logger.info("Debug logging enabled, writing to {}", log_path)
+    debug_message = f"Debug logging enabled, writing to {log_path}"
+    loguru_logger.info(debug_message)
 
     def _loguru_hook(event: ProviderLogEvent) -> None:
         match event.phase:
             case "start" | "retry":
-                logger.debug("[{}] {}", event.provider.value, event.message)
+                message = f"[{event.provider.value}] {event.message}"
+                loguru_logger.debug(message)
             case "success":
-                logger.info(
-                    "[{}] {} (latency={:.0f}ms)",
-                    event.provider.value,
-                    event.message,
-                    event.latency_ms,
+                message = (
+                    f"[{event.provider.value}] {event.message} "
+                    f"(latency={event.latency_ms:.0f}ms)"
                 )
+                loguru_logger.info(message)
             case "error":
-                logger.warning(
-                    "[{}] {} (code={}, http={}, latency={:.0f}ms)",
-                    event.provider.value,
-                    event.message,
-                    event.error_code.value if event.error_code else "unknown",
-                    event.http_status,
-                    event.latency_ms,
+                error_code = event.error_code.value if event.error_code else "unknown"
+                message = (
+                    f"[{event.provider.value}] {event.message} "
+                    f"(code={error_code}, http={event.http_status}, "
+                    f"latency={event.latency_ms:.0f}ms)"
                 )
+                loguru_logger.warning(message)
 
     return _loguru_hook
 
@@ -264,14 +272,14 @@ def _print_results(
     response: ForecastResponse, run_id: int | None, sqlite_path: Path | None,
 ) -> None:
     try:
-        from rich.console import Console  # noqa: PLC0415
-        from rich.table import Table  # noqa: PLC0415
-        from rich.text import Text  # noqa: PLC0415
+        console_cls = importlib.import_module("rich.console").Console
+        table_cls = importlib.import_module("rich.table").Table
+        text_cls = importlib.import_module("rich.text").Text
     except ImportError:
         _print_results_plain(response, run_id, sqlite_path)
         return
 
-    console = Console()
+    console = console_cls()
     summary = response.summary
 
     title_prefix = f"Run {run_id} — " if run_id is not None else ""
@@ -280,7 +288,7 @@ def _print_results(
         if sqlite_path is not None
         else f"Completed in {response.total_latency_ms:.0f}ms (not persisted)"
     )
-    table = Table(
+    table = table_cls(
         title=f"{title_prefix}{summary.succeeded}/{summary.total} succeeded",
         caption=caption,
     )
@@ -304,7 +312,7 @@ def _print_results(
                     alerts += len(forecast.alerts)
                 table.add_row(
                     result.provider.value,
-                    Text("OK", style="green bold"),
+                    text_cls("OK", style="green bold"),
                     f"{result.latency_ms:.0f}ms",
                     str(hourly),
                     str(daily),
@@ -315,13 +323,13 @@ def _print_results(
             case ProviderError():
                 table.add_row(
                     result.provider.value,
-                    Text("FAIL", style="red bold"),
+                    text_cls("FAIL", style="red bold"),
                     f"{result.error.latency_ms:.0f}ms",
                     "-",
                     "-",
                     "-",
                     "-",
-                    Text(result.error.message, style="red"),
+                    text_cls(result.error.message, style="red"),
                 )
 
     console.print(table)

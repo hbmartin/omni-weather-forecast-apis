@@ -47,6 +47,7 @@ async def test_fresh_response_served_without_second_request() -> None:
 
     assert first.json() == {"value": 1}
     assert second.json() == {"value": 1}
+    assert first.extensions.get("omni_weather_cache") == "store"
     assert second.extensions.get("omni_weather_cache") == "hit"
     assert len(inner.requests) == 1
 
@@ -78,6 +79,88 @@ async def test_stale_response_revalidated_with_conditional_headers() -> None:
     assert revalidation.headers["If-Modified-Since"] == "Wed, 01 Jul 2026 00:00:00 GMT"
     # The 304 refreshed the entry, so the third call is a cache hit.
     assert third.json() == {"value": 1}
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_304_without_freshness_reuses_stored_cache_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    times = iter([100.0, 102.0, 102.5])
+
+    def fake_time() -> float:
+        return next(times, 102.5)
+
+    monkeypatch.setattr(
+        "omni_weather_forecast_apis.http_cache.time.time",
+        fake_time,
+    )
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"value": 1},
+                {"Cache-Control": "max-age=1", "ETag": '"abc"'},
+            ),
+            httpx.Response(304),
+        ],
+    )
+
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        first = await client.get("https://example.test/data")
+        second = await client.get("https://example.test/data")
+        third = await client.get("https://example.test/data")
+
+    assert first.json() == {"value": 1}
+    assert second.json() == {"value": 1}
+    assert third.json() == {"value": 1}
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_requests_bypass_cache() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response({"value": 1}, {"Cache-Control": "max-age=3600"}),
+            _json_response({"value": 2}, {"Cache-Control": "max-age=3600"}),
+        ],
+    )
+
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        first = await client.get(
+            "https://example.test/data",
+            headers={"Authorization": "Bearer one"},
+        )
+        second = await client.get(
+            "https://example.test/data",
+            headers={"Authorization": "Bearer two"},
+        )
+
+    assert first.json() == {"value": 1}
+    assert second.json() == {"value": 2}
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_accept_language_partitions_cache_entries() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response({"value": "en"}, {"Cache-Control": "max-age=3600"}),
+            _json_response({"value": "es"}, {"Cache-Control": "max-age=3600"}),
+        ],
+    )
+
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        first = await client.get(
+            "https://example.test/data",
+            headers={"Accept-Language": "en"},
+        )
+        second = await client.get(
+            "https://example.test/data",
+            headers={"Accept-Language": "es"},
+        )
+
+    assert first.json() == {"value": "en"}
+    assert second.json() == {"value": "es"}
     assert len(inner.requests) == 2
 
 

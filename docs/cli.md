@@ -17,10 +17,11 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 | `--language CODE` | Provider language preference |
 | `--include-raw` | Persist raw provider payloads alongside normalized results |
 | `--timeout-ms N` | Override the default request timeout |
-| `--debug` | Verbose logging to stderr and a log file |
+| `--debug` | Verbose logging to stderr and a log file next to the SQLite database, or `./omni-weather.log` when `--sqlite` is omitted |
 
-The exit code is `0` when every provider succeeded and `1` otherwise, so
-partial failures are visible to schedulers and shell scripts.
+The exit code is `0` when every provider succeeded, `1` when at least one
+provider failed, and `2` for invalid arguments or configuration/load errors.
+Partial provider failures are visible to schedulers and shell scripts.
 
 ## Output formats
 

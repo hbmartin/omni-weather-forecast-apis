@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from omni_weather_forecast_apis.types.schema import Granularity, ProviderId
 
@@ -15,6 +15,12 @@ class RetryPolicy(BaseModel):
     max_backoff_ms: float = Field(default=8_000, gt=0)
     backoff_multiplier: float = Field(default=2.0, ge=1.0)
     jitter: bool = True
+
+    @model_validator(mode="after")
+    def _validate_backoff_bounds(self) -> Self:
+        if self.initial_backoff_ms > self.max_backoff_ms:
+            raise ValueError("initial_backoff_ms must not exceed max_backoff_ms")
+        return self
 
 
 class ProviderRegistration(BaseModel):
@@ -50,6 +56,14 @@ class HTTPConfig(BaseModel):
     connect_timeout_ms: float = Field(default=5_000, gt=0)
     cache_enabled: bool = True
     cache_max_entries: int = Field(default=256, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_connection_bounds(self) -> Self:
+        if self.max_keepalive_connections > self.max_connections:
+            raise ValueError(
+                "max_keepalive_connections must not exceed max_connections",
+            )
+        return self
 
 
 class OmniWeatherConfig(BaseModel):

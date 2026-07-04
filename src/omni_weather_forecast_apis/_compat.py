@@ -17,7 +17,9 @@ def _patch_typing_eval_type() -> None:
     if sys.version_info < (3, 14):
         return
 
-    real_eval_type = typing._eval_type  # type: ignore[attr-defined]  # noqa: SLF001
+    real_eval_type = getattr(typing, "_eval_type", None)
+    if real_eval_type is None:
+        return
     real_params = set(inspect.signature(real_eval_type).parameters)
 
     if "prefer_fwd_module" in real_params:
@@ -33,7 +35,7 @@ def _patch_typing_eval_type() -> None:
         kwargs.pop("prefer_fwd_module", None)
         return real_eval_type(*args, **kwargs)
 
-    typing._eval_type = patched_eval_type  # type: ignore[attr-defined]  # noqa: SLF001
+    vars(typing)["_eval_type"] = patched_eval_type
 
 
 _patch_typing_eval_type()
