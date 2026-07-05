@@ -643,10 +643,11 @@ may be sync or async; failures are logged and never break the forecast.</p>
         <span class="o">...</span>
 
 
-<span class="n">client</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_omni_weather</span><span class="p">(</span>
+<span class="k">async</span> <span class="k">with</span> <span class="k">await</span> <span class="n">create_omni_weather</span><span class="p">(</span>
     <span class="n">config</span><span class="p">,</span>
     <span class="n">response_hooks</span><span class="o">=</span><span class="p">[</span><span class="n">record_for_verification</span><span class="p">],</span>
-<span class="p">)</span>
+<span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+    <span class="o">...</span>
 </code></pre></div>
 <p>This is the natural seam for an <strong>ensemble package</strong> (compute a consensus
 from <code>response.results</code> and publish it) or a <strong>verification package</strong>

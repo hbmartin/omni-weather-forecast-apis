@@ -653,12 +653,13 @@
 </tr>
 <tr>
 <td><code>--debug</code></td>
-<td>Verbose logging to stderr and a log file</td>
+<td>Verbose logging to stderr and a log file next to the SQLite database, or <code>./omni-weather.log</code> when <code>--sqlite</code> is omitted</td>
 </tr>
 </tbody>
 </table>
-<p>The exit code is <code>0</code> when every provider succeeded and <code>1</code> otherwise, so
-partial failures are visible to schedulers and shell scripts.</p>
+<p>The exit code is <code>0</code> when every provider succeeded, <code>1</code> when at least one
+provider failed, and <code>2</code> for invalid arguments or configuration/load errors.
+Partial provider failures are visible to schedulers and shell scripts.</p>
 <h2 id="output-formats">Output formats<a class="headerlink" href="#output-formats" title="Permanent link">&para;</a></h2>
 <p><code>--format table</code> (default) renders a per-provider summary table: status,
 latency, row counts per granularity, and error details for failures.</p>

@@ -766,8 +766,8 @@
 <h2 id="retry-policy-retry">Retry policy — <code>[retry]</code><a class="headerlink" href="#retry-policy-retry" title="Permanent link">&para;</a></h2>
 <p>Transient failures — network errors, timeouts, and HTTP 429 rate limits —
 are retried with exponential backoff and jitter. A server-provided
-<code>Retry-After</code> header is honored (retries are abandoned when it exceeds 60
-seconds). Non-transient failures such as auth errors are never retried.</p>
+<code>Retry-After</code> header is honored up to 60 seconds. Non-transient failures such
+as auth errors are never retried.</p>
 <table>
 <thead>
 <tr>
@@ -846,7 +846,8 @@ seconds). Non-transient failures such as auth errors are never retried.</p>
 <code>Expires</code> are served from memory while fresh, and stale responses carrying
 <code>ETag</code>/<code>Last-Modified</code> validators are revalidated with conditional requests
 and reused on <code>304 Not Modified</code>. MET Norway's terms of service require this
-behavior and the NWS strongly encourages it.</p>
+behavior and the NWS strongly encourages it. Requests carrying
+<code>Authorization</code> or <code>Cookie</code> headers bypass the shared cache.</p>
 <h2 id="provider-registrations-providers">Provider registrations — <code>[[providers]]</code><a class="headerlink" href="#provider-registrations-providers" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -1080,6 +1080,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="InMemoryQuotaTracker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#omni_weather_forecast_apis.quota.InMemoryQuotaTracker.try_consume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        try_consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1090,6 +1107,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="SqliteQuotaTracker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#omni_weather_forecast_apis.quota.SqliteQuotaTracker.try_consume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        try_consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1847,6 +1881,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="InMemoryQuotaTracker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#omni_weather_forecast_apis.quota.InMemoryQuotaTracker.try_consume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        try_consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1857,6 +1908,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="SqliteQuotaTracker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#omni_weather_forecast_apis.quota.SqliteQuotaTracker.try_consume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        try_consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3844,6 +3912,28 @@ PluginFetchError instead.</p>
 
 
 
+<div class="doc doc-object doc-function">
+
+
+<h3 id="omni_weather_forecast_apis.quota.InMemoryQuotaTracker.try_consume" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">try_consume</span>
+
+
+<a href="#omni_weather_forecast_apis.quota.InMemoryQuotaTracker.try_consume" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">try_consume</span><span class="p">(</span>
+    <span class="n">provider</span><span class="p">:</span> <span class="n">ProviderId</span><span class="p">,</span> <span class="n">day</span><span class="p">:</span> <span class="n">date</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Record one request only when the provider has remaining quota.</p>
+
+
+    </div>
+
+</div>
+
 
 
   </div>
@@ -3891,6 +3981,28 @@ PluginFetchError instead.</p>
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="omni_weather_forecast_apis.quota.SqliteQuotaTracker.try_consume" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">try_consume</span>
+
+
+<a href="#omni_weather_forecast_apis.quota.SqliteQuotaTracker.try_consume" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">try_consume</span><span class="p">(</span>
+    <span class="n">provider</span><span class="p">:</span> <span class="n">ProviderId</span><span class="p">,</span> <span class="n">day</span><span class="p">:</span> <span class="n">date</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Atomically reserve one daily request when quota remains.</p>
+
+
+    </div>
+
+</div>
 
 
 
