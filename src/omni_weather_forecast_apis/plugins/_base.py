@@ -34,7 +34,6 @@ from omni_weather_forecast_apis.types import (
 from omni_weather_forecast_apis.utils import parse_date, parse_datetime, unix_timestamp
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
-_MAX_RETRY_AFTER_SECONDS = 60.0
 
 
 def as_float(value: Any) -> float | None:
@@ -70,13 +69,6 @@ def parse_retry_after(value: str | None) -> float | None:
     if retry_at.tzinfo is None:
         retry_at = retry_at.replace(tzinfo=UTC)
     return max(0.0, (retry_at - datetime.now(tz=UTC)).total_seconds())
-
-
-def capped_retry_after(value: str | None) -> float | None:
-    """Parse Retry-After and cap long waits to one aggregation request."""
-
-    seconds = parse_retry_after(value)
-    return min(_MAX_RETRY_AFTER_SECONDS, seconds) if seconds is not None else None
 
 
 def first_present(mapping: Mapping[str, Any], *keys: str) -> Any | None:
@@ -432,7 +424,7 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
                 error_code,
                 message or "HTTP request failed",
                 http_status=response.status_code,
-                retry_after_seconds=capped_retry_after(
+                retry_after_seconds=parse_retry_after(
                     response.headers.get("Retry-After"),
                 ),
                 raw=raw,

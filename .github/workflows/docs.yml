@@ -64,12 +64,23 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git clone --depth 1 --branch gh-pages \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            gh-pages || {
-              git init gh-pages
-              git -C gh-pages checkout --orphan gh-pages
-            }
+          remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # Distinguish "gh-pages does not exist" (ls-remote exit 2) from
+          # transient clone/network failures, which must fail the job loudly
+          # instead of silently rebuilding an orphan history.
+          ls_remote_status=0
+          git ls-remote --exit-code --heads "$remote_url" gh-pages >/dev/null \
+            || ls_remote_status=$?
+          if [ "$ls_remote_status" -eq 0 ]; then
+            git clone --depth 1 --branch gh-pages "$remote_url" gh-pages
+          elif [ "$ls_remote_status" -eq 2 ]; then
+            git init gh-pages
+            git -C gh-pages checkout --orphan gh-pages
+          else
+            echo "Could not query the gh-pages branch (git exit $ls_remote_status)" >&2
+            exit "$ls_remote_status"
+          fi
 
           find gh-pages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -R site/. gh-pages/
@@ -82,6 +93,4 @@ jobs:
           fi
 
           git -C gh-pages commit -m "Deploy docs"
-          git -C gh-pages push \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            gh-pages
+          git -C gh-pages push "$remote_url" gh-pages

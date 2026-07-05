@@ -34,6 +34,9 @@ class _CacheEntry:
     etag: str | None
     last_modified: str | None
     fresh_until: float | None
+    # Request-header values the response declared via ``Vary``; the entry is
+    # only reusable for requests sending the same values.
+    vary: tuple[tuple[str, str | None], ...] = ()
 
 
 def _parse_http_date(value: str | None) -> float | None:
@@ -78,10 +81,34 @@ def _storable_headers(headers: httpx.Headers) -> httpx.Headers:
     return stored
 
 
+def _vary_names(headers: httpx.Headers) -> tuple[str, ...] | None:
+    """Parsed ``Vary`` field names, or None when reuse is forbidden (``*``)."""
+
+    raw = headers.get("Vary")
+    if raw is None:
+        return ()
+    names = tuple(
+        stripped.lower() for name in raw.split(",") if (stripped := name.strip())
+    )
+    return None if "*" in names else names
+
+
+def _vary_request_values(
+    response_headers: httpx.Headers,
+    request: httpx.Request,
+) -> tuple[tuple[str, str | None], ...]:
+    names = _vary_names(response_headers) or ()
+    return tuple((name, request.headers.get(name)) for name in names)
+
+
+def _entry_matches_variant(entry: _CacheEntry, request: httpx.Request) -> bool:
+    return all(request.headers.get(name) == value for name, value in entry.vary)
+
+
 def _is_cacheable(headers: httpx.Headers, *, now: float) -> bool:
     if "no-store" in headers.get("Cache-Control", "").lower():
         return False
-    if headers.get("Vary") == "*":
+    if _vary_names(headers) is None:
         return False
     return (
         headers.get("ETag") is not None
@@ -125,6 +152,8 @@ class CachingTransport(httpx.AsyncBaseTransport):
         now = time.time()
         async with self._lock:
             entry = self._entries.get(key)
+        if entry is not None and not _entry_matches_variant(entry, request):
+            entry = None
 
         if (
             entry is not None
@@ -181,6 +210,12 @@ class CachingTransport(httpx.AsyncBaseTransport):
             or _freshness_lifetime(entry.headers, now=now, response_time=now)
             or entry.fresh_until
         )
+        if _vary_names(entry.headers) is None:
+            # A 304 widened Vary to "*": the entry is no longer reusable.
+            async with self._lock:
+                self._entries.pop(key, None)
+            return self._response_from_entry(entry, request)
+        entry.vary = _vary_request_values(entry.headers, request)
         async with self._lock:
             self._entries[key] = entry
         return self._response_from_entry(entry, request)
@@ -201,6 +236,7 @@ class CachingTransport(httpx.AsyncBaseTransport):
             etag=response.headers.get("ETag"),
             last_modified=response.headers.get("Last-Modified"),
             fresh_until=_freshness_lifetime(response.headers, now=now),
+            vary=_vary_request_values(response.headers, request),
         )
         async with self._lock:
             if key not in self._entries and len(self._entries) >= self._max_entries:

@@ -466,21 +466,32 @@ class OmniWeatherClient:
         if limit is None:
             return None
         today = utc_now().date()
-        consumed = await asyncio.to_thread(
-            self._quota_tracker.try_consume,
-            provider_id,
-            today,
-            limit,
-        )
-        if not consumed:
-            usage = await asyncio.to_thread(
-                self._quota_tracker.get_usage,
+        try:
+            consumed = await asyncio.to_thread(
+                self._quota_tracker.try_consume,
                 provider_id,
                 today,
+                limit,
             )
+        except (Exception,) as exc:  # noqa: B013
+            message = f"Quota tracking failed: {exc}"
+            self._emit_log(ProviderLogEvent(
+                provider=provider_id,
+                phase="error",
+                message=message,
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                error_code=ErrorCode.UNKNOWN,
+            ))
+            return self._provider_error(
+                provider_id,
+                ErrorCode.UNKNOWN,
+                message,
+                started_at,
+            )
+        if not consumed:
             message = (
                 f"Daily quota of {limit} requests is exhausted "
-                f"({usage} recorded for {today.isoformat()})."
+                f"for {today.isoformat()}."
             )
             self._emit_log(ProviderLogEvent(
                 provider=provider_id,

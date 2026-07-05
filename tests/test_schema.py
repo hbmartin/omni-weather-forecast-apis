@@ -99,6 +99,22 @@ def test_http_config_rejects_inverted_connection_bounds() -> None:
         HTTPConfig(max_connections=2, max_keepalive_connections=3)
 
 
+def test_retry_policy_clamps_unset_side_of_backoff_bounds() -> None:
+    only_max = RetryPolicy(max_backoff_ms=400)
+    assert only_max.initial_backoff_ms == 400
+
+    only_initial = RetryPolicy(initial_backoff_ms=10_000)
+    assert only_initial.max_backoff_ms == 10_000
+
+
+def test_http_config_clamps_unset_side_of_connection_bounds() -> None:
+    only_max = HTTPConfig(max_connections=5)
+    assert only_max.max_keepalive_connections == 5
+
+    only_keepalive = HTTPConfig(max_keepalive_connections=50)
+    assert only_keepalive.max_connections == 50
+
+
 def test_provider_enum_contains_expected_slug() -> None:
     assert ProviderId.OPEN_METEO.value == "open_meteo"
 

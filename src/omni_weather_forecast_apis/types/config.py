@@ -18,8 +18,16 @@ class RetryPolicy(BaseModel):
 
     @model_validator(mode="after")
     def _validate_backoff_bounds(self) -> Self:
-        if self.initial_backoff_ms > self.max_backoff_ms:
+        if self.initial_backoff_ms <= self.max_backoff_ms:
+            return self
+        # Only reject explicit conflicts; a default on the unset side must not
+        # invalidate a config that was valid before cross-field validation.
+        if {"initial_backoff_ms", "max_backoff_ms"} <= self.model_fields_set:
             raise ValueError("initial_backoff_ms must not exceed max_backoff_ms")
+        if "initial_backoff_ms" in self.model_fields_set:
+            self.max_backoff_ms = self.initial_backoff_ms
+        else:
+            self.initial_backoff_ms = self.max_backoff_ms
         return self
 
 
@@ -59,10 +67,18 @@ class HTTPConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_connection_bounds(self) -> Self:
-        if self.max_keepalive_connections > self.max_connections:
+        if self.max_keepalive_connections <= self.max_connections:
+            return self
+        # Only reject explicit conflicts; a default on the unset side must not
+        # invalidate a config that was valid before cross-field validation.
+        if {"max_connections", "max_keepalive_connections"} <= self.model_fields_set:
             raise ValueError(
                 "max_keepalive_connections must not exceed max_connections",
             )
+        if "max_keepalive_connections" in self.model_fields_set:
+            self.max_connections = self.max_keepalive_connections
+        else:
+            self.max_keepalive_connections = self.max_connections
         return self
 
 

@@ -53,6 +53,58 @@ async def test_fresh_response_served_without_second_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vary_header_partitions_cached_variants() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"variant": "a"},
+                {"Cache-Control": "max-age=3600", "Vary": "X-Api-Key"},
+            ),
+            _json_response(
+                {"variant": "b"},
+                {"Cache-Control": "max-age=3600", "Vary": "X-Api-Key"},
+            ),
+        ],
+    )
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        first = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-a"},
+        )
+        second = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-b"},
+        )
+        third = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-b"},
+        )
+
+    assert first.json() == {"variant": "a"}
+    assert second.json() == {"variant": "b"}
+    assert third.json() == {"variant": "b"}
+    assert third.extensions.get("omni_weather_cache") == "hit"
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_vary_star_in_list_is_uncacheable() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"value": 1},
+                {"Cache-Control": "max-age=3600", "Vary": "Accept, *"},
+            ),
+        ],
+    )
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        await client.get("https://example.test/data")
+        await client.get("https://example.test/data")
+
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_stale_response_revalidated_with_conditional_headers() -> None:
     inner = RecordingTransport(
         [

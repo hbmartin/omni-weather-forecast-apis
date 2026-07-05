@@ -164,3 +164,59 @@ def test_client_enforces_daily_quota(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert statuses == ["success", "success", ErrorCode.QUOTA_EXCEEDED.value]
     assert instance.calls == 2
+
+
+class FailingTracker:
+    """Tracker whose backing store is unavailable."""
+
+    def get_usage(self, provider: ProviderId, day: date) -> int:
+        del provider, day
+        return 0
+
+    def record_request(self, provider: ProviderId, day: date) -> None:
+        del provider, day
+
+    def try_consume(self, provider: ProviderId, day: date, limit: int) -> bool:
+        del provider, day, limit
+        raise RuntimeError("database is locked")
+
+
+def test_quota_tracker_failure_is_contained_per_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instance = CountingInstance()
+    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
+    monkeypatch.setattr(
+        "omni_weather_forecast_apis.client.get_plugin_registry",
+        lambda: registry,
+    )
+    client = OmniWeatherClient(
+        OmniWeatherConfig(
+            providers=[
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPEN_METEO,
+                    config={},
+                    max_requests_per_day=2,
+                ),
+            ],
+            retry=RetryPolicy(max_attempts=1),
+        ),
+        quota_tracker=FailingTracker(),
+    )
+
+    async def scenario() -> Any:
+        await client.initialize()
+        try:
+            return await client.forecast(
+                ForecastRequest(latitude=34, longitude=-118),
+            )
+        finally:
+            await client.close()
+
+    response = asyncio.run(scenario())
+
+    result = response.results[0]
+    assert result.status == "error"
+    assert result.error.code == ErrorCode.UNKNOWN
+    assert "Quota tracking failed" in result.error.message
+    assert instance.calls == 0
