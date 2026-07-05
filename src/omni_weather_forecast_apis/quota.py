@@ -25,6 +25,10 @@ class QuotaTracker(Protocol):
         """Record one request for a provider on a day."""
         ...
 
+    def try_consume(self, provider: ProviderId, day: date, limit: int) -> bool:
+        """Record one request only when the provider has remaining quota."""
+        ...
+
 
 class InMemoryQuotaTracker:
     """Process-local quota tracker; state is lost when the process exits."""

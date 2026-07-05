@@ -131,7 +131,7 @@ max_requests_per_day = 900
 
 ### Retries
 
-Transient failures — network errors, timeouts, and HTTP 429 rate limits — are retried with exponential backoff and jitter. A server-provided `Retry-After` header is honored up to 60 seconds; non-transient failures such as auth errors are never retried. Set a per-provider `retry` table on a registration to override the global policy.
+Transient failures — network errors, timeouts, and HTTP 429 rate limits — are retried with exponential backoff and jitter. A server-provided `Retry-After` header is honored; retries are abandoned when it exceeds 60 seconds. Non-transient failures such as auth errors are never retried. Set a per-provider `retry` table on a registration to override the global policy.
 
 ### HTTP caching and connection limits
 
@@ -139,7 +139,7 @@ The shared HTTP client uses explicit connection pool limits and a connect timeou
 
 ### Daily quotas
 
-Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt (including retries) counts one request. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
+Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt (including retries) counts one request. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation with atomic `try_consume` support (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
 
 ### API keys from environment variables
 

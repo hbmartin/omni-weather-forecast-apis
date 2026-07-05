@@ -61,8 +61,8 @@ max_requests_per_day = 900
 
 Transient failures — network errors, timeouts, and HTTP 429 rate limits —
 are retried with exponential backoff and jitter. A server-provided
-`Retry-After` header is honored up to 60 seconds. Non-transient failures such
-as auth errors are never retried.
+`Retry-After` header is honored; retries are abandoned when it exceeds 60
+seconds. Non-transient failures such as auth errors are never retried.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -120,9 +120,9 @@ max_requests_per_day = 900
 Each fetch attempt (including retries) counts one request. The CLI persists
 counts in the SQLite database (`provider_quota_usage` table) so limits
 survive across runs; library users can pass any
-`omni_weather_forecast_apis.quota.QuotaTracker` implementation to the
-client (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is
-bundled).
+`omni_weather_forecast_apis.quota.QuotaTracker` implementation with atomic
+`try_consume` support to the client (`InMemoryQuotaTracker` is the default,
+`SqliteQuotaTracker` is bundled).
 
 ## Environment variable placeholders
 
