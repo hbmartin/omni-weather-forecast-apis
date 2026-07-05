@@ -135,7 +135,7 @@ Transient failures — network errors, timeouts, and HTTP 429 rate limits — ar
 
 ### HTTP caching and connection limits
 
-The shared HTTP client uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. Requests carrying `Authorization` or `Cookie` headers bypass the shared cache. MET Norway's terms of service require conditional requests and the NWS strongly encourages caching. Disable with `cache_enabled = false` under `[http]`.
+The shared HTTP client uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. Responses that declare `Vary` are only reused for requests sending the same values for the named headers (`Vary: *` is never cached). Requests carrying `Authorization` or `Cookie` headers bypass the shared cache. MET Norway's terms of service require conditional requests and the NWS strongly encourages caching. Disable with `cache_enabled = false` under `[http]`.
 
 ### Daily quotas
 

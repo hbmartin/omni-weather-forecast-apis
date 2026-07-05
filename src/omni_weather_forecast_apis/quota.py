@@ -12,6 +12,17 @@ from typing import Protocol, runtime_checkable
 
 from omni_weather_forecast_apis.types import ProviderId
 
+_SELECT_USAGE_SQL = """
+    SELECT request_count FROM provider_quota_usage
+    WHERE provider = ? AND day = ?
+"""
+_INCREMENT_USAGE_SQL = """
+    INSERT INTO provider_quota_usage (provider, day, request_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT (provider, day)
+    DO UPDATE SET request_count = request_count + 1
+"""
+
 
 @runtime_checkable
 class QuotaTracker(Protocol):
@@ -65,14 +76,12 @@ class SqliteQuotaTracker:
 
     def __init__(self, database_path: str | Path) -> None:
         self._database_path = database_path
+        self._schema_ready = False
 
     def get_usage(self, provider: ProviderId, day: date) -> int:
         with closing(self._connect()) as connection:
             row = connection.execute(
-                """
-                SELECT request_count FROM provider_quota_usage
-                WHERE provider = ? AND day = ?
-                """,
+                _SELECT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             ).fetchone()
         return int(row[0]) if row is not None else 0
@@ -80,12 +89,7 @@ class SqliteQuotaTracker:
     def record_request(self, provider: ProviderId, day: date) -> None:
         with closing(self._connect()) as connection:
             connection.execute(
-                """
-                INSERT INTO provider_quota_usage (provider, day, request_count)
-                VALUES (?, ?, 1)
-                ON CONFLICT (provider, day)
-                DO UPDATE SET request_count = request_count + 1
-                """,
+                _INCREMENT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             )
             connection.commit()
@@ -96,10 +100,7 @@ class SqliteQuotaTracker:
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                """
-                SELECT request_count FROM provider_quota_usage
-                WHERE provider = ? AND day = ?
-                """,
+                _SELECT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             ).fetchone()
             usage = int(row[0]) if row is not None else 0
@@ -107,12 +108,7 @@ class SqliteQuotaTracker:
                 connection.rollback()
                 return False
             connection.execute(
-                """
-                INSERT INTO provider_quota_usage (provider, day, request_count)
-                VALUES (?, ?, 1)
-                ON CONFLICT (provider, day)
-                DO UPDATE SET request_count = request_count + 1
-                """,
+                _INCREMENT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             )
             connection.commit()
@@ -121,17 +117,19 @@ class SqliteQuotaTracker:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._database_path, timeout=10.0)
         connection.execute("PRAGMA busy_timeout = 10000")
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS provider_quota_usage (
-                provider TEXT NOT NULL,
-                day TEXT NOT NULL,
-                request_count INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (provider, day)
+        if not self._schema_ready:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS provider_quota_usage (
+                    provider TEXT NOT NULL,
+                    day TEXT NOT NULL,
+                    request_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (provider, day)
+                )
+                """,
             )
-            """,
-        )
-        connection.commit()
+            connection.commit()
+            self._schema_ready = True
         return connection
 
 

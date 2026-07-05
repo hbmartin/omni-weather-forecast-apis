@@ -457,7 +457,7 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             return None
         try:
             return date(year, month, day)
-        except ValueError:
+        except (ValueError,):  # noqa: B013
             return None
 
 

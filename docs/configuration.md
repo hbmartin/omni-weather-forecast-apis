@@ -72,6 +72,10 @@ seconds. Non-transient failures such as auth errors are never retried.
 | `backoff_multiplier` | `2.0` | Exponential growth factor |
 | `jitter` | `true` | Randomize each delay to avoid thundering herds |
 
+Setting only one of `initial_backoff_ms` / `max_backoff_ms` adjusts the
+other's default to keep `initial <= max`; setting both to conflicting
+values is a validation error.
+
 A per-provider `retry` table on a registration overrides the global policy.
 
 ## HTTP client — `[http]`
@@ -84,11 +88,17 @@ A per-provider `retry` table on a registration overrides the global policy.
 | `cache_enabled` | `true` | Conditional-request response cache |
 | `cache_max_entries` | `256` | In-memory cache size |
 
+Setting only one of `max_connections` / `max_keepalive_connections` adjusts
+the other's default to keep `keepalive <= connections`; setting both to
+conflicting values is a validation error.
+
 The cache is standards-aware: responses with `Cache-Control: max-age` or
 `Expires` are served from memory while fresh, and stale responses carrying
 `ETag`/`Last-Modified` validators are revalidated with conditional requests
-and reused on `304 Not Modified`. MET Norway's terms of service require this
-behavior and the NWS strongly encourages it. Requests carrying
+and reused on `304 Not Modified`. Responses that declare `Vary` are only
+reused for requests sending the same values for the named headers, and
+`Vary: *` responses are never cached. MET Norway's terms of service require
+this behavior and the NWS strongly encourages it. Requests carrying
 `Authorization` or `Cookie` headers bypass the shared cache.
 
 ## Provider registrations — `[[providers]]`
