@@ -804,6 +804,9 @@ seconds. Non-transient failures such as auth errors are never retried.</p>
 </tr>
 </tbody>
 </table>
+<p>Setting only one of <code>initial_backoff_ms</code> / <code>max_backoff_ms</code> adjusts the
+other's default to keep <code>initial &lt;= max</code>; setting both to conflicting
+values is a validation error.</p>
 <p>A per-provider <code>retry</code> table on a registration overrides the global policy.</p>
 <h2 id="http-client-http">HTTP client — <code>[http]</code><a class="headerlink" href="#http-client-http" title="Permanent link">&para;</a></h2>
 <table>
@@ -842,11 +845,16 @@ seconds. Non-transient failures such as auth errors are never retried.</p>
 </tr>
 </tbody>
 </table>
+<p>Setting only one of <code>max_connections</code> / <code>max_keepalive_connections</code> adjusts
+the other's default to keep <code>keepalive &lt;= connections</code>; setting both to
+conflicting values is a validation error.</p>
 <p>The cache is standards-aware: responses with <code>Cache-Control: max-age</code> or
 <code>Expires</code> are served from memory while fresh, and stale responses carrying
 <code>ETag</code>/<code>Last-Modified</code> validators are revalidated with conditional requests
-and reused on <code>304 Not Modified</code>. MET Norway's terms of service require this
-behavior and the NWS strongly encourages it. Requests carrying
+and reused on <code>304 Not Modified</code>. Responses that declare <code>Vary</code> are only
+reused for requests sending the same values for the named headers, and
+<code>Vary: *</code> responses are never cached. MET Norway's terms of service require
+this behavior and the NWS strongly encourages it. Requests carrying
 <code>Authorization</code> or <code>Cookie</code> headers bypass the shared cache.</p>
 <h2 id="provider-registrations-providers">Provider registrations — <code>[[providers]]</code><a class="headerlink" href="#provider-registrations-providers" title="Permanent link">&para;</a></h2>
 <table>
