@@ -131,11 +131,11 @@ max_requests_per_day = 900
 
 ### Retries
 
-Transient failures — network errors, timeouts, and HTTP 429 rate limits — are retried with exponential backoff and jitter. A server-provided `Retry-After` header is honored (retries are abandoned when it exceeds 60 seconds); non-transient failures such as auth errors are never retried. Set a per-provider `retry` table on a registration to override the global policy.
+Transient failures — network errors, timeouts, and HTTP 429 rate limits — are retried with exponential backoff and jitter. A server-provided `Retry-After` header is honored up to 60 seconds; non-transient failures such as auth errors are never retried. Set a per-provider `retry` table on a registration to override the global policy.
 
 ### HTTP caching and connection limits
 
-The shared HTTP client uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. MET Norway's terms of service require this behavior and the NWS strongly encourages it. Disable with `cache_enabled = false` under `[http]`.
+The shared HTTP client uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. Requests carrying `Authorization` or `Cookie` headers bypass the shared cache. MET Norway's terms of service require conditional requests and the NWS strongly encourages caching. Disable with `cache_enabled = false` under `[http]`.
 
 ### Daily quotas
 
@@ -258,7 +258,7 @@ uv run omni-weather \
 | `--language LANG` | No | config value | Provider language preference |
 | `--include-raw` | No | config value | Persist raw provider payloads |
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
-| `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database |
+| `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database, or `./omni-weather.log` when SQLite is omitted |
 
 **Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
 
@@ -275,7 +275,7 @@ response.summary
 
 `ProviderError` includes a typed `error.code` (`AUTH_FAILED`, `RATE_LIMITED`, `QUOTA_EXCEEDED`, `TIMEOUT`, `NETWORK`, `PARSE`, `NOT_AVAILABLE`, `UNKNOWN`), a human-readable `error.message`, the `error.http_status` when available, and `error.latency_ms` for how long the request ran before failing.
 
-The CLI reflects this in exit codes: `0` means all providers succeeded, `1` means at least one failed (but partial results are still written to SQLite).
+The CLI reflects this in exit codes: `0` means all providers succeeded, `1` means at least one failed (but partial results are still written to SQLite), and `2` means invalid arguments or a configuration/load error.
 
 ## Normalized Schema
 

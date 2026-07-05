@@ -1,0 +1,34 @@
+rules:
+  - id: github-actions-pin-actions-to-full-sha
+    languages:
+      - yaml
+    severity: ERROR
+    paths:
+      include:
+        - .github/workflows/*.yml
+        - .github/workflows/*.yaml
+    message: Pin GitHub Actions to full 40-character commit SHAs.
+    patterns:
+      - pattern-regex: 'uses:\s+[^@\s]+@(?![0-9a-f]{40}\b)[^\s#]+'
+      - pattern-not-regex: 'uses:\s+\./'
+
+  - id: github-actions-avoid-top-level-contents-write
+    languages:
+      - yaml
+    severity: ERROR
+    paths:
+      include:
+        - .github/workflows/*.yml
+        - .github/workflows/*.yaml
+    message: Scope contents: write to the narrow deploy job instead of workflow-level permissions.
+    pattern-regex: '(?m)^permissions:\s*\n(?:\s+[a-z-]+:\s+\w+\s*\n)*\s+contents:\s+write\b'
+
+  - id: python-http-cache-key-uses-more-than-url
+    languages:
+      - python
+    severity: WARNING
+    paths:
+      include:
+        - src/**/*.py
+    message: Include representation-affecting headers or bypass sensitive requests; URL-only HTTP cache keys can mix variants.
+    pattern: $KEY = str($REQUEST.url)

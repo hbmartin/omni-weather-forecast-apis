@@ -57,7 +57,7 @@ GOOGLE_CONDITION_MAP: Final[dict[str, WeatherCondition]] = {
     "PARTLY_CLOUDY": WeatherCondition.PARTLY_CLOUDY,
     "MOSTLY_CLOUDY": WeatherCondition.MOSTLY_CLOUDY,
     "CLOUDY": WeatherCondition.OVERCAST,
-    "WINDY": WeatherCondition.CLEAR,
+    "WINDY": WeatherCondition.UNKNOWN,
     "WIND_AND_RAIN": WeatherCondition.RAIN,
     "LIGHT_RAIN_SHOWERS": WeatherCondition.LIGHT_RAIN,
     "CHANCE_OF_SHOWERS": WeatherCondition.LIGHT_RAIN,
@@ -455,7 +455,10 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             or not isinstance(day, int)
         ):
             return None
-        return date(year, month, day)
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
 
 
 def _first_time(values: Any) -> str | None:

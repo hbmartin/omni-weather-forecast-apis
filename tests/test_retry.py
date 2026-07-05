@@ -12,6 +12,7 @@ from omni_weather_forecast_apis.client import (
     OmniWeatherClient,
     _compute_backoff_seconds,
 )
+from omni_weather_forecast_apis.plugins._base import capped_retry_after
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     ForecastRequest,
@@ -204,6 +205,10 @@ def test_backoff_gives_up_on_excessive_retry_after() -> None:
     delay = _compute_backoff_seconds(policy, attempt=1, retry_after_seconds=3600)
 
     assert delay is None
+
+
+def test_provider_retry_after_is_capped_before_client_backoff() -> None:
+    assert capped_retry_after("3600") == 60.0
 
 
 def test_backoff_grows_exponentially_and_caps() -> None:

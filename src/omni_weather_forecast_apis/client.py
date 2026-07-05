@@ -5,6 +5,7 @@ import inspect
 import logging
 import random
 import time
+from datetime import date
 from typing import Any
 
 import httpx
@@ -301,7 +302,7 @@ class OmniWeatherClient:
 
         attempt = 1
         while True:
-            quota_error = self._quota_error_or_record(
+            quota_error = await self._quota_error_or_record(
                 provider_id,
                 registration,
                 started_at,
@@ -455,7 +456,7 @@ class OmniWeatherClient:
                     raw=result.raw if request.include_raw else None,
                 ), None
 
-    def _quota_error_or_record(
+    async def _quota_error_or_record(
         self,
         provider_id: ProviderId,
         registration: ProviderRegistration,
@@ -465,8 +466,19 @@ class OmniWeatherClient:
         if limit is None:
             return None
         today = utc_now().date()
-        usage = self._quota_tracker.get_usage(provider_id, today)
-        if usage >= limit:
+        consumed = await asyncio.to_thread(
+            _try_consume_quota,
+            self._quota_tracker,
+            provider_id,
+            today,
+            limit,
+        )
+        if not consumed:
+            usage = await asyncio.to_thread(
+                self._quota_tracker.get_usage,
+                provider_id,
+                today,
+            )
             message = (
                 f"Daily quota of {limit} requests is exhausted "
                 f"({usage} recorded for {today.isoformat()})."
@@ -484,7 +496,6 @@ class OmniWeatherClient:
                 message,
                 started_at,
             )
-        self._quota_tracker.record_request(provider_id, today)
         return None
 
     def _resolve_target_providers(self, request: ForecastRequest) -> list[ProviderId]:
@@ -595,6 +606,23 @@ def _compute_backoff_seconds(
             return None
         backoff_seconds = max(backoff_seconds, retry_after_seconds)
     return backoff_seconds
+
+
+def _try_consume_quota(
+    tracker: QuotaTracker,
+    provider_id: ProviderId,
+    day: date,
+    limit: int,
+) -> bool:
+    consume = getattr(tracker, "try_consume", None)
+    if callable(consume):
+        return bool(consume(provider_id, day, limit))
+
+    usage = tracker.get_usage(provider_id, day)
+    if usage >= limit:
+        return False
+    tracker.record_request(provider_id, day)
+    return True
 
 
 def _exception_error_code(exc: Exception) -> ErrorCode:

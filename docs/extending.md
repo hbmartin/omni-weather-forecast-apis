@@ -21,10 +21,11 @@ async def record_for_verification(response: ForecastResponse) -> None:
         ...
 
 
-client = await create_omni_weather(
+async with await create_omni_weather(
     config,
     response_hooks=[record_for_verification],
-)
+) as client:
+    ...
 ```
 
 This is the natural seam for an **ensemble package** (compute a consensus

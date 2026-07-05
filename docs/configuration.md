@@ -61,8 +61,8 @@ max_requests_per_day = 900
 
 Transient failures — network errors, timeouts, and HTTP 429 rate limits —
 are retried with exponential backoff and jitter. A server-provided
-`Retry-After` header is honored (retries are abandoned when it exceeds 60
-seconds). Non-transient failures such as auth errors are never retried.
+`Retry-After` header is honored up to 60 seconds. Non-transient failures such
+as auth errors are never retried.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -88,7 +88,8 @@ The cache is standards-aware: responses with `Cache-Control: max-age` or
 `Expires` are served from memory while fresh, and stale responses carrying
 `ETag`/`Last-Modified` validators are revalidated with conditional requests
 and reused on `304 Not Modified`. MET Norway's terms of service require this
-behavior and the NWS strongly encourages it.
+behavior and the NWS strongly encourages it. Requests carrying
+`Authorization` or `Cookie` headers bypass the shared cache.
 
 ## Provider registrations — `[[providers]]`
 

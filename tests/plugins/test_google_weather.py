@@ -155,6 +155,27 @@ async def test_fetch_hourly_normalizes_units_and_conditions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_hourly_maps_windy_to_unknown() -> None:
+    windy = _hour_entry("2026-07-03T15:00:00Z", 25.9)
+    windy["weatherCondition"]["type"] = "WINDY"
+    windy["weatherCondition"]["description"]["text"] = "Windy"
+    payload = {
+        "forecastHours": [windy],
+        "timeZone": {"id": "America/Los_Angeles"},
+    }
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await _instance().fetch_forecast(
+            _params([Granularity.HOURLY]),
+            client,
+        )
+
+    assert isinstance(result, PluginFetchSuccess)
+    assert result.forecasts[0].hourly[0].condition == WeatherCondition.UNKNOWN
+
+
+@pytest.mark.asyncio
 async def test_fetch_hourly_follows_pagination() -> None:
     pages = {
         None: {
@@ -217,6 +238,26 @@ async def test_fetch_daily_aggregates_day_and_night_parts() -> None:
     assert day.moon_phase == 0.5
     assert day.sunrise is not None
     assert day.moonrise is not None
+
+
+@pytest.mark.asyncio
+async def test_fetch_daily_skips_malformed_display_date() -> None:
+    malformed_day = _day_entry()
+    malformed_day["displayDate"] = {"year": 2026, "month": 13, "day": 3}
+    payload = {
+        "forecastDays": [malformed_day],
+        "timeZone": {"id": "America/Los_Angeles"},
+    }
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await _instance().fetch_forecast(
+            _params([Granularity.DAILY]),
+            client,
+        )
+
+    assert isinstance(result, PluginFetchSuccess)
+    assert result.forecasts[0].daily == []
 
 
 @pytest.mark.asyncio

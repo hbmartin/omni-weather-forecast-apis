@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -95,6 +96,23 @@ def test_sqlite_tracker_persists_across_instances(tmp_path: Path) -> None:
     second = SqliteQuotaTracker(database)
     assert second.get_usage(ProviderId.OPENWEATHER, day) == 2
     assert isinstance(second, QuotaTracker)
+
+
+def test_sqlite_tracker_try_consume_is_atomic(tmp_path: Path) -> None:
+    tracker = SqliteQuotaTracker(tmp_path / "quota.sqlite")
+    day = date(2026, 7, 3)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(
+            executor.map(
+                lambda _item: tracker.try_consume(ProviderId.OPENWEATHER, day, 3),
+                range(12),
+            ),
+        )
+
+    assert results.count(True) == 3
+    assert results.count(False) == 9
+    assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 3
 
 
 def test_client_enforces_daily_quota(monkeypatch: pytest.MonkeyPatch) -> None:
