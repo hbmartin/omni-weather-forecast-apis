@@ -643,11 +643,14 @@ may be sync or async; failures are logged and never break the forecast.</p>
         <span class="o">...</span>
 
 
-<span class="k">async</span> <span class="k">with</span> <span class="k">await</span> <span class="n">create_omni_weather</span><span class="p">(</span>
+<span class="n">client</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_omni_weather</span><span class="p">(</span>
     <span class="n">config</span><span class="p">,</span>
     <span class="n">response_hooks</span><span class="o">=</span><span class="p">[</span><span class="n">record_for_verification</span><span class="p">],</span>
-<span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+<span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
     <span class="o">...</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 </code></pre></div>
 <p>This is the natural seam for an <strong>ensemble package</strong> (compute a consensus
 from <code>response.results</code> and publish it) or a <strong>verification package</strong>
@@ -678,8 +681,9 @@ ensemble project can use it as a training feature matrix and weight
 providers accordingly.</p>
 <h2 id="quota-trackers">Quota trackers<a class="headerlink" href="#quota-trackers" title="Permanent link">&para;</a></h2>
 <p>The daily-quota mechanism is also pluggable: implement the <code>QuotaTracker</code>
-protocol (<code>get_usage</code> / <code>record_request</code>) to back quota accounting with your
-own store (Redis, Postgres, ...) and pass it to the client:</p>
+protocol (<code>get_usage</code> / <code>record_request</code> / <code>try_consume</code>) to back quota
+accounting with your own store (Redis, Postgres, ...) and pass it to the
+client:</p>
 <div class="highlight"><pre><span></span><code><span class="n">client</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_omni_weather</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">quota_tracker</span><span class="o">=</span><span class="n">my_tracker</span><span class="p">)</span>
 </code></pre></div>
 
