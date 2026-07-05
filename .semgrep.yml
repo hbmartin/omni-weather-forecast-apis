@@ -11,6 +11,7 @@ rules:
     patterns:
       - pattern-regex: 'uses:\s+[^@\s]+@(?![0-9a-f]{40}\b)[^\s#]+'
       - pattern-not-regex: 'uses:\s+\./'
+      - pattern-not-regex: 'uses:\s+docker://'
 
   - id: github-actions-avoid-top-level-contents-write
     languages:

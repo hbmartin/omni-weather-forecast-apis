@@ -83,6 +83,46 @@ async def test_stale_response_revalidated_with_conditional_headers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_304_revalidation_refreshes_future_validators() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"value": 1},
+                {
+                    "Cache-Control": "max-age=0",
+                    "ETag": '"abc"',
+                    "Last-Modified": "Wed, 01 Jul 2026 00:00:00 GMT",
+                },
+            ),
+            httpx.Response(
+                304,
+                headers={
+                    "Cache-Control": "max-age=0",
+                    "ETag": '"def"',
+                    "Last-Modified": "Thu, 02 Jul 2026 00:00:00 GMT",
+                },
+            ),
+            httpx.Response(304, headers={"Cache-Control": "max-age=60"}),
+        ],
+    )
+
+    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+        await client.get("https://example.test/data")
+        await client.get("https://example.test/data")
+        third = await client.get("https://example.test/data")
+
+    assert third.json() == {"value": 1}
+    assert inner.requests[1].headers["If-None-Match"] == '"abc"'
+    assert inner.requests[1].headers["If-Modified-Since"] == (
+        "Wed, 01 Jul 2026 00:00:00 GMT"
+    )
+    assert inner.requests[2].headers["If-None-Match"] == '"def"'
+    assert inner.requests[2].headers["If-Modified-Since"] == (
+        "Thu, 02 Jul 2026 00:00:00 GMT"
+    )
+
+
+@pytest.mark.asyncio
 async def test_304_without_freshness_reuses_stored_cache_control(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

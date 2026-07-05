@@ -21,11 +21,14 @@ async def record_for_verification(response: ForecastResponse) -> None:
         ...
 
 
-async with await create_omni_weather(
+client = await create_omni_weather(
     config,
     response_hooks=[record_for_verification],
-) as client:
+)
+try:
     ...
+finally:
+    await client.close()
 ```
 
 This is the natural seam for an **ensemble package** (compute a consensus
@@ -69,8 +72,9 @@ providers accordingly.
 ## Quota trackers
 
 The daily-quota mechanism is also pluggable: implement the `QuotaTracker`
-protocol (`get_usage` / `record_request`) to back quota accounting with your
-own store (Redis, Postgres, ...) and pass it to the client:
+protocol (`get_usage` / `record_request` / `try_consume`) to back quota
+accounting with your own store (Redis, Postgres, ...) and pass it to the
+client:
 
 ```python
 client = await create_omni_weather(config, quota_tracker=my_tracker)

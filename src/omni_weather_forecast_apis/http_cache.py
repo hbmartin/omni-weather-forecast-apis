@@ -172,6 +172,10 @@ class CachingTransport(httpx.AsyncBaseTransport):
         await response.aread()
         await response.aclose()
         entry.headers.update(_storable_headers(response.headers))
+        if (etag := response.headers.get("ETag")) is not None:
+            entry.etag = etag
+        if (last_modified := response.headers.get("Last-Modified")) is not None:
+            entry.last_modified = last_modified
         entry.fresh_until = (
             _freshness_lifetime(response.headers, now=now)
             or _freshness_lifetime(entry.headers, now=now, response_time=now)

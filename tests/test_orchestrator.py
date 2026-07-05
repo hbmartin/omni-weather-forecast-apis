@@ -7,7 +7,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from omni_weather_forecast_apis.client import OmniWeatherClient
+from omni_weather_forecast_apis.client import OmniWeatherClient, create_omni_weather
 from omni_weather_forecast_apis.plugins._base import build_source_forecast
 from omni_weather_forecast_apis.types import (
     ErrorCode,
@@ -86,6 +86,7 @@ class DummyPlugin:
     def __init__(self, provider_id: ProviderId, instance: Any) -> None:
         self._provider_id = provider_id
         self._instance = instance
+        self.initialize_calls = 0
 
     @property
     def id(self) -> ProviderId:
@@ -100,6 +101,7 @@ class DummyPlugin:
 
     async def initialize(self, config: DummyConfig) -> Any:
         del config
+        self.initialize_calls += 1
         return self._instance
 
 
@@ -151,6 +153,32 @@ def test_forecast_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> No
     assert succeeded == 1
     assert failed == 1
     assert timezone_name == "UTC"
+
+
+def test_initialized_client_context_manager_does_not_reinitialize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance())
+    monkeypatch.setattr(
+        "omni_weather_forecast_apis.client.get_plugin_registry",
+        lambda: {ProviderId.OPEN_METEO: plugin},
+    )
+    config = OmniWeatherConfig(
+        providers=[
+            ProviderRegistration(
+                plugin_id=ProviderId.OPEN_METEO,
+                config={"token": "a"},
+            ),
+        ],
+    )
+
+    async def scenario() -> None:
+        async with await create_omni_weather(config):
+            pass
+
+    asyncio.run(scenario())
+
+    assert plugin.initialize_calls == 1
 
 
 def test_forecast_wraps_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:

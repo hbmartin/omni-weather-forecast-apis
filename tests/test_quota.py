@@ -85,6 +85,16 @@ def test_in_memory_tracker_counts_per_provider_and_day() -> None:
     assert tracker.get_usage(ProviderId.OPENWEATHER, other_day) == 0
 
 
+def test_in_memory_tracker_try_consume_respects_limit() -> None:
+    tracker = InMemoryQuotaTracker()
+    day = date(2026, 7, 3)
+
+    assert tracker.try_consume(ProviderId.OPENWEATHER, day, 2)
+    assert tracker.try_consume(ProviderId.OPENWEATHER, day, 2)
+    assert not tracker.try_consume(ProviderId.OPENWEATHER, day, 2)
+    assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 2
+
+
 def test_sqlite_tracker_persists_across_instances(tmp_path: Path) -> None:
     database = tmp_path / "quota.sqlite"
     day = date(2026, 7, 3)

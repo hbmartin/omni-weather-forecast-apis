@@ -5,7 +5,6 @@ import inspect
 import logging
 import random
 import time
-from datetime import date
 from typing import Any
 
 import httpx
@@ -149,7 +148,8 @@ class OmniWeatherClient:
             self._http_client = None
 
     async def __aenter__(self) -> OmniWeatherClient:
-        await self.initialize()
+        if self._http_client is None:
+            await self.initialize()
         return self
 
     async def __aexit__(self, *exc: object) -> None:
@@ -467,8 +467,7 @@ class OmniWeatherClient:
             return None
         today = utc_now().date()
         consumed = await asyncio.to_thread(
-            _try_consume_quota,
-            self._quota_tracker,
+            self._quota_tracker.try_consume,
             provider_id,
             today,
             limit,
@@ -606,23 +605,6 @@ def _compute_backoff_seconds(
             return None
         backoff_seconds = max(backoff_seconds, retry_after_seconds)
     return backoff_seconds
-
-
-def _try_consume_quota(
-    tracker: QuotaTracker,
-    provider_id: ProviderId,
-    day: date,
-    limit: int,
-) -> bool:
-    consume = getattr(tracker, "try_consume", None)
-    if callable(consume):
-        return bool(consume(provider_id, day, limit))
-
-    usage = tracker.get_usage(provider_id, day)
-    if usage >= limit:
-        return False
-    tracker.record_request(provider_id, day)
-    return True
 
 
 def _exception_error_code(exc: Exception) -> ErrorCode:
