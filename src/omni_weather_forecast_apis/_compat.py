@@ -10,6 +10,8 @@ Must be imported before any Pydantic models are defined.
 import inspect
 import sys
 import typing
+from collections.abc import Callable
+from typing import Any, cast
 
 
 def _patch_typing_eval_type() -> None:
@@ -17,9 +19,10 @@ def _patch_typing_eval_type() -> None:
     if sys.version_info < (3, 14):
         return
 
-    real_eval_type = getattr(typing, "_eval_type", None)
-    if real_eval_type is None:
+    eval_type_attr = getattr(typing, "_eval_type", None)
+    if eval_type_attr is None:
         return
+    real_eval_type = cast("Callable[..., Any]", eval_type_attr)
     real_params = set(inspect.signature(real_eval_type).parameters)
 
     if "prefer_fwd_module" in real_params:

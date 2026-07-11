@@ -28,7 +28,7 @@ jobs:
           version: "latest"
 
       - name: Set up Python
-        run: uv python install 3.14
+        run: uv python install 3.13
 
       - name: Install docs dependencies
         run: uv sync --group docs

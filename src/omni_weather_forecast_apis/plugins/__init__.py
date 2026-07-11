@@ -51,12 +51,12 @@ class _RegisteredPluginsView(Sequence[WeatherPlugin]):
     @overload
     def __getitem__(
         self,
-        index: slice[int | None],
+        index: slice,
     ) -> Sequence[WeatherPlugin]: ...
 
     def __getitem__(
         self,
-        index: int | slice[int | None],
+        index: int | slice,
     ) -> WeatherPlugin | Sequence[WeatherPlugin]:
         return _registered_plugins_snapshot()[index]
 

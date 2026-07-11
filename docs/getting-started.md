@@ -6,7 +6,7 @@
 uv sync
 ```
 
-Requires Python 3.14+.
+Requires Python 3.13+.
 
 ## Minimal CLI run
 
