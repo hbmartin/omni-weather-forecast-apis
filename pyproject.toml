@@ -40,6 +40,12 @@ dependencies = [
     "pydantic>=2.12.5",
 ]
 
+[project.optional-dependencies]
+cli = [
+    "loguru>=0.7.3",
+    "rich>=14.3.3",
+]
+
 [project.scripts]
 omni-weather = "omni_weather_forecast_apis.cli:main"
 
@@ -53,10 +59,6 @@ requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-cli = [
-    "loguru>=0.7.3",
-    "rich>=14.3.3",
-]
 dev = [
     "black>=26.3.0",
     "codecov>=2.1.13",

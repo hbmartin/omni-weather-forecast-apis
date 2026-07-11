@@ -583,11 +583,13 @@ dependencies = [
     { name = "pydantic" },
 ]
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 cli = [
     { name = "loguru" },
     { name = "rich" },
 ]
+
+[package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "codecov" },
@@ -607,14 +609,13 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "loguru", marker = "extra == 'cli'", specifier = ">=0.7.3" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=14.3.3" },
 ]
+provides-extras = ["cli"]
 
 [package.metadata.requires-dev]
-cli = [
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "rich", specifier = ">=14.3.3" },
-]
 dev = [
     { name = "black", specifier = ">=26.3.0" },
     { name = "codecov", specifier = ">=2.1.13" },

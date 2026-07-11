@@ -69,8 +69,18 @@ uv run omni-weather \
 ## Installation
 
 ```bash
+# As a library dependency
+pip install omni-weather-forecast-apis
+
+# With CLI niceties — rich tables and loguru debug logging
+pip install "omni-weather-forecast-apis[cli]"
+
+# For development in this repository
 uv sync
 ```
+
+The CLI works without the `cli` extra: table output falls back to plain
+text and `--debug` falls back to stdlib logging.
 
 ## How It Works
 

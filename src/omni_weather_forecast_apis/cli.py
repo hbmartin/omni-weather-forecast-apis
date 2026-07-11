@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib
+import logging
 import sys
 import tomllib
 from pathlib import Path
@@ -151,11 +152,21 @@ def _resolve_optional(cli_value: T | None, config_value: T) -> T:
 
 
 def _setup_debug_logging(log_path: Path) -> LogHook:
-    """Configure loguru for debug output to stderr and a log file.
+    """Configure debug output to stderr and a log file.
 
-    Returns a LogHook callback that logs ProviderLogEvents via loguru.
+    Prefers loguru (installed via the ``cli`` extra) and falls back to
+    stdlib logging when it is unavailable. Returns a LogHook callback
+    that logs ProviderLogEvents.
     """
-    loguru_logger = importlib.import_module("loguru").logger
+    try:
+        loguru_logger = importlib.import_module("loguru").logger
+    except ImportError:
+        print(
+            "warning: loguru is not installed; using stdlib logging for --debug. "
+            'Install the CLI extra for richer output: pip install "omni-weather-forecast-apis[cli]"',
+            file=sys.stderr,
+        )
+        return _setup_stdlib_debug_logging(log_path)
 
     loguru_logger.remove()
     loguru_logger.add(
@@ -193,6 +204,51 @@ def _setup_debug_logging(log_path: Path) -> LogHook:
                 loguru_logger.warning(message)
 
     return _loguru_hook
+
+
+def _setup_stdlib_debug_logging(log_path: Path) -> LogHook:
+    """Stdlib-logging fallback for --debug when loguru is unavailable."""
+
+    debug_logger = logging.getLogger("omni_weather_forecast_apis.cli.debug")
+    debug_logger.setLevel(logging.DEBUG)
+    debug_logger.propagate = False
+    debug_logger.handlers.clear()
+
+    stream_handler = logging.StreamHandler(sys.stderr)
+    stream_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s", datefmt="%H:%M:%S"),
+    )
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"),
+    )
+    debug_logger.addHandler(stream_handler)
+    debug_logger.addHandler(file_handler)
+    debug_logger.info("Debug logging enabled, writing to %s", log_path)
+
+    def _stdlib_hook(event: ProviderLogEvent) -> None:
+        match event.phase:
+            case "start" | "retry":
+                debug_logger.debug("[%s] %s", event.provider.value, event.message)
+            case "success":
+                debug_logger.info(
+                    "[%s] %s (latency=%.0fms)",
+                    event.provider.value,
+                    event.message,
+                    event.latency_ms,
+                )
+            case "error":
+                error_code = event.error_code.value if event.error_code else "unknown"
+                debug_logger.warning(
+                    "[%s] %s (code=%s, http=%s, latency=%.0fms)",
+                    event.provider.value,
+                    event.message,
+                    error_code,
+                    event.http_status,
+                    event.latency_ms,
+                )
+
+    return _stdlib_hook
 
 
 async def _async_main(parsed: argparse.Namespace) -> int:

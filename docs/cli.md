@@ -23,6 +23,11 @@ The exit code is `0` when every provider succeeded, `1` when at least one
 provider failed, and `2` for invalid arguments or configuration/load errors.
 Partial provider failures are visible to schedulers and shell scripts.
 
+Rich tables and loguru debug logging require the `cli` extra
+(`pip install "omni-weather-forecast-apis[cli]"`). Without it the CLI
+degrades gracefully: tables render as plain text and `--debug` uses
+stdlib logging.
+
 ## Output formats
 
 `--format table` (default) renders a per-provider summary table: status,

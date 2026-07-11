@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
+from omni_weather_forecast_apis import cli
 from omni_weather_forecast_apis.cli import (
     _resolve_optional,
     _resolve_required,
+    _setup_debug_logging,
     build_parser,
 )
+from omni_weather_forecast_apis.types import ErrorCode, ProviderId, ProviderLogEvent
 
 
 def test_resolve_required_preserves_zero_values() -> None:
@@ -53,3 +58,43 @@ def test_sqlite_is_optional() -> None:
     parsed = build_parser().parse_args([])
 
     assert parsed.sqlite is None
+
+
+def test_debug_logging_falls_back_to_stdlib_without_loguru(
+    monkeypatch, tmp_path, capsys,
+):
+    real_import_module = importlib.import_module
+
+    def fake_import_module(name, *args, **kwargs):
+        if name == "loguru":
+            raise ImportError("No module named 'loguru'")
+        return real_import_module(name, *args, **kwargs)
+
+    monkeypatch.setattr(cli.importlib, "import_module", fake_import_module)
+    log_path = tmp_path / "debug.log"
+
+    hook = _setup_debug_logging(log_path)
+
+    captured = capsys.readouterr()
+    assert "loguru is not installed" in captured.err
+    assert "omni-weather-forecast-apis[cli]" in captured.err
+
+    hook(
+        ProviderLogEvent(
+            provider=ProviderId.OPEN_METEO,
+            phase="error",
+            message="boom",
+            error_code=ErrorCode.NETWORK,
+        ),
+    )
+    hook(
+        ProviderLogEvent(
+            provider=ProviderId.OPEN_METEO,
+            phase="success",
+            message="done",
+        ),
+    )
+
+    contents = log_path.read_text()
+    assert "boom" in contents
+    assert "done" in contents
