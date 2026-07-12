@@ -87,11 +87,6 @@ def test_missing_variable_becomes_provider_init_error(
             del config
             raise AssertionError("initialize should not be reached")
 
-    registry = {ProviderId.OPENWEATHER: DummyPlugin()}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -101,6 +96,7 @@ def test_missing_variable_becomes_provider_init_error(
                 ),
             ],
         ),
+        plugins=[DummyPlugin()],
     )
 
     async def scenario() -> tuple[str, str]:

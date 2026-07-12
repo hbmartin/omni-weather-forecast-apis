@@ -401,7 +401,7 @@ Consensus/ensemble forecasting and forecast verification are intended to live in
   client = await create_omni_weather(config, response_hooks=[record_for_verification])
   ```
 
-- **Custom provider plugins** — register any `WeatherPlugin` implementation with `omni_weather_forecast_apis.plugins.register_plugin`.
+- **Custom provider plugins** — pass any `WeatherPlugin` implementations to `create_omni_weather(config, plugins=[...])` for a per-client plugin set, or register globally with `omni_weather_forecast_apis.plugins.register_plugin` (the global registry backs the CLI and is the fallback when `plugins` is omitted).
 - **The SQLite feature matrix** — query the `stacking_features` view for aligned per-provider hourly forecasts with horizons and run cycles.
 
 ## Documentation

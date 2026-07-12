@@ -8,6 +8,7 @@ import pytest
 from pydantic import BaseModel
 
 from omni_weather_forecast_apis.client import OmniWeatherClient, create_omni_weather
+from omni_weather_forecast_apis.plugins import PLUGIN_REGISTRY
 from omni_weather_forecast_apis.plugins._base import build_source_forecast
 from omni_weather_forecast_apis.types import (
     ErrorCode,
@@ -105,15 +106,11 @@ class DummyPlugin:
         return self._instance
 
 
-def test_forecast_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forecast_returns_partial_results() -> None:
     registry = {
         ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
         ProviderId.OPENWEATHER: DummyPlugin(ProviderId.OPENWEATHER, ErrorInstance()),
     }
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -127,6 +124,7 @@ def test_forecast_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> No
                 ),
             ],
         ),
+        plugins=registry,
     )
 
     async def scenario() -> tuple[int, int, str]:
@@ -155,18 +153,11 @@ def test_forecast_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> No
     assert timezone_name == "UTC"
 
 
-def test_emit_log_feeds_stdlib_logger(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_emit_log_feeds_stdlib_logger(caplog: pytest.LogCaptureFixture) -> None:
     registry = {
         ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
         ProviderId.OPENWEATHER: DummyPlugin(ProviderId.OPENWEATHER, ErrorInstance()),
     }
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -180,6 +171,7 @@ def test_emit_log_feeds_stdlib_logger(
                 ),
             ],
         ),
+        plugins=registry,
     )
 
     async def scenario() -> None:
@@ -210,14 +202,8 @@ def test_emit_log_feeds_stdlib_logger(
     assert warning_records
 
 
-def test_initialized_client_context_manager_does_not_reinitialize(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_initialized_client_context_manager_does_not_reinitialize() -> None:
     plugin = DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance())
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: {ProviderId.OPEN_METEO: plugin},
-    )
     config = OmniWeatherConfig(
         providers=[
             ProviderRegistration(
@@ -228,7 +214,7 @@ def test_initialized_client_context_manager_does_not_reinitialize(
     )
 
     async def scenario() -> None:
-        async with await create_omni_weather(config):
+        async with await create_omni_weather(config, plugins=[plugin]):
             pass
 
     asyncio.run(scenario())
@@ -236,14 +222,7 @@ def test_initialized_client_context_manager_does_not_reinitialize(
     assert plugin.initialize_calls == 1
 
 
-def test_forecast_wraps_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
-    registry = {
-        ProviderId.WEATHERAPI: DummyPlugin(ProviderId.WEATHERAPI, SlowInstance()),
-    }
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
+def test_forecast_wraps_timeouts() -> None:
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -255,6 +234,7 @@ def test_forecast_wraps_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
             default_timeout_ms=1,
             retry=RetryPolicy(max_attempts=1),
         ),
+        plugins=[DummyPlugin(ProviderId.WEATHERAPI, SlowInstance())],
     )
 
     async def scenario() -> str:
@@ -268,13 +248,7 @@ def test_forecast_wraps_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     assert error_code == ErrorCode.TIMEOUT.value
 
 
-def test_unconfigured_requested_provider_returns_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        dict,
-    )
+def test_unconfigured_requested_provider_returns_error() -> None:
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -284,6 +258,7 @@ def test_unconfigured_requested_provider_returns_error(
                 ),
             ],
         ),
+        plugins={},
     )
 
     async def scenario() -> str:
@@ -301,6 +276,69 @@ def test_unconfigured_requested_provider_returns_error(
     error_code = asyncio.run(scenario())
 
     assert error_code == ErrorCode.NOT_AVAILABLE.value
+
+
+def test_plugins_param_accepts_iterable_and_mapping() -> None:
+    config = OmniWeatherConfig(
+        providers=[
+            ProviderRegistration(plugin_id=ProviderId.OPEN_METEO, config={"token": "a"}),
+        ],
+    )
+
+    async def scenario(client: OmniWeatherClient) -> str:
+        await client.initialize()
+        response = await client.forecast(ForecastRequest(latitude=34, longitude=-118))
+        await client.close()
+        return response.results[0].status
+
+    iterable_client = OmniWeatherClient(
+        config,
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance())],
+    )
+    mapping_client = OmniWeatherClient(
+        config,
+        plugins={
+            ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
+        },
+    )
+
+    assert asyncio.run(scenario(iterable_client)) == "success"
+    assert asyncio.run(scenario(mapping_client)) == "success"
+
+
+def test_injected_plugins_do_not_leak_into_global_registry() -> None:
+    before = dict(PLUGIN_REGISTRY)
+    client = OmniWeatherClient(
+        OmniWeatherConfig(
+            providers=[
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPEN_METEO,
+                    config={"token": "a"},
+                ),
+            ],
+        ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance())],
+    )
+
+    async def scenario() -> None:
+        await client.initialize()
+        await client.close()
+
+    asyncio.run(scenario())
+
+    assert dict(PLUGIN_REGISTRY) == before
+
+
+def test_omitted_plugins_falls_back_to_global_registry() -> None:
+    client = OmniWeatherClient(OmniWeatherConfig(providers=[]))
+
+    async def scenario() -> None:
+        await client.initialize()
+        await client.close()
+
+    asyncio.run(scenario())
+
+    assert client._plugins is None
 
 
 def test_emit_log_swallows_hook_errors(caplog: pytest.LogCaptureFixture) -> None:

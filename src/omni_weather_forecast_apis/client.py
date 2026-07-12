@@ -5,7 +5,8 @@ import inspect
 import logging
 import random
 import time
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 import httpx
 
@@ -38,10 +39,26 @@ from omni_weather_forecast_apis.types import (
     ProviderSuccess,
     ResponseHook,
     RetryPolicy,
+    WeatherPlugin,
 )
 from omni_weather_forecast_apis.utils import resolve_env_placeholders, utc_now
 
 logger = logging.getLogger("omni_weather_forecast_apis")
+
+type PluginsInput = Mapping[ProviderId, WeatherPlugin] | Iterable[WeatherPlugin]
+
+
+def _normalize_plugins(
+    plugins: PluginsInput | None,
+) -> dict[ProviderId, WeatherPlugin] | None:
+    match plugins:
+        case None:
+            return None
+        case Mapping():
+            mapping = cast("Mapping[ProviderId, WeatherPlugin]", plugins)
+            return dict(mapping)
+        case _:
+            return {plugin.id: plugin for plugin in plugins}
 
 _PHASE_LOG_LEVELS: dict[str, int] = {
     "start": logging.DEBUG,
@@ -62,11 +79,13 @@ class OmniWeatherClient:
         self,
         config: OmniWeatherConfig,
         *,
+        plugins: PluginsInput | None = None,
         log_hooks: list[LogHook] | None = None,
         response_hooks: list[ResponseHook] | None = None,
         quota_tracker: QuotaTracker | None = None,
     ) -> None:
         self._config = config
+        self._plugins = _normalize_plugins(plugins)
         self._log_hooks: list[LogHook] = log_hooks or []
         self._response_hooks: list[ResponseHook] = response_hooks or []
         self._quota_tracker: QuotaTracker = quota_tracker or InMemoryQuotaTracker()
@@ -85,7 +104,9 @@ class OmniWeatherClient:
     async def initialize(self) -> None:
         """Validate provider configs and initialize provider instances."""
 
-        registry = get_plugin_registry()
+        registry = (
+            self._plugins if self._plugins is not None else get_plugin_registry()
+        )
         self._instances.clear()
         self._provider_registrations = {
             registration.plugin_id: registration
@@ -548,14 +569,21 @@ class OmniWeatherClient:
 async def create_omni_weather(
     config: OmniWeatherConfig,
     *,
+    plugins: PluginsInput | None = None,
     log_hooks: list[LogHook] | None = None,
     response_hooks: list[ResponseHook] | None = None,
     quota_tracker: QuotaTracker | None = None,
 ) -> OmniWeatherClient:
-    """Create and initialize an OmniWeather client."""
+    """Create and initialize an OmniWeather client.
+
+    ``plugins`` scopes the plugin set to this client instance — pass a
+    sequence of plugins or a mapping keyed by provider id. When omitted,
+    the client falls back to the process-global registry.
+    """
 
     client = OmniWeatherClient(
         config,
+        plugins=plugins,
         log_hooks=log_hooks,
         response_hooks=response_hooks,
         quota_tracker=quota_tracker,

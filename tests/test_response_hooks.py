@@ -54,28 +54,19 @@ class DummyPlugin:
         return SuccessInstance()
 
 
-def _make_client(
-    monkeypatch: pytest.MonkeyPatch,
-    hooks: list[Any],
-) -> OmniWeatherClient:
-    registry = {ProviderId.OPEN_METEO: DummyPlugin()}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
+def _make_client(hooks: list[Any]) -> OmniWeatherClient:
     return OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
                 ProviderRegistration(plugin_id=ProviderId.OPEN_METEO, config={}),
             ],
         ),
+        plugins=[DummyPlugin()],
         response_hooks=hooks,
     )
 
 
-def test_sync_and_async_hooks_receive_the_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_sync_and_async_hooks_receive_the_response() -> None:
     received: list[ForecastResponse] = []
 
     def sync_hook(response: ForecastResponse) -> None:
@@ -84,7 +75,7 @@ def test_sync_and_async_hooks_receive_the_response(
     async def async_hook(response: ForecastResponse) -> None:
         received.append(response)
 
-    client = _make_client(monkeypatch, [sync_hook, async_hook])
+    client = _make_client([sync_hook, async_hook])
 
     async def scenario() -> ForecastResponse:
         await client.initialize()
@@ -98,14 +89,13 @@ def test_sync_and_async_hooks_receive_the_response(
 
 
 def test_hook_failures_do_not_break_the_forecast(
-    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     def failing_hook(response: ForecastResponse) -> None:
         del response
         raise RuntimeError("hook exploded")
 
-    client = _make_client(monkeypatch, [failing_hook])
+    client = _make_client([failing_hook])
 
     async def scenario() -> ForecastResponse:
         await client.initialize()

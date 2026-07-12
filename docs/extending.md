@@ -37,8 +37,24 @@ from `response.results` and publish it) or a **verification package**
 
 ## 2. Custom provider plugins
 
-Any object satisfying the `WeatherPlugin` protocol can be registered,
-including from outside this package:
+Any object satisfying the `WeatherPlugin` protocol can be used, including
+from outside this package. The preferred mechanism is per-client injection —
+it keeps plugin sets isolated between clients and avoids mutating global
+state:
+
+```python
+from omni_weather_forecast_apis.client import create_omni_weather
+from omni_weather_forecast_apis.plugins import open_meteo_plugin
+
+client = await create_omni_weather(
+    config,
+    plugins=[my_plugin, open_meteo_plugin],
+)
+```
+
+`plugins` accepts a sequence of plugins or a mapping keyed by `ProviderId`.
+When omitted, the client uses the process-global registry, which the CLI
+relies on and which remains available for global registration:
 
 ```python
 from omni_weather_forecast_apis.plugins import register_plugin

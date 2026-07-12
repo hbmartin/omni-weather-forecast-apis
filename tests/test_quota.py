@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
 from omni_weather_forecast_apis.client import OmniWeatherClient
 from omni_weather_forecast_apis.quota import (
@@ -127,13 +126,8 @@ def test_sqlite_tracker_try_consume_is_atomic(tmp_path: Path) -> None:
     assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 3
 
 
-def test_client_enforces_daily_quota(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_enforces_daily_quota() -> None:
     instance = CountingInstance()
-    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -145,6 +139,7 @@ def test_client_enforces_daily_quota(monkeypatch: pytest.MonkeyPatch) -> None:
             ],
             retry=RetryPolicy(max_attempts=1),
         ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
     )
 
     async def scenario() -> list[str]:
@@ -192,18 +187,11 @@ class FlakyInstance:
         return PluginFetchSuccess(forecasts=[])
 
 
-def test_each_retry_attempt_consumes_one_quota_unit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_each_retry_attempt_consumes_one_quota_unit() -> None:
     """Pins the documented semantics: retries are real HTTP calls, so each
     attempt (not each logical forecast() call) consumes a quota unit."""
 
     instance = FlakyInstance(failures=2)
-    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     tracker = InMemoryQuotaTracker()
     client = OmniWeatherClient(
         OmniWeatherConfig(
@@ -220,6 +208,7 @@ def test_each_retry_attempt_consumes_one_quota_unit(
                 jitter=False,
             ),
         ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
         quota_tracker=tracker,
     )
 
@@ -254,15 +243,8 @@ class FailingTracker:
         raise RuntimeError("database is locked")
 
 
-def test_quota_tracker_failure_is_contained_per_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_quota_tracker_failure_is_contained_per_provider() -> None:
     instance = CountingInstance()
-    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -274,6 +256,7 @@ def test_quota_tracker_failure_is_contained_per_provider(
             ],
             retry=RetryPolicy(max_attempts=1),
         ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
         quota_tracker=FailingTracker(),
     )
 

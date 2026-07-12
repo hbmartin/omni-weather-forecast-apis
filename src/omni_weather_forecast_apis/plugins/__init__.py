@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from typing import overload
-
 from omni_weather_forecast_apis.plugins.google_weather import google_weather_plugin
 from omni_weather_forecast_apis.plugins.met_norway import met_norway_plugin
 from omni_weather_forecast_apis.plugins.meteosource import meteosource_plugin
@@ -40,42 +37,6 @@ PLUGIN_REGISTRY: dict[ProviderId, WeatherPlugin] = {
 }
 
 
-def _registered_plugins_snapshot() -> tuple[WeatherPlugin, ...]:
-    return tuple(PLUGIN_REGISTRY.values())
-
-
-class _RegisteredPluginsView(Sequence[WeatherPlugin]):
-    @overload
-    def __getitem__(self, index: int) -> WeatherPlugin: ...
-
-    @overload
-    def __getitem__(
-        self,
-        index: slice,
-    ) -> Sequence[WeatherPlugin]: ...
-
-    def __getitem__(
-        self,
-        index: int | slice,
-    ) -> WeatherPlugin | Sequence[WeatherPlugin]:
-        return _registered_plugins_snapshot()[index]
-
-    def __iter__(self) -> Iterator[WeatherPlugin]:
-        return iter(_registered_plugins_snapshot())
-
-    def __len__(self) -> int:
-        return len(PLUGIN_REGISTRY)
-
-
-REGISTERED_PLUGINS: Sequence[WeatherPlugin] = _RegisteredPluginsView()
-
-
-def get_plugin(plugin_id: ProviderId) -> WeatherPlugin:
-    """Look up a plugin by identifier."""
-
-    return PLUGIN_REGISTRY[plugin_id]
-
-
 def get_plugin_registry() -> dict[ProviderId, WeatherPlugin]:
     """Return a shallow copy of the registry."""
 
@@ -90,8 +51,6 @@ def register_plugin(plugin: WeatherPlugin) -> None:
 
 __all__ = [
     "PLUGIN_REGISTRY",
-    "REGISTERED_PLUGINS",
-    "get_plugin",
     "get_plugin_registry",
     "google_weather_plugin",
     "met_norway_plugin",
