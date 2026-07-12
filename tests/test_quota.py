@@ -22,6 +22,7 @@ from omni_weather_forecast_apis.types import (
     ForecastRequest,
     OmniWeatherConfig,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     PluginFetchSuccess,
@@ -29,6 +30,7 @@ from omni_weather_forecast_apis.types import (
     ProviderRegistration,
     RetryPolicy,
 )
+from omni_weather_forecast_apis.utils import utc_now
 
 
 class CountingInstance:
@@ -164,6 +166,77 @@ def test_client_enforces_daily_quota(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert statuses == ["success", "success", ErrorCode.QUOTA_EXCEEDED.value]
     assert instance.calls == 2
+
+
+class FlakyInstance:
+    """Fails with a retryable error a fixed number of times, then succeeds."""
+
+    provider_id = ProviderId.OPEN_METEO
+
+    def __init__(self, failures: int) -> None:
+        self.calls = 0
+        self._failures = failures
+
+    def get_capabilities(self) -> PluginCapabilities:
+        return PluginCapabilities(requires_api_key=False)
+
+    async def fetch_forecast(
+        self,
+        params: PluginFetchParams,
+        client: httpx.AsyncClient,
+    ) -> PluginFetchResult:
+        del params, client
+        self.calls += 1
+        if self.calls <= self._failures:
+            return PluginFetchError(code=ErrorCode.NETWORK, message="flaky")
+        return PluginFetchSuccess(forecasts=[])
+
+
+def test_each_retry_attempt_consumes_one_quota_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins the documented semantics: retries are real HTTP calls, so each
+    attempt (not each logical forecast() call) consumes a quota unit."""
+
+    instance = FlakyInstance(failures=2)
+    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
+    monkeypatch.setattr(
+        "omni_weather_forecast_apis.client.get_plugin_registry",
+        lambda: registry,
+    )
+    tracker = InMemoryQuotaTracker()
+    client = OmniWeatherClient(
+        OmniWeatherConfig(
+            providers=[
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPEN_METEO,
+                    config={},
+                    max_requests_per_day=10,
+                ),
+            ],
+            retry=RetryPolicy(
+                max_attempts=3,
+                initial_backoff_ms=1,
+                jitter=False,
+            ),
+        ),
+        quota_tracker=tracker,
+    )
+
+    async def scenario() -> Any:
+        await client.initialize()
+        try:
+            return await client.forecast(
+                ForecastRequest(latitude=34, longitude=-118),
+            )
+        finally:
+            await client.close()
+
+    response = asyncio.run(scenario())
+
+    assert response.results[0].status == "success"
+    assert instance.calls == 3
+    assert tracker.get_usage(ProviderId.OPEN_METEO, utc_now().date()) == 3
 
 
 class FailingTracker:

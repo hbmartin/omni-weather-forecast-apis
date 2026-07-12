@@ -149,7 +149,7 @@ The shared HTTP client uses explicit connection pool limits and a connect timeou
 
 ### Daily quotas
 
-Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt (including retries) counts one request. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation with atomic `try_consume` support (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
+Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt counts one request — retries are real HTTP calls against the provider's cap, so a single `forecast()` call may consume up to `retry.max_attempts` units when transient failures trigger retries. This deliberately mirrors provider-side accounting; lower `max_attempts` if you need a tighter bound per call. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation with atomic `try_consume` support (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
 
 ### API keys from environment variables
 
