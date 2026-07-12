@@ -65,6 +65,7 @@ build-backend = "uv_build"
 dev = [
     "black>=26.3.0",
     "codecov>=2.1.13",
+    "hypothesis>=6.100",
     "lizard>=1.21.2",
     "pyrefly>=0.55.0",
     "pytest>=8.4.2",

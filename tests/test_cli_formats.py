@@ -14,6 +14,7 @@ from omni_weather_forecast_apis.cli import (
     _csv_field_names,
     _print_csv,
     _print_ndjson,
+    _print_results_plain,
     build_parser,
     main,
 )
@@ -186,6 +187,19 @@ def test_ndjson_lines_are_typed_json_objects(
     assert error["code"] == "auth_failed"
     assert error["http_status"] == 401
     assert captured.err == ""
+
+
+def test_plain_table_fallback_summarizes_results(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _print_results_plain(_sample_response(), run_id=7, sqlite_path=None)
+
+    captured = capsys.readouterr()
+    assert "Run 7: 1/2 succeeded" in captured.out
+    assert "open_meteo: ok" in captured.out
+    assert "hourly=1 daily=1 minutely=1" in captured.out
+    assert "openweather: fail" in captured.out
+    assert "bad key" in captured.out
 
 
 class _StubClient:

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 import httpx
 import pytest
-from pydantic import BaseModel
 
 from omni_weather_forecast_apis.client import OmniWeatherClient, create_omni_weather
 from omni_weather_forecast_apis.plugins import PLUGIN_REGISTRY
@@ -25,10 +23,7 @@ from omni_weather_forecast_apis.types import (
     ProviderRegistration,
     RetryPolicy,
 )
-
-
-class DummyConfig(BaseModel):
-    token: str = "ok"  # noqa: S105
+from tests.helpers import DummyPlugin
 
 
 class SuccessInstance:
@@ -81,29 +76,6 @@ class SlowInstance:
         del params, client
         await asyncio.sleep(0.05)
         return PluginFetchSuccess(forecasts=[])
-
-
-class DummyPlugin:
-    def __init__(self, provider_id: ProviderId, instance: Any) -> None:
-        self._provider_id = provider_id
-        self._instance = instance
-        self.initialize_calls = 0
-
-    @property
-    def id(self) -> ProviderId:
-        return self._provider_id
-
-    @property
-    def name(self) -> str:
-        return self._provider_id.value
-
-    def validate_config(self, config: dict[str, Any]) -> DummyConfig:
-        return DummyConfig.model_validate(config)
-
-    async def initialize(self, config: DummyConfig) -> Any:
-        del config
-        self.initialize_calls += 1
-        return self._instance
 
 
 def test_forecast_returns_partial_results() -> None:
