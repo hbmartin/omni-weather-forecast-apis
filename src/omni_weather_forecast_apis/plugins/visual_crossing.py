@@ -19,8 +19,8 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
-    ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -163,7 +163,7 @@ class _VisualCrossingInstance(BasePluginInstance[VisualCrossingConfig]):
         """Fetch and normalize Visual Crossing forecast data."""
 
         url = f"{_TIMELINE_URL}/{params.latitude},{params.longitude}"
-        raw, error = await self._get_json(
+        raw = await self._get_json_dict(
             client,
             url,
             params={
@@ -172,15 +172,10 @@ class _VisualCrossingInstance(BasePluginInstance[VisualCrossingConfig]):
                 "key": self.config.api_key,
                 "lang": params.language,
             },
+            payload_name="Visual Crossing",
         )
-        if error is not None:
-            return error
-        if not isinstance(raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected Visual Crossing payload",
-                raw=raw,
-            )
+        if isinstance(raw, PluginFetchError):
+            return raw
 
         days = [entry for entry in raw.get("days", []) if isinstance(entry, Mapping)]
         hourly = [

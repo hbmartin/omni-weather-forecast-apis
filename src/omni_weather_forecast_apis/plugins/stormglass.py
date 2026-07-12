@@ -18,6 +18,7 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -75,7 +76,7 @@ class StormglassInstance(BasePluginInstance[StormglassConfig]):
         params: PluginFetchParams,
         client: httpx.AsyncClient,
     ) -> PluginFetchResult:
-        payload, error = await self._get_json(
+        payload = await self._get_json_dict(
             client,
             STORMGLASS_URL,
             params={
@@ -85,14 +86,10 @@ class StormglassInstance(BasePluginInstance[StormglassConfig]):
                 "source": ",".join(self.config.sources),
             },
             headers={"Authorization": self.config.api_key},
+            payload_name="Stormglass",
         )
-        if error is not None:
-            return error
-        if payload is None or not isinstance(payload, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Stormglass returned an invalid payload",
-            )
+        if isinstance(payload, PluginFetchError):
+            return payload
 
         try:
             forecasts = self._parse_payload(payload)

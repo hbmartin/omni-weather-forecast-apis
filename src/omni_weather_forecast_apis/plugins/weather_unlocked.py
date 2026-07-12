@@ -23,6 +23,7 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -170,7 +171,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
         params: PluginFetchParams,
         client: httpx.AsyncClient,
     ) -> PluginFetchResult:
-        payload, error = await self._get_json(
+        payload = await self._get_json_dict(
             client,
             (
                 f"{WEATHER_UNLOCKED_BASE_URL}/"
@@ -182,14 +183,10 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                 "app_key": self.config.app_key,
                 **({"lang": self.config.lang} if self.config.lang is not None else {}),
             },
+            payload_name="Weather Unlocked",
         )
-        if error is not None:
-            return error
-        if payload is None or not isinstance(payload, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Weather Unlocked returned an invalid payload",
-            )
+        if isinstance(payload, PluginFetchError):
+            return payload
 
         try:
             forecasts = [

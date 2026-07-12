@@ -19,8 +19,8 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
-    ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -140,7 +140,7 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
     ) -> PluginFetchResult:
         """Fetch and normalize WeatherAPI.com forecast data."""
 
-        raw, error = await self._get_json(
+        raw = await self._get_json_dict(
             client,
             _FORECAST_URL,
             params={
@@ -151,15 +151,10 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
                 "alerts": "yes" if self.config.alerts else "no",
                 "lang": params.language,
             },
+            payload_name="WeatherAPI",
         )
-        if error is not None:
-            return error
-        if not isinstance(raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected WeatherAPI payload",
-                raw=raw,
-            )
+        if isinstance(raw, PluginFetchError):
+            return raw
 
         forecast = raw.get("forecast")
         forecast_days = (

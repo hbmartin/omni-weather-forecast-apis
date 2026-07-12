@@ -18,10 +18,10 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
-    ErrorCode,
     Granularity,
     MinutelyDataPoint,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -287,15 +287,14 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
         }
         if self.config.fields:
             request_params["fields"] = ",".join(self.config.fields)
-        raw, error = await self._get_json(client, _FORECAST_URL, params=request_params)
-        if error is not None:
-            return error
-        if not isinstance(raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected Tomorrow.io payload",
-                raw=raw,
-            )
+        raw = await self._get_json_dict(
+            client,
+            _FORECAST_URL,
+            params=request_params,
+            payload_name="Tomorrow.io",
+        )
+        if isinstance(raw, PluginFetchError):
+            return raw
 
         minutely: list[MinutelyDataPoint] = []
         for item in _timeline_list(raw, "1m"):

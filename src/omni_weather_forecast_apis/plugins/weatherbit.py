@@ -22,9 +22,9 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
-    ErrorCode,
     Granularity,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -220,7 +220,7 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
         raw_payload: dict[str, Any] = {}
 
         if Granularity.HOURLY in params.granularity:
-            raw_hourly, error = await self._get_json(
+            raw_hourly = await self._get_json_dict(
                 client,
                 _HOURLY_URL,
                 params={
@@ -230,15 +230,10 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
                     "units": self.config.units,
                     "key": self.config.api_key,
                 },
+                payload_name="Weatherbit hourly",
             )
-            if error is not None:
-                return error
-            if not isinstance(raw_hourly, dict):
-                return self._error(
-                    ErrorCode.PARSE,
-                    "Unexpected Weatherbit hourly payload",
-                    raw=raw_hourly,
-                )
+            if isinstance(raw_hourly, PluginFetchError):
+                return raw_hourly
             raw_payload["hourly"] = raw_hourly
             hourly = [
                 _parse_hour(entry, self.config.units)
@@ -247,7 +242,7 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
             ]
 
         if Granularity.DAILY in params.granularity:
-            raw_daily, error = await self._get_json(
+            raw_daily = await self._get_json_dict(
                 client,
                 _DAILY_URL,
                 params={
@@ -256,15 +251,10 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
                     "units": self.config.units,
                     "key": self.config.api_key,
                 },
+                payload_name="Weatherbit daily",
             )
-            if error is not None:
-                return error
-            if not isinstance(raw_daily, dict):
-                return self._error(
-                    ErrorCode.PARSE,
-                    "Unexpected Weatherbit daily payload",
-                    raw=raw_daily,
-                )
+            if isinstance(raw_daily, PluginFetchError):
+                return raw_daily
             raw_payload["daily"] = raw_daily
             daily = [
                 _parse_day(entry, self.config.units)

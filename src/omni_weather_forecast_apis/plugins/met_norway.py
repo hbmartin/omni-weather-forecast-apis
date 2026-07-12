@@ -18,6 +18,7 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -78,19 +79,15 @@ class METNorwayInstance(BasePluginInstance[METNorwayConfig]):
         params: PluginFetchParams,
         client: httpx.AsyncClient,
     ) -> PluginFetchResult:
-        payload, error = await self._get_json(
+        payload = await self._get_json_dict(
             client,
             f"{MET_NORWAY_BASE_URL}/{self.config.variant}",
             params=self._request_params(params),
             headers={"User-Agent": self.config.user_agent},
+            payload_name="MET Norway",
         )
-        if error is not None:
-            return error
-        if payload is None or not isinstance(payload, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "MET Norway returned an invalid payload",
-            )
+        if isinstance(payload, PluginFetchError):
+            return payload
 
         try:
             forecasts = [
