@@ -254,7 +254,19 @@ uv run omni-weather \
   --lat 34.2484 \
   --lon -117.1931 \
   --format json | jq '.results[] | {provider, status}'
+
+# Pipe flattened per-point rows into data tools
+uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+  --format csv > forecast.csv
+uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+  --format ndjson | jq 'select(.type == "forecast_point") | .temperature'
 ```
+
+`csv` and `ndjson` emit one row/line per forecast data point, flattened with
+`provider`, `model`, and `granularity` (`minutely` / `hourly` / `daily`)
+columns followed by the normalized point fields. `ndjson` lines carry a
+`type` field (`forecast_point`, `alert`, or `provider_error`); CSV omits
+alerts (noted on stderr) and reports provider errors on stderr only.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
@@ -262,7 +274,7 @@ uv run omni-weather \
 | `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
 | `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
 | `--sqlite PATH` | No | config value | SQLite database output path; overrides config. Persistence is skipped when neither is set |
-| `--format FMT` | No | `table` | Output format: `table` (human-readable summary) or `json` (full normalized response on stdout) |
+| `--format FMT` | No | `table` | Output format: `table` (human-readable summary), `json` (full normalized response), `csv` (one flattened row per data point), or `ndjson` (one JSON object per line, typed `forecast_point` / `alert` / `provider_error`) |
 | `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
 | `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | config value | Provider language preference |

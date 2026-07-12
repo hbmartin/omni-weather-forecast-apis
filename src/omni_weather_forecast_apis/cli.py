@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import importlib
+import json
 import logging
 import sys
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from pydantic import ValidationError
 
@@ -18,15 +21,18 @@ from omni_weather_forecast_apis.sqlite_store import (
     save_provider_logs,
 )
 from omni_weather_forecast_apis.types import (
+    DailyDataPoint,
     ForecastRequest,
     ForecastResponse,
     Granularity,
     LogHook,
+    MinutelyDataPoint,
     OmniWeatherConfig,
     ProviderError,
     ProviderId,
     ProviderLogEvent,
     ProviderSuccess,
+    WeatherDataPoint,
 )
 
 T = TypeVar("T")
@@ -75,10 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=["table", "json"],
+        choices=["table", "json", "csv", "ndjson"],
         default="table",
         dest="output_format",
-        help="Output format: human-readable table or JSON on stdout (default: table)",
+        help=(
+            "Output format: human-readable table, full response as JSON, "
+            "one flattened data point per CSV row, or one JSON object per "
+            "line (default: table)"
+        ),
     )
     parser.add_argument(
         "--provider",
@@ -317,11 +327,109 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         run_id = save_forecast_response(sqlite_path, response)
         save_provider_logs(sqlite_path, log_events, run_id=run_id)
 
-    if cast(str, parsed.output_format) == "json":
-        print(response.model_dump_json(indent=2))
-    else:
-        _print_results(response, run_id, sqlite_path)
+    match cast(str, parsed.output_format):
+        case "json":
+            print(response.model_dump_json(indent=2))
+        case "csv":
+            _print_csv(response)
+        case "ndjson":
+            _print_ndjson(response)
+        case _:
+            _print_results(response, run_id, sqlite_path)
     return 0 if response.summary.failed == 0 else 1
+
+
+def _iter_point_rows(response: ForecastResponse) -> Iterator[dict[str, Any]]:
+    """Flatten every forecast data point into one row carrying its origin."""
+
+    for result in response.results:
+        if not isinstance(result, ProviderSuccess):
+            continue
+        for forecast in result.forecasts:
+            for granularity, points in (
+                ("minutely", forecast.minutely),
+                ("hourly", forecast.hourly),
+                ("daily", forecast.daily),
+            ):
+                for point in points:
+                    yield {
+                        "provider": result.provider.value,
+                        "model": forecast.source.model,
+                        "granularity": granularity,
+                        **point.model_dump(mode="json"),
+                    }
+
+
+def _csv_field_names() -> list[str]:
+    names = ["provider", "model", "granularity"]
+    for model_cls in (WeatherDataPoint, DailyDataPoint, MinutelyDataPoint):
+        for field_name in model_cls.model_fields:
+            if field_name not in names:
+                names.append(field_name)
+    return names
+
+
+def _print_csv(response: ForecastResponse) -> None:
+    writer = csv.DictWriter(
+        sys.stdout,
+        fieldnames=_csv_field_names(),
+        restval="",
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    for row in _iter_point_rows(response):
+        writer.writerow(row)
+
+    alert_count = sum(
+        len(forecast.alerts)
+        for result in response.results
+        if isinstance(result, ProviderSuccess)
+        for forecast in result.forecasts
+    )
+    if alert_count:
+        print(
+            f"note: {alert_count} alert(s) omitted from CSV output; "
+            "use --format ndjson to include them",
+            file=sys.stderr,
+        )
+    for result in response.results:
+        if isinstance(result, ProviderError):
+            print(
+                f"provider {result.provider.value} failed: "
+                f"{result.error.code.value}: {result.error.message}",
+                file=sys.stderr,
+            )
+
+
+def _print_ndjson(response: ForecastResponse) -> None:
+    for row in _iter_point_rows(response):
+        print(json.dumps({"type": "forecast_point", **row}, separators=(",", ":")))
+    for result in response.results:
+        match result:
+            case ProviderSuccess():
+                for forecast in result.forecasts:
+                    for alert in forecast.alerts:
+                        print(json.dumps(
+                            {
+                                "type": "alert",
+                                "provider": result.provider.value,
+                                "model": forecast.source.model,
+                                **alert.model_dump(mode="json"),
+                            },
+                            separators=(",", ":"),
+                        ))
+            case ProviderError():
+                print(json.dumps(
+                    {
+                        "type": "provider_error",
+                        "provider": result.provider.value,
+                        "code": result.error.code.value,
+                        "message": result.error.message,
+                        "http_status": result.error.http_status,
+                        "latency_ms": result.error.latency_ms,
+                    },
+                    separators=(",", ":"),
+                ))
 
 
 def _print_results(
