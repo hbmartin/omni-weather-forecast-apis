@@ -459,11 +459,12 @@ Consensus/ensemble forecasting and forecast verification are intended to live in
 
 ## Documentation
 
-The documentation site is built with MkDocs from the `docs/` directory:
+The documentation site is built with [Zensical](https://zensical.org/)
+(configured in `zensical.toml`) from the `docs/` directory:
 
 ```bash
 uv sync --group docs
-uv run mkdocs serve
+uv run zensical serve
 ```
 
 ## Development
