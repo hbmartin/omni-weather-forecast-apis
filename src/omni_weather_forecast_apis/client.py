@@ -43,6 +43,12 @@ from omni_weather_forecast_apis.utils import resolve_env_placeholders, utc_now
 
 logger = logging.getLogger("omni_weather_forecast_apis")
 
+_PHASE_LOG_LEVELS: dict[str, int] = {
+    "start": logging.DEBUG,
+    "retry": logging.INFO,
+    "success": logging.INFO,
+    "error": logging.WARNING,
+}
 _RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
     {ErrorCode.NETWORK, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED},
 )
@@ -211,6 +217,12 @@ class OmniWeatherClient:
         ]
 
     def _emit_log(self, event: ProviderLogEvent) -> None:
+        logger.log(
+            _PHASE_LOG_LEVELS[event.phase],
+            "[%s] %s",
+            event.provider.value,
+            event.message,
+        )
         for hook in self._log_hooks:
             try:
                 hook(event)
@@ -344,6 +356,7 @@ class OmniWeatherClient:
                 latency_ms=(time.perf_counter() - started_at) * 1000,
                 error_code=result.error.code,
                 http_status=result.error.http_status,
+                extra={"attempt": attempt, "delay_seconds": delay_seconds},
             ))
             await asyncio.sleep(delay_seconds)
             attempt += 1
@@ -413,11 +426,6 @@ class OmniWeatherClient:
         latency_ms = (time.perf_counter() - started_at) * 1000
         match result:
             case PluginFetchError():
-                logger.warning(
-                    "Provider %s returned error: %s",
-                    provider_id.value,
-                    result.message,
-                )
                 self._emit_log(ProviderLogEvent(
                     provider=provider_id,
                     phase="error",
@@ -437,11 +445,6 @@ class OmniWeatherClient:
                     ),
                 ), result.retry_after_seconds
             case _:
-                logger.info(
-                    "Provider %s succeeded in %.0fms",
-                    provider_id.value,
-                    latency_ms,
-                )
                 self._emit_log(ProviderLogEvent(
                     provider=provider_id,
                     phase="success",

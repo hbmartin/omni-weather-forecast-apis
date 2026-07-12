@@ -155,6 +155,61 @@ def test_forecast_returns_partial_results(monkeypatch: pytest.MonkeyPatch) -> No
     assert timezone_name == "UTC"
 
 
+def test_emit_log_feeds_stdlib_logger(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    registry = {
+        ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
+        ProviderId.OPENWEATHER: DummyPlugin(ProviderId.OPENWEATHER, ErrorInstance()),
+    }
+    monkeypatch.setattr(
+        "omni_weather_forecast_apis.client.get_plugin_registry",
+        lambda: registry,
+    )
+    client = OmniWeatherClient(
+        OmniWeatherConfig(
+            providers=[
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPEN_METEO,
+                    config={"token": "a"},
+                ),
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPENWEATHER,
+                    config={"token": "b"},
+                ),
+            ],
+        ),
+    )
+
+    async def scenario() -> None:
+        await client.initialize()
+        await client.forecast(ForecastRequest(latitude=34, longitude=-118))
+        await client.close()
+
+    with caplog.at_level("DEBUG", logger="omni_weather_forecast_apis"):
+        asyncio.run(scenario())
+
+    records = [
+        (record.levelname, record.getMessage())
+        for record in caplog.records
+        if record.name == "omni_weather_forecast_apis"
+    ]
+    assert ("DEBUG", "[open_meteo] Fetching forecast from open_meteo") in records
+    success_records = [
+        message
+        for level, message in records
+        if level == "INFO" and message.startswith("[open_meteo] Succeeded in")
+    ]
+    assert success_records
+    warning_records = [
+        message
+        for level, message in records
+        if level == "WARNING" and message == "[openweather] bad key"
+    ]
+    assert warning_records
+
+
 def test_initialized_client_context_manager_does_not_reinitialize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
