@@ -36,6 +36,14 @@
 
 ::: omni_weather_forecast_apis.types.plugin
 
+## Metrics
+
+::: omni_weather_forecast_apis.types.metrics
+
+## OpenTelemetry bridge
+
+::: omni_weather_forecast_apis.otel
+
 ## Quota tracking
 
 ::: omni_weather_forecast_apis.quota

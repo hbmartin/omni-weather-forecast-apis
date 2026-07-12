@@ -8,6 +8,11 @@ from omni_weather_forecast_apis.types.config import (
     RateLimitConfig,
     RetryPolicy,
 )
+from omni_weather_forecast_apis.types.metrics import (
+    MetricEvent,
+    MetricKind,
+    MetricsHook,
+)
 from omni_weather_forecast_apis.types.plugin import (
     PluginCapabilities,
     PluginFetchError,
@@ -140,6 +145,9 @@ __all__ = [
     "LogHook",
     "METNorwayConfig",
     "MeteosourceConfig",
+    "MetricEvent",
+    "MetricKind",
+    "MetricsHook",
     "MinutelyDataPoint",
     "ModelSource",
     "NWSConfig",

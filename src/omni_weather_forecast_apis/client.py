@@ -6,6 +6,7 @@ import logging
 import random
 import time
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
@@ -25,6 +26,9 @@ from omni_weather_forecast_apis.types import (
     ForecastResponseSummary,
     Granularity,
     LogHook,
+    MetricEvent,
+    MetricKind,
+    MetricsHook,
     OmniWeatherConfig,
     PluginCapabilities,
     PluginFetchError,
@@ -46,6 +50,13 @@ from omni_weather_forecast_apis.utils import resolve_env_placeholders, utc_now
 logger = logging.getLogger("omni_weather_forecast_apis")
 
 type PluginsInput = Mapping[ProviderId, WeatherPlugin] | Iterable[WeatherPlugin]
+
+
+@dataclass
+class _RequestStats:
+    """Mutable per-forecast() counters shared across provider tasks."""
+
+    retries: int = 0
 
 
 def _normalize_plugins(
@@ -82,11 +93,13 @@ class OmniWeatherClient:
         plugins: PluginsInput | None = None,
         log_hooks: list[LogHook] | None = None,
         response_hooks: list[ResponseHook] | None = None,
+        metrics_hooks: list[MetricsHook] | None = None,
         quota_tracker: QuotaTracker | None = None,
     ) -> None:
         self._config = config
         self._plugins = _normalize_plugins(plugins)
         self._log_hooks: list[LogHook] = log_hooks or []
+        self._metrics_hooks: list[MetricsHook] = metrics_hooks or []
         self._response_hooks: list[ResponseHook] = response_hooks or []
         self._quota_tracker: QuotaTracker = quota_tracker or InMemoryQuotaTracker()
         self._instances: dict[ProviderId, PluginInstance] = {}
@@ -157,6 +170,7 @@ class OmniWeatherClient:
             transport = CachingTransport(
                 transport,
                 max_entries=http_config.cache_max_entries,
+                on_cache_event=self._handle_cache_event,
             )
         return httpx.AsyncClient(
             follow_redirects=True,
@@ -192,9 +206,10 @@ class OmniWeatherClient:
             raise RuntimeError("HTTP client initialization failed unexpectedly.")
 
         started_at = time.perf_counter()
+        stats = _RequestStats()
         target_providers = self._resolve_target_providers(request)
         tasks = [
-            self._fetch_one_provider(provider_id, request, client)
+            self._fetch_one_provider(provider_id, request, client, stats)
             for provider_id in target_providers
         ]
         results = await asyncio.gather(*tasks)
@@ -213,6 +228,7 @@ class OmniWeatherClient:
                 total=len(results),
                 succeeded=succeeded,
                 failed=failed,
+                retries=stats.retries,
             ),
             completed_at=completed_at,
             total_latency_ms=(time.perf_counter() - started_at) * 1000,
@@ -254,6 +270,25 @@ class OmniWeatherClient:
                     event.phase,
                 )
 
+    def _emit_metric(self, event: MetricEvent) -> None:
+        for hook in self._metrics_hooks:
+            try:
+                hook(event)
+            except (Exception,):  # noqa: B013
+                logger.exception("Metrics hook failed (%s)", event.kind.value)
+
+    def _handle_cache_event(self, url: str, outcome: str) -> None:
+        kind = (
+            MetricKind.CACHE_HIT
+            if outcome in {"hit", "revalidated"}
+            else MetricKind.CACHE_MISS
+        )
+        self._emit_metric(MetricEvent(
+            kind=kind,
+            url=url,
+            extra={"outcome": outcome},
+        ))
+
     async def _run_response_hooks(self, response: ForecastResponse) -> None:
         for hook in self._response_hooks:
             try:
@@ -268,6 +303,7 @@ class OmniWeatherClient:
         provider_id: ProviderId,
         request: ForecastRequest,
         client: httpx.AsyncClient,
+        stats: _RequestStats,
     ) -> ProviderResult:
         started_at = time.perf_counter()
         registration = self._provider_registrations.get(provider_id)
@@ -352,6 +388,7 @@ class OmniWeatherClient:
                 timeout_ms,
                 started_at,
                 request,
+                attempt,
             )
             if isinstance(result, ProviderSuccess):
                 return result
@@ -367,6 +404,15 @@ class OmniWeatherClient:
             )
             if delay_seconds is None:
                 return result
+            stats.retries += 1
+            self._emit_metric(MetricEvent(
+                kind=MetricKind.RETRY_SCHEDULED,
+                provider=provider_id,
+                attempt=attempt,
+                error_code=result.error.code,
+                http_status=result.error.http_status,
+                extra={"delay_seconds": delay_seconds},
+            ))
             self._emit_log(ProviderLogEvent(
                 provider=provider_id,
                 phase="retry",
@@ -392,13 +438,38 @@ class OmniWeatherClient:
         timeout_ms: float,
         started_at: float,
         request: ForecastRequest,
+        attempt: int,
     ) -> tuple[ProviderResult, float | None]:
+        attempt_started = time.perf_counter()
+        self._emit_metric(MetricEvent(
+            kind=MetricKind.REQUEST_START,
+            provider=provider_id,
+            attempt=attempt,
+        ))
+
+        def _attempt_latency_ms() -> float:
+            return (time.perf_counter() - attempt_started) * 1000
+
+        def _end_metric(
+            error_code: ErrorCode | None,
+            http_status: int | None = None,
+        ) -> None:
+            self._emit_metric(MetricEvent(
+                kind=MetricKind.REQUEST_END,
+                provider=provider_id,
+                attempt=attempt,
+                latency_ms=_attempt_latency_ms(),
+                error_code=error_code,
+                http_status=http_status,
+            ))
+
         try:
             async with limiter.slot():
                 async with asyncio.timeout(timeout_ms / 1000):
                     result = await instance.fetch_forecast(params, client)
         except TimeoutError:
             latency_ms = (time.perf_counter() - started_at) * 1000
+            _end_metric(ErrorCode.TIMEOUT)
             self._emit_log(ProviderLogEvent(
                 provider=provider_id,
                 phase="error",
@@ -414,6 +485,7 @@ class OmniWeatherClient:
             ), None
         except httpx.HTTPError as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
+            _end_metric(ErrorCode.NETWORK)
             self._emit_log(ProviderLogEvent(
                 provider=provider_id,
                 phase="error",
@@ -430,6 +502,7 @@ class OmniWeatherClient:
         except Exception as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
             error_code = _exception_error_code(exc)
+            _end_metric(error_code)
             self._emit_log(ProviderLogEvent(
                 provider=provider_id,
                 phase="error",
@@ -447,6 +520,7 @@ class OmniWeatherClient:
         latency_ms = (time.perf_counter() - started_at) * 1000
         match result:
             case PluginFetchError():
+                _end_metric(result.code, result.http_status)
                 self._emit_log(ProviderLogEvent(
                     provider=provider_id,
                     phase="error",
@@ -466,6 +540,7 @@ class OmniWeatherClient:
                     ),
                 ), result.retry_after_seconds
             case _:
+                _end_metric(None)
                 self._emit_log(ProviderLogEvent(
                     provider=provider_id,
                     phase="success",
@@ -512,6 +587,19 @@ class OmniWeatherClient:
                 message,
                 started_at,
             )
+        if consumed:
+            self._emit_metric(MetricEvent(
+                kind=MetricKind.QUOTA_CONSUMED,
+                provider=provider_id,
+                extra={"limit": limit},
+            ))
+        else:
+            self._emit_metric(MetricEvent(
+                kind=MetricKind.QUOTA_EXHAUSTED,
+                provider=provider_id,
+                error_code=ErrorCode.QUOTA_EXCEEDED,
+                extra={"limit": limit},
+            ))
         if not consumed:
             message = (
                 f"Daily quota of {limit} requests is exhausted "
@@ -572,6 +660,7 @@ async def create_omni_weather(
     plugins: PluginsInput | None = None,
     log_hooks: list[LogHook] | None = None,
     response_hooks: list[ResponseHook] | None = None,
+    metrics_hooks: list[MetricsHook] | None = None,
     quota_tracker: QuotaTracker | None = None,
 ) -> OmniWeatherClient:
     """Create and initialize an OmniWeather client.
@@ -579,6 +668,9 @@ async def create_omni_weather(
     ``plugins`` scopes the plugin set to this client instance — pass a
     sequence of plugins or a mapping keyed by provider id. When omitted,
     the client falls back to the process-global registry.
+
+    ``metrics_hooks`` receive a MetricEvent for every request attempt,
+    retry, cache hit/miss, and quota consumption.
     """
 
     client = OmniWeatherClient(
@@ -586,6 +678,7 @@ async def create_omni_weather(
         plugins=plugins,
         log_hooks=log_hooks,
         response_hooks=response_hooks,
+        metrics_hooks=metrics_hooks,
         quota_tracker=quota_tracker,
     )
     await client.initialize()

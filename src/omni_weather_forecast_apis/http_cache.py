@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 
@@ -138,11 +139,17 @@ class CachingTransport(httpx.AsyncBaseTransport):
         transport: httpx.AsyncBaseTransport,
         *,
         max_entries: int = 256,
+        on_cache_event: Callable[[str, str], None] | None = None,
     ) -> None:
         self._transport = transport
         self._max_entries = max_entries
         self._entries: dict[_CacheKey, _CacheEntry] = {}
         self._lock = asyncio.Lock()
+        self._on_cache_event = on_cache_event
+
+    def _emit_cache_event(self, request: httpx.Request, outcome: str) -> None:
+        if self._on_cache_event is not None:
+            self._on_cache_event(str(request.url), outcome)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         if request.method != "GET" or _is_sensitive_request(request):
@@ -160,6 +167,7 @@ class CachingTransport(httpx.AsyncBaseTransport):
             and entry.fresh_until is not None
             and now < entry.fresh_until
         ):
+            self._emit_cache_event(request, "hit")
             return self._response_from_entry(entry, request)
 
         if entry is not None:
@@ -171,6 +179,7 @@ class CachingTransport(httpx.AsyncBaseTransport):
         response = await self._transport.handle_async_request(request)
 
         if entry is not None and response.status_code == httpx.codes.NOT_MODIFIED:
+            self._emit_cache_event(request, "revalidated")
             return await self._response_from_revalidation(
                 key,
                 entry,
@@ -183,8 +192,10 @@ class CachingTransport(httpx.AsyncBaseTransport):
             response.headers,
             now=now,
         ):
+            self._emit_cache_event(request, "store")
             return await self._response_from_store(key, request, response, now)
 
+        self._emit_cache_event(request, "miss")
         return response
 
     async def aclose(self) -> None:

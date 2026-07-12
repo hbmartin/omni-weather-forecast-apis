@@ -284,6 +284,47 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 
 **Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
 
+## Observability
+
+Beyond the structured per-provider log events (`log_hooks`), the client
+emits typed **metric events** for every request attempt, retry, HTTP cache
+lookup, and quota consumption. Register any callable as a `MetricsHook` —
+no extra dependencies required:
+
+```python
+from omni_weather_forecast_apis import MetricEvent, MetricKind, create_omni_weather
+
+def record(event: MetricEvent) -> None:
+    if event.kind is MetricKind.REQUEST_END:
+        print(event.provider, event.latency_ms, event.error_code)
+
+client = await create_omni_weather(config, metrics_hooks=[record])
+```
+
+`MetricKind` covers `request_start`, `request_end`, `retry_scheduled`,
+`cache_hit`, `cache_miss`, `quota_consumed`, and `quota_exhausted`. Cache
+events carry the request `url` instead of a provider (the HTTP cache is
+shared across providers). `response.summary.retries` reports how many
+retries a `forecast()` call needed.
+
+For OpenTelemetry, install the `otel` extra and use the prebuilt bridge:
+
+```bash
+pip install "omni-weather-forecast-apis[otel]"
+```
+
+```python
+from omni_weather_forecast_apis.otel import create_otel_metrics_hook
+
+client = await create_omni_weather(
+    config,
+    metrics_hooks=[create_otel_metrics_hook()],
+)
+```
+
+The bridge records counters for requests, retries, cache outcomes, and
+quota, plus a `omni_weather.request.duration_ms` histogram.
+
 ## Partial Failures
 
 The library is designed for partial-failure tolerance. When some providers fail (network errors, rate limits, auth issues), the response still completes with results from the providers that succeeded.

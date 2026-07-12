@@ -345,6 +345,7 @@ class ForecastResponseSummary(BaseModel):
     total: int
     succeeded: int
     failed: int
+    retries: int = 0
 
 
 class ForecastResponseRequest(BaseModel):

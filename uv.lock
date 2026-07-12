@@ -588,6 +588,9 @@ cli = [
     { name = "loguru" },
     { name = "rich" },
 ]
+otel = [
+    { name = "opentelemetry-api" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -610,10 +613,11 @@ docs = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", marker = "extra == 'cli'", specifier = ">=0.7.3" },
+    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=14.3.3" },
 ]
-provides-extras = ["cli"]
+provides-extras = ["cli", "otel"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -630,6 +634,18 @@ dev = [
 docs = [
     { name = "mkdocs-material", specifier = ">=9.6.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
+]
+
+[[package]]
+name = "opentelemetry-api"
+version = "1.43.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ae/cc/e4c9584181f86494df0f6bdec1a4f3280c50db44704dc2a407e994fc87bb/opentelemetry_api-1.43.0.tar.gz", hash = "sha256:107d0d03857ea8fc7c5fcbbbd83f800c281f0d560553d61c1d675fccfd1761c1", size = 73476, upload-time = "2026-06-24T15:19:55.323Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/83/6dba32b85f31868400440dc7ad2ca1eab94cbbf3a7b0459ed39f8311a9e2/opentelemetry_api-1.43.0-py3-none-any.whl", hash = "sha256:20acf45e9b21851926835292e4045d290acade1edd2ff3de86d2f069687ba1fd", size = 61912, upload-time = "2026-06-24T15:19:35.434Z" },
 ]
 
 [[package]]

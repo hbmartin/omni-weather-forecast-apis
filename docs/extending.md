@@ -85,6 +85,24 @@ A verification project can join this view against observed weather by
 ensemble project can use it as a training feature matrix and weight
 providers accordingly.
 
+## Metrics hooks
+
+Register `MetricsHook` callables to observe every request attempt, retry,
+HTTP-cache lookup, and quota consumption as typed `MetricEvent`s:
+
+```python
+from omni_weather_forecast_apis import MetricEvent, create_omni_weather
+
+def to_statsd(event: MetricEvent) -> None:
+    ...
+
+client = await create_omni_weather(config, metrics_hooks=[to_statsd])
+```
+
+Hook failures are logged and never break a forecast. An OpenTelemetry
+bridge ships as the `otel` extra
+(`omni_weather_forecast_apis.otel.create_otel_metrics_hook`).
+
 ## Quota trackers
 
 The daily-quota mechanism is also pluggable: implement the `QuotaTracker`

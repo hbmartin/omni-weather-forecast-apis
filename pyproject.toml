@@ -45,6 +45,9 @@ cli = [
     "loguru>=0.7.3",
     "rich>=14.3.3",
 ]
+otel = [
+    "opentelemetry-api>=1.30",
+]
 
 [project.scripts]
 omni-weather = "omni_weather_forecast_apis.cli:main"
