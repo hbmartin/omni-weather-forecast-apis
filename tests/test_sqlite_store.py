@@ -293,6 +293,9 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
                 condition_code_original TEXT,
                 is_day INTEGER
             );
+
+            CREATE VIEW stacking_features AS
+            SELECT 1 AS legacy_column;
             """,
         )
 
@@ -310,12 +313,17 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'index'",
             )
         }
+        view_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
+        }
         connection.execute("SELECT * FROM stacking_features LIMIT 0")
     finally:
         connection.close()
 
     assert {"fetched_at_unix", "run_cycle"} <= provider_columns
     assert "horizon_hours" in hourly_columns
+    assert "run_id" in view_columns
+    assert "legacy_column" not in view_columns
     assert {
         "idx_provider_results_run_cycle",
         "idx_hourly_points_horizon",
@@ -367,8 +375,8 @@ def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
     connection = sqlite3.connect(database_path)
     try:
         row = connection.execute(
-            "SELECT valid_time_unix, horizon_hours, run_cycle, provider, model, "
-            "latitude, longitude, temperature FROM stacking_features",
+            "SELECT run_id, valid_time_unix, horizon_hours, run_cycle, provider, "
+            "model, latitude, longitude, temperature FROM stacking_features",
         ).fetchone()
     finally:
         connection.close()
@@ -376,15 +384,16 @@ def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
     point_unix = int(datetime(2026, 3, 12, 20, tzinfo=UTC).timestamp())
     fetched_unix = int(fetched.timestamp())
     assert row is not None
-    assert row[0] == point_unix
-    assert row[1] == (point_unix - fetched_unix) / 3600.0
+    assert row[0] == 1
+    assert row[1] == point_unix
+    assert row[2] == (point_unix - fetched_unix) / 3600.0
     # run_cycle should bucket 14:23 → 12:00
-    assert row[2] == "2026-03-12T12:00:00+00:00"
-    assert row[3] == "open_meteo"
-    assert row[4] == "icon_seamless"
-    assert row[5] == 52.5
-    assert row[6] == 13.4
-    assert row[7] == 7.5
+    assert row[3] == "2026-03-12T12:00:00+00:00"
+    assert row[4] == "open_meteo"
+    assert row[5] == "icon_seamless"
+    assert row[6] == 52.5
+    assert row[7] == 13.4
+    assert row[8] == 7.5
 
 
 def test_run_cycle_buckets_to_six_hour_boundaries(tmp_path) -> None:

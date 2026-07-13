@@ -78,4 +78,6 @@ normalized database with these tables:
 
 The `stacking_features` view joins hourly points with their provider, model,
 run cycle, and forecast horizon — a ready-made feature matrix for
-downstream ensemble/ML work (see [Extending](extending.md)).
+downstream ensemble/ML work. See [Database Design](database.md) for the
+complete relationship model, column reference, indexes, lifecycle, and query
+examples, and [Extending](extending.md) for downstream integration patterns.

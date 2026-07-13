@@ -68,10 +68,11 @@ HTTP error mapping, and the normalized point builders.
 
 ## 3. The SQLite feature matrix
 
-The CLI's SQLite output is a stable, documented schema (see
-[CLI](cli.md#sqlite-output)). The `stacking_features` view exposes one row
-per provider/model/hour with the forecast horizon and NWP run cycle —
-exactly the shape an ensemble stacker or verification job needs:
+The CLI's SQLite output has a documented relationship model, column reference,
+and lifecycle (see [Database Design](database.md) and
+[CLI](cli.md#sqlite-output)). The `stacking_features` view exposes one row per
+provider/model/hour with the forecast horizon and synthetic six-hour run-cycle
+bucket — exactly the shape an ensemble stacker or verification job needs:
 
 ```sql
 SELECT valid_time, provider, model, horizon_hours, temperature

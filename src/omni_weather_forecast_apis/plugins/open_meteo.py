@@ -92,6 +92,14 @@ DEFAULT_MINUTELY_FIELDS: Final[tuple[str, ...]] = (
     "precipitation",
     "precipitation_probability",
 )
+_MODEL_INDEPENDENT_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "daylight_duration",
+        "is_day",
+        "sunrise",
+        "sunset",
+    },
+)
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:
@@ -118,6 +126,47 @@ def _parallel_rows(section: dict[str, Any]) -> list[dict[str, Any]]:
             row[key] = values[index]
         rows.append(row)
     return rows
+
+
+def _has_model_data(
+    fields: dict[str, Any],
+    index: int,
+) -> bool:
+    return any(
+        field not in _MODEL_INDEPENDENT_FIELDS
+        and isinstance(values, list)
+        and index < len(values)
+        and values[index] is not None
+        for field, values in fields.items()
+    )
+
+
+def _scope_model_section(raw: dict[str, Any], model: str) -> dict[str, Any]:
+    suffix = f"_{model}"
+    fields = {
+        key.removesuffix(suffix): values
+        for key, values in raw.items()
+        if key.endswith(suffix)
+    }
+    times = raw.get("time")
+    if not isinstance(times, list):
+        return {"time": times} | fields
+
+    retained_indices = [
+        index for index in range(len(times)) if _has_model_data(fields, index)
+    ]
+    scoped_fields = {
+        field: (
+            [
+                values[index] if index < len(values) else None
+                for index in retained_indices
+            ]
+            if isinstance(values, list)
+            else values
+        )
+        for field, values in fields.items()
+    }
+    return {"time": [times[index] for index in retained_indices]} | scoped_fields
 
 
 def _condition_from_code(value: Any) -> tuple[Any, Any]:
@@ -239,17 +288,13 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         more than one model suffixes every variable key inside it with the
         model name (``temperature_2m_ecmwf_ifs025``); a single-model request
         leaves the keys bare. Strip the suffix so the parsers always see the
-        canonical field names.
+        canonical field names, and discard timestamps beyond the selected
+        model's forecast horizon.
         """
         raw = data.get(section)
         if not multi_model or not isinstance(raw, dict):
             return raw
-        suffix = f"_{model}"
-        return {"time": raw.get("time")} | {
-            key.removesuffix(suffix): values
-            for key, values in raw.items()
-            if key.endswith(suffix)
-        }
+        return _scope_model_section(raw, model)
 
     def _parse_payloads(self, payload: dict[str, Any]) -> list[Any]:
         models = self.config.models or ["best_match"]
