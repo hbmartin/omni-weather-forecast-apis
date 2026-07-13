@@ -86,6 +86,30 @@ class TestConditionFromText:
             WeatherCondition.THUNDERSTORM
         )
 
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # Regression: the generic "showers" keyword used to win over
+            # every wintry phrase, turning all of these into RAIN.
+            ("Snow Showers", WeatherCondition.SNOW),
+            ("Light snow showers", WeatherCondition.LIGHT_SNOW),
+            ("Chance Snow Showers", WeatherCondition.SNOW),
+            ("Sleet showers", WeatherCondition.SLEET),
+            ("Wintry Showers", WeatherCondition.SLEET),
+            ("Rain And Snow Showers", WeatherCondition.SLEET),
+            ("Freezing drizzle", WeatherCondition.FREEZING_RAIN),
+            # Regression: NWS-style sunny variants used to collapse to CLEAR.
+            ("Mostly Sunny", WeatherCondition.MOSTLY_CLEAR),
+            ("Partly Sunny", WeatherCondition.PARTLY_CLOUDY),
+            # Regression: Visual Crossing "Partially cloudy" and bare
+            # "Cloudy" used to fall through to UNKNOWN.
+            ("Partially cloudy", WeatherCondition.PARTLY_CLOUDY),
+            ("Cloudy", WeatherCondition.MOSTLY_CLOUDY),
+        ],
+    )
+    def test_wintry_showers_and_sunny_variants(self, text, expected):
+        assert condition_from_text(text) is expected
+
     def test_case_and_whitespace_insensitive(self):
         assert condition_from_text("  HEAVY RAIN ") is WeatherCondition.HEAVY_RAIN
 

@@ -123,6 +123,10 @@ class WeatherDataPoint(BaseModel):
     )
     rain: float | None = Field(None, description="Rain amount, mm")
     snow: float | None = Field(None, description="Snowfall (liquid equivalent), mm")
+    snowfall_depth: float | None = Field(
+        None,
+        description="New snowfall depth, mm",
+    )
     snow_depth: float | None = Field(None, description="Snow depth on ground, mm")
     cloud_cover: float | None = Field(None, description="Total cloud cover, % (0–100)")
     cloud_cover_low: float | None = Field(None, description="Low cloud cover, %")
@@ -212,7 +216,14 @@ class DailyDataPoint(BaseModel):
         description="Max precipitation probability, 0–1",
     )
     rain_sum: float | None = Field(None, description="Total rain, mm")
-    snowfall_sum: float | None = Field(None, description="Total snowfall, mm")
+    snowfall_sum: float | None = Field(
+        None,
+        description="Total snowfall (liquid equivalent), mm",
+    )
+    snowfall_depth_sum: float | None = Field(
+        None,
+        description="Total new snowfall depth, mm",
+    )
     cloud_cover_mean: float | None = Field(None, description="Mean cloud cover, %")
     uv_index_max: float | None = Field(None, description="Max UV index")
     visibility_min: float | None = Field(None, description="Min visibility, km")

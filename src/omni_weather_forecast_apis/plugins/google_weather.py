@@ -23,7 +23,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_source_forecast,
     fallback_condition,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -206,7 +206,7 @@ def _precipitation_probability(entry: dict[str, Any]) -> float | None:
     probability = _precipitation_block(entry, "probability")
     if not isinstance(probability, dict):
         return None
-    return normalize_probability(probability.get("percent"))
+    return probability_from_percent_value(probability.get("percent"))
 
 
 def _interval_start(entry: dict[str, Any]) -> str | None:

@@ -17,9 +17,10 @@ from omni_weather_forecast_apis.plugins._base import (
     fallback_condition,
     first_present,
     normalize_percent,
-    normalize_probability,
     normalize_severity,
     parse_retry_after,
+    probability_from_fraction,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import AlertSeverity, WeatherCondition
 
@@ -84,21 +85,38 @@ class TestFirstPresent:
         assert first_present({"a": None}, "a", "b") is None
 
 
-class TestNormalizeProbability:
-    def test_fraction_passes_through(self):
-        assert normalize_probability(0.35) == 0.35
-
+class TestProbabilityFromPercentValue:
     def test_percent_scale_is_downscaled(self):
-        assert normalize_probability(35) == 0.35
-        assert normalize_probability("80") == 0.8
+        assert probability_from_percent_value(35) == 0.35
+        assert probability_from_percent_value("80") == 0.8
+
+    def test_one_percent_is_one_hundredth(self):
+        # Regression: the old >1 heuristic read a raw 1 (1%) as 100%.
+        assert probability_from_percent_value(1) == 0.01
 
     def test_clamping(self):
-        assert normalize_probability(150) == 1.0
-        assert normalize_probability(-0.5) == 0.0
+        assert probability_from_percent_value(150) == 1.0
+        assert probability_from_percent_value(-5) == 0.0
 
     def test_non_numeric_returns_none(self):
         non_numeric = [None, "high", True]
-        assert all(normalize_probability(value) is None for value in non_numeric)
+        assert all(
+            probability_from_percent_value(value) is None for value in non_numeric
+        )
+
+
+class TestProbabilityFromFraction:
+    def test_fraction_passes_through(self):
+        assert probability_from_fraction(0.35) == 0.35
+        assert probability_from_fraction(1) == 1.0
+
+    def test_clamping(self):
+        assert probability_from_fraction(1.5) == 1.0
+        assert probability_from_fraction(-0.5) == 0.0
+
+    def test_non_numeric_returns_none(self):
+        non_numeric = [None, "high", True]
+        assert all(probability_from_fraction(value) is None for value in non_numeric)
 
 
 class TestNormalizePercent:

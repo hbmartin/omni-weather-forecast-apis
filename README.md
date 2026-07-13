@@ -187,6 +187,7 @@ max_keepalive_connections = 10
 connect_timeout_ms = 5000
 cache_enabled = true      # conditional-request HTTP cache (ETag/Last-Modified/Expires)
 cache_max_entries = 256
+raw_archive_enabled = true  # archive raw HTTP payloads next to the SQLite database
 
 [[providers]]
 plugin_id = "open_meteo"
@@ -214,6 +215,8 @@ Transient failures — network errors, timeouts, and HTTP 429 rate limits — ar
 ### HTTP caching and connection limits
 
 The shared HTTP client is powered by [HTTPX2](https://httpx2.pydantic.dev/), uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. Responses that declare `Vary` are only reused for requests sending the same values for the named headers (`Vary: *` is never cached). Requests carrying `Authorization` or `Cookie` headers bypass the shared cache. MET Norway's terms of service require conditional requests and the NWS strongly encourages caching. Disable with `cache_enabled = false` under `[http]`.
+
+When persisting to SQLite, every network response is additionally archived as gzipped JSONL (one line per response: timestamp, method, URL, status, body) into a `raw/` directory next to the database — one file per invocation, linked from `forecast_runs.raw_archive_path`. The archive makes historical runs reparseable if a parser bug is ever found. URLs are stored verbatim, including API keys in query strings, so keep archives out of version control (the repo ignores `raw/`). Disable with `--no-raw-archive` or `raw_archive_enabled = false` under `[http]`. Files accumulate until deleted manually.
 
 ### Daily quotas
 
@@ -311,7 +314,10 @@ path, and lets you select one or more granularities. The generated TOML is
 parsed and fully validated before an exact preview is shown. Credential prompts
 are masked, but the selected values are intentionally stored in the TOML and
 shown in that preview; protect the terminal session as well as the resulting
-owner-only (`0600` on POSIX) file. The final test forecast defaults to yes.
+owner-only (`0600` on POSIX) file. After saving, the wizard optionally installs
+a daily forecast job at a chosen local time using cron on Linux, launchd on
+macOS, or Windows Task Scheduler. Scheduling defaults to off; the final test
+forecast defaults to yes.
 
 If a forecast command omits `--config`, configuration is resolved in this
 order:
@@ -376,9 +382,9 @@ omni-weather doctor
 omni-weather doctor --live --provider open_meteo
 ```
 
-The CLI performs one forecast collection per invocation. For recurring
-collection, see the [Scheduling guide](https://hbmartin.github.io/omni-weather-forecast-apis/scheduling/)
-for cron (Linux) and launchd (macOS) examples.
+The CLI performs one forecast collection per invocation. `omni-weather init`
+can install a daily platform-native job. For custom cadences and manual setup,
+see the [Scheduling guide](https://hbmartin.github.io/omni-weather-forecast-apis/scheduling/).
 
 `csv` and `ndjson` emit one row/line per forecast data point, flattened with
 `provider`, `model`, and `granularity` (`minutely` / `hourly` / `daily`)
@@ -397,6 +403,7 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 | `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | config value | Provider language preference |
 | `--include-raw` | No | config value | Persist raw provider payloads |
+| `--no-raw-archive` | No | archiving on | Skip writing the raw HTTP payload archive (`raw/<UTC timestamp>.jsonl.gz` next to the SQLite database) |
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
 | `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database, or `./omni-weather.log` when SQLite is omitted |
 
@@ -404,16 +411,19 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 granularities, authentication shape, and official setup link. `omni-weather
 doctor` aggregates TOML, coordinates, environment references, provider
 settings, granularity compatibility, output paths, duplicates, and POSIX
-permission checks. It never prints resolved environment values. `--provider`
-narrows provider-specific checks while retaining top-level checks. Only
-`--live` contacts providers; live checks do not persist results, but they can
-consume API quota and be subject to rate limits.
+permission checks. It also reports whether the platform-native daily schedule
+for the selected config is installed; a missing schedule is highlighted as a
+warning and does not make `doctor` fail. It never prints resolved environment
+values. `--provider` narrows provider-specific checks while retaining top-level
+checks. Only `--live` contacts providers; live checks do not persist results,
+but they can consume API quota and be subject to rate limits.
 
 **Exit codes:** forecast and doctor return `0` when required checks or providers
 succeed and `1` for provider/diagnostic failures. Warnings alone return `0`.
 Invalid invocation, load failures outside doctor, and unexpected operational
 errors return `2`. Cancelling explicit `init` returns `0`; cancelling automatic
-first-run setup returns `2`.
+first-run setup returns `2`. Pressing Ctrl+C while a command is running prints
+`Aborted.` without a traceback and returns `130`.
 
 ## Observability
 
@@ -475,6 +485,8 @@ The CLI reflects this in exit codes: `0` means all providers succeeded, `1` mean
 
 All provider responses are normalized into a common set of Pydantic models. Units are standardized: temperatures in °C, wind speeds in m/s, pressure in hPa, precipitation in mm, visibility in km.
 
+> **A note on pressure data.** Pressure is the least reliable field providers report — implausible sea-level values have been observed in the wild (Stormglass emitting 885 hPa, Weatherbit 1074 hPa). And if you compare `pressure_sea` against a personal weather station, calibrate the station first: consumer stations report an *absolute* (station-level) pressure and a *relative* (sea-level) pressure, and the relative reading requires an elevation offset to be configured — an uncalibrated station at altitude can read more than 150 hPa below the true sea-level value while its absolute sensor is perfectly healthy. Pressure plausibility checks are planned; the author will be working on this soon.
+
 ### `WeatherDataPoint` (hourly)
 
 | Field | Type | Unit |
@@ -484,7 +496,8 @@ All provider responses are normalized into a common set of Pydantic models. Unit
 | `wind_speed`, `wind_gust` | float \| None | m/s |
 | `wind_direction` | float \| None | degrees |
 | `pressure_sea`, `pressure_surface` | float \| None | hPa |
-| `precipitation`, `rain`, `snow`, `snow_depth` | float \| None | mm |
+| `precipitation`, `rain`, `snow` (liquid equivalent), `snow_depth` | float \| None | mm |
+| `snowfall_depth` (new snow depth; providers report either this or `snow`, not both) | float \| None | mm |
 | `precipitation_probability` | float \| None | 0-1 |
 | `cloud_cover`, `cloud_cover_low`, `cloud_cover_mid`, `cloud_cover_high` | float \| None | % |
 | `visibility` | float \| None | km |
@@ -501,7 +514,7 @@ All provider responses are normalized into a common set of Pydantic models. Unit
 | `temperature_max`, `temperature_min` | float \| None | °C |
 | `apparent_temperature_max`, `apparent_temperature_min` | float \| None | °C |
 | `wind_speed_max`, `wind_gust_max` | float \| None | m/s |
-| `precipitation_sum`, `rain_sum`, `snowfall_sum` | float \| None | mm |
+| `precipitation_sum`, `rain_sum`, `snowfall_sum` (liquid equivalent), `snowfall_depth_sum` (depth) | float \| None | mm |
 | `precipitation_probability_max` | float \| None | 0-1 |
 | `cloud_cover_mean` | float \| None | % |
 | `humidity_mean` | float \| None | % |

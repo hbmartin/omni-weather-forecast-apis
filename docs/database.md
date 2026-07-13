@@ -105,6 +105,12 @@ historical forecast data.
 | `provider_logs` | Zero or more provider lifecycle events, optionally associated with a run |
 | `provider_quota_usage` | One durable counter per provider and UTC day |
 | `stacking_features` | Read-only joined view of successful hourly forecasts |
+| `db_repairs` | Audit log written by `scripts/repair_db.py`; absent unless a repair ran |
+
+Alongside the database, the CLI writes a **raw payload archive**: a `raw/`
+directory of gzipped JSONL files (one per invocation) recording every network
+response, linked from `forecast_runs.raw_archive_path`. See
+[Data corrections](data-corrections.md) for the format and rationale.
 
 SQLite uses dynamic typing, but each declaration below establishes the
 expected type affinity. Unless a column is marked `NOT NULL`, missing provider
@@ -128,6 +134,8 @@ This is the root table for a persisted aggregate response.
 | `total_results` | `INTEGER NOT NULL` | Total number of provider results |
 | `succeeded` | `INTEGER NOT NULL` | Number of successful provider results |
 | `failed` | `INTEGER NOT NULL` | Number of failed provider results |
+| `raw_archive_path` | `TEXT` | Path to the gzipped JSONL raw payload archive for this run; `NULL` when archiving was disabled or no network traffic occurred |
+| `app_version` | `TEXT` | Package version that wrote the run; `NULL` for rows written before versions were stamped (pre correctness-sweep data — see [Data corrections](data-corrections.md)) |
 
 The summary counts are stored rather than recomputed so the database preserves
 the exact response summary emitted by the client.
@@ -212,7 +220,8 @@ keeps both normalized values and selected provider-native condition fields.
 | `precipitation` | `REAL` | Liquid-equivalent precipitation, mm |
 | `precipitation_probability` | `REAL` | Probability from `0` to `1` |
 | `rain` | `REAL` | Rain amount, mm |
-| `snow` | `REAL` | Liquid-equivalent snowfall, mm |
+| `snow` | `REAL` | Liquid-equivalent snowfall, mm — only for providers that report liquid equivalent (e.g. OpenWeather, Open-Meteo via `snowfall_water_equivalent`) |
+| `snowfall_depth` | `REAL` | New snowfall depth, mm — only for providers that report depth (e.g. Open-Meteo `snowfall`, Pirate Weather `snowAccumulation`) |
 | `snow_depth` | `REAL` | Snow depth on the ground, mm |
 | `cloud_cover` | `REAL` | Total cloud cover, percent |
 | `cloud_cover_low` | `REAL` | Low cloud cover, percent |
@@ -250,7 +259,8 @@ time.
 | `wind_direction_dominant` | `REAL` | Dominant meteorological direction in degrees |
 | `precipitation_sum` | `REAL` | Total liquid-equivalent precipitation, mm |
 | `precipitation_probability_max` | `REAL` | Maximum probability from `0` to `1` |
-| `rain_sum`, `snowfall_sum` | `REAL` | Daily rain and snowfall totals, mm |
+| `rain_sum`, `snowfall_sum` | `REAL` | Daily rain and liquid-equivalent snowfall totals, mm |
+| `snowfall_depth_sum` | `REAL` | Daily new snowfall depth total, mm |
 | `cloud_cover_mean` | `REAL` | Mean cloud cover, percent |
 | `uv_index_max` | `REAL` | Maximum UV index |
 | `visibility_min` | `REAL` | Minimum visibility, km |

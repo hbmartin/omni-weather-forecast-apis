@@ -275,6 +275,8 @@ class TestWeatherbitInstance:
                     "wind_gust_spd": 20.0,
                     "precip": 0.5,
                     "snow": 0.2,
+                    "snow_depth": 4.0,
+                    "vis": 10.0,
                 },
             ],
         }
@@ -305,8 +307,51 @@ class TestWeatherbitInstance:
         # inches converted to mm via mm_from_inches
         assert hour.precipitation == pytest.approx(12.7)
         assert hour.snow == pytest.approx(5.08)
+        # Regression: imperial snow depth (inches) and visibility (miles)
+        # used to pass through unconverted.
+        assert hour.snow_depth == pytest.approx(101.6)
+        assert hour.visibility == pytest.approx(16.0934)
         # humidity is unit-independent
         assert hour.humidity == 50.0
+
+    @pytest.mark.asyncio
+    async def test_fetch_scientific_units_converts_kelvin(self) -> None:
+        config = weatherbit_plugin.validate_config(
+            {"api_key": "test-key", "units": "S"},
+        )
+        instance = await weatherbit_plugin.initialize(config)
+
+        hourly_payload = {
+            "data": [
+                {
+                    "timestamp_utc": "2024-01-01T00:00:00",
+                    "temp": 293.15,
+                    "app_temp": 288.15,
+                    "dewpt": 278.15,
+                    "wind_spd": 4.0,
+                    "vis": 16.0,
+                },
+            ],
+        }
+
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=hourly_payload)
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(
+                _fetch_params([Granularity.HOURLY]),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        hour = result.forecasts[0].hourly[0]
+        # Regression: Kelvin used to pass through into the Celsius fields.
+        assert hour.temperature == pytest.approx(20.0)
+        assert hour.apparent_temperature == pytest.approx(15.0)
+        assert hour.dew_point == pytest.approx(5.0)
+        # Scientific wind (m/s) and visibility (km) pass through unchanged.
+        assert hour.wind_speed == 4.0
+        assert hour.visibility == 16.0
 
     @pytest.mark.asyncio
     async def test_daily_only_skips_hourly_endpoint(

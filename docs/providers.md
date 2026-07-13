@@ -67,3 +67,39 @@ Google Maps Platform API key with the Weather API enabled.
   daily schema.
 - Responses are requested in metric units and converted to the library's
   normalized units (km/h wind speeds become m/s, etc.).
+
+## Unit and semantics notes
+
+A few provider-specific behaviors are worth knowing when comparing values
+across providers (see [Data corrections](data-corrections.md) for the
+history behind these rules):
+
+- **Snow fields are split by what the provider reports.** `snow` /
+  `snowfall_sum` hold liquid-equivalent millimetres (OpenWeather, and
+  Open-Meteo via `snowfall_water_equivalent`); `snowfall_depth` /
+  `snowfall_depth_sum` hold new-snow depth in millimetres (Open-Meteo
+  `snowfall`, Pirate Weather `snowAccumulation`). No 10:1 conversion is
+  ever guessed between the two.
+- **Pirate Weather liquid amounts** come from `liquidAccumulation`
+  (cm→mm), falling back to `precipAccumulation` only for rain-typed rows —
+  when snowing, `precipAccumulation` reports snow depth and is not a
+  liquid amount. `precipIntensity` (a mm/h rate) is used only for the
+  minutely `precipitation_intensity` field.
+- **Weather Unlocked returns local times with no offset**, so the plugin
+  resolves the location's UTC offset once per coordinate pair via the
+  keyless Open-Meteo `timezone=auto` endpoint and fails the fetch if the
+  lookup is unusable. Forecast hours crossing a DST transition can be off
+  by one hour (see [Future work](future-work.md)).
+- **Daily dates are local calendar dates.** Pirate Weather and OpenWeather
+  daily epochs are converted using the UTC offset carried in their
+  payloads, so a Berlin forecast for "January 1" is dated January 1 even
+  though its local midnight is December 31 in UTC.
+- **WeatherAPI daily rows have no feels-like or minimum visibility** —
+  `apparent_temperature_max/min` and `visibility_min` are `None` rather
+  than approximations (the API only offers air temps and a daily average
+  visibility).
+- **Probability scales are declared per provider** (percent for NWS,
+  Open-Meteo, Google, Meteosource, WeatherAPI, Visual Crossing,
+  Tomorrow.io, Weatherbit, Weather Unlocked; 0-1 fractions for
+  OpenWeather, Pirate Weather, Stormglass), so a raw `1` from a percent
+  API means 1%, never 100%.

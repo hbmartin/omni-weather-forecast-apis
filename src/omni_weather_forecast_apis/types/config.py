@@ -64,6 +64,17 @@ class HTTPConfig(BaseModel):
     connect_timeout_ms: float = Field(default=5_000, gt=0)
     cache_enabled: bool = True
     cache_max_entries: int = Field(default=256, ge=1)
+    raw_archive_enabled: bool = Field(
+        default=True,
+        description="Kill switch for raw payload archiving",
+    )
+    raw_archive_path: str | None = Field(
+        default=None,
+        description=(
+            "Gzipped JSONL file recording every network response; archiving "
+            "is active only when a path is set"
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_connection_bounds(self) -> Self:

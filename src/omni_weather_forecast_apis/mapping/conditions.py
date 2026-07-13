@@ -155,22 +155,23 @@ def condition_from_text(text: str | None) -> WeatherCondition | None:
     if not normalized:
         return None
 
+    # Ordered most-specific first: wintry phrases must win before the generic
+    # "showers"/"rain" keywords, and "partly/mostly sunny" before bare "sunny".
     keyword_map: tuple[tuple[tuple[str, ...], WeatherCondition], ...] = (
         (("tornado",), WeatherCondition.TORNADO),
         (("hurricane", "tropical storm"), WeatherCondition.HURRICANE),
         (("thunder", "lightning"), WeatherCondition.THUNDERSTORM),
-        (("freezing rain",), WeatherCondition.FREEZING_RAIN),
+        (("freezing rain", "freezing drizzle"), WeatherCondition.FREEZING_RAIN),
+        (("sleet", "ice pellets", "rain and snow", "wintry"), WeatherCondition.SLEET),
+        (("hail",), WeatherCondition.HAIL),
+        (("light snow",), WeatherCondition.LIGHT_SNOW),
+        (("heavy snow", "blizzard"), WeatherCondition.HEAVY_SNOW),
+        (("snow",), WeatherCondition.SNOW),
         (("drizzle",), WeatherCondition.DRIZZLE),
         (("light rain",), WeatherCondition.LIGHT_RAIN),
         (("heavy rain", "downpour"), WeatherCondition.HEAVY_RAIN),
         (("rain shower", "showers"), WeatherCondition.RAIN),
         (("rain",), WeatherCondition.RAIN),
-        (("hail",), WeatherCondition.HAIL),
-        (("light snow",), WeatherCondition.LIGHT_SNOW),
-        (("heavy snow", "blizzard"), WeatherCondition.HEAVY_SNOW),
-        (("snow shower",), WeatherCondition.SNOW),
-        (("snow",), WeatherCondition.SNOW),
-        (("sleet", "ice pellets"), WeatherCondition.SLEET),
         (("fog",), WeatherCondition.FOG),
         (("smoke",), WeatherCondition.SMOKE),
         (("dust",), WeatherCondition.DUST),
@@ -178,8 +179,13 @@ def condition_from_text(text: str | None) -> WeatherCondition | None:
         (("haze", "mist"), WeatherCondition.HAZE),
         (("overcast",), WeatherCondition.OVERCAST),
         (("mostly cloudy",), WeatherCondition.MOSTLY_CLOUDY),
-        (("partly cloudy", "partly cloud"), WeatherCondition.PARTLY_CLOUDY),
-        (("mostly clear",), WeatherCondition.MOSTLY_CLEAR),
+        (
+            ("partly cloudy", "partly cloud", "partially cloud"),
+            WeatherCondition.PARTLY_CLOUDY,
+        ),
+        (("cloudy",), WeatherCondition.MOSTLY_CLOUDY),
+        (("mostly clear", "mostly sunny"), WeatherCondition.MOSTLY_CLEAR),
+        (("partly sunny",), WeatherCondition.PARTLY_CLOUDY),
         (("clear", "sunny"), WeatherCondition.CLEAR),
     )
     for keywords, condition in keyword_map:

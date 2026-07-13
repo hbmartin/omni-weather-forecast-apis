@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from omni_weather_forecast_apis.plugins._base import (
@@ -14,7 +15,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_minutely_point,
     build_source_forecast,
     first_present,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -142,8 +143,23 @@ def _sum_present(*values: object) -> float | None:
     return total if seen else None
 
 
+def _entry_time(entry: Mapping[str, Any]) -> Any | None:
+    """Entry timestamp: /v4/weather/forecast uses ``time``, the legacy
+    Timelines API used ``startTime``."""
+
+    return first_present(entry, "time", "startTime")
+
+
 def _daily_date(value: object) -> object:
-    if isinstance(value, str) and (parsed := parse_date(value)) is not None:
+    if not isinstance(value, str):
+        return value
+    try:
+        # Daily rows are keyed by the location's local calendar date; take
+        # the date embedded in the string without converting to UTC first.
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        pass
+    if (parsed := parse_date(value)) is not None:
         return parsed
     return value
 
@@ -176,11 +192,11 @@ def _parse_minutely(entry: Mapping[str, Any]) -> MinutelyDataPoint:
     if not isinstance(values, Mapping):
         values = {}
     return build_minutely_point(
-        entry["startTime"],
+        _entry_time(entry),
         precipitation_intensity=as_float(
             first_present(values, "precipitationIntensity", "rainIntensity"),
         ),
-        precipitation_probability=normalize_probability(
+        precipitation_probability=probability_from_percent_value(
             values.get("precipitationProbability"),
         ),
     )
@@ -192,7 +208,7 @@ def _parse_hourly(entry: Mapping[str, Any]) -> WeatherDataPoint:
         values = {}
     condition, code = _condition_from_values(values)
     return build_hourly_point(
-        entry["startTime"],
+        _entry_time(entry),
         temperature=as_float(values.get("temperature")),
         apparent_temperature=as_float(values.get("temperatureApparent")),
         dew_point=as_float(values.get("dewPoint")),
@@ -205,7 +221,7 @@ def _parse_hourly(entry: Mapping[str, Any]) -> WeatherDataPoint:
         precipitation=as_float(
             first_present(values, "precipitationIntensity", "rainIntensity"),
         ),
-        precipitation_probability=normalize_probability(
+        precipitation_probability=probability_from_percent_value(
             values.get("precipitationProbability"),
         ),
         rain=as_float(values.get("rainIntensity")),
@@ -228,7 +244,7 @@ def _parse_daily(entry: Mapping[str, Any]) -> DailyDataPoint:
         values = {}
     condition, _ = _condition_from_values(values)
     return build_daily_point(
-        _daily_date(entry["startTime"]),
+        _daily_date(_entry_time(entry)),
         temperature_max=as_float(values.get("temperatureMax")),
         temperature_min=as_float(values.get("temperatureMin")),
         apparent_temperature_max=as_float(values.get("temperatureApparentMax")),
@@ -237,7 +253,7 @@ def _parse_daily(entry: Mapping[str, Any]) -> DailyDataPoint:
         wind_gust_max=as_float(values.get("windGustMax")),
         wind_direction_dominant=as_float(values.get("windDirection")),
         precipitation_sum=_daily_precipitation_sum(values),
-        precipitation_probability_max=normalize_probability(
+        precipitation_probability_max=probability_from_percent_value(
             values.get("precipitationProbabilityMax"),
         ),
         rain_sum=as_float(
@@ -299,7 +315,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
 
         minutely: list[MinutelyDataPoint] = []
         for item in _timeline_list(raw, "1m"):
-            if "startTime" not in item:
+            if _entry_time(item) is None:
                 continue
             try:
                 minutely.append(_parse_minutely(item))
@@ -308,7 +324,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
 
         hourly: list[WeatherDataPoint] = []
         for item in _timeline_list(raw, "1h"):
-            if "startTime" not in item:
+            if _entry_time(item) is None:
                 continue
             try:
                 hourly.append(_parse_hourly(item))
@@ -317,7 +333,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
 
         daily: list[DailyDataPoint] = []
         for item in _timeline_list(raw, "1d"):
-            if "startTime" not in item:
+            if _entry_time(item) is None:
                 continue
             try:
                 daily.append(_parse_daily(item))

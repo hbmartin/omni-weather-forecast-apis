@@ -22,7 +22,8 @@ from omni_weather_forecast_apis.plugins._base import (
     build_source_forecast,
     fallback_condition,
     first_present,
-    normalize_probability,
+    local_date_from_epoch,
+    probability_from_fraction,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -103,13 +104,6 @@ def _is_daylight(entry: Mapping[str, Any]) -> bool | None:
     return sunrise <= dt < sunset
 
 
-def _first_tag(tags: object) -> str | None:
-    if not isinstance(tags, list) or not tags:
-        return None
-    first_tag = tags[0]
-    return first_tag if isinstance(first_tag, str) else None
-
-
 def _parse_weather_block(
     entry: Mapping[str, Any],
 ) -> tuple[str | None, int | None, WeatherCondition | None]:
@@ -158,7 +152,7 @@ def _parse_hourly_entry(
         wind_direction=as_float(entry.get("wind_deg")),
         pressure_sea=as_float(entry.get("pressure")),
         precipitation=_sum_present(rain_amount, snow_amount),
-        precipitation_probability=normalize_probability(entry.get("pop")),
+        precipitation_probability=probability_from_fraction(entry.get("pop")),
         rain=rain_amount,
         snow=snow_amount,
         cloud_cover=as_float(entry.get("clouds")),
@@ -177,14 +171,16 @@ def _parse_daily_entry(
     entry: Mapping[str, Any],
     *,
     units: str,
+    utc_offset_seconds: float | None,
 ) -> DailyDataPoint:
     description, _code, mapped_condition = _parse_weather_block(entry)
     temperature = entry.get("temp")
     feels_like = entry.get("feels_like")
     rain_amount = as_float(entry.get("rain"))
     snow_amount = as_float(entry.get("snow"))
+    local_date = local_date_from_epoch(entry["dt"], utc_offset_seconds)
     return build_daily_point(
-        entry["dt"],
+        local_date if local_date is not None else entry["dt"],
         temperature_max=_normalize_temperature(
             (
                 as_float(temperature.get("max"))
@@ -221,7 +217,7 @@ def _parse_daily_entry(
         wind_gust_max=_normalize_wind_speed(as_float(entry.get("wind_gust")), units),
         wind_direction_dominant=as_float(entry.get("wind_deg")),
         precipitation_sum=_sum_present(rain_amount, snow_amount),
-        precipitation_probability_max=normalize_probability(entry.get("pop")),
+        precipitation_probability_max=probability_from_fraction(entry.get("pop")),
         rain_sum=rain_amount,
         snowfall_sum=snow_amount,
         cloud_cover_mean=as_float(entry.get("clouds")),
@@ -274,24 +270,29 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
         if isinstance(raw, PluginFetchError):
             return raw
 
+        utc_offset_seconds = as_float(raw.get("timezone_offset"))
         minutely: list[MinutelyDataPoint] = [
             build_minutely_point(
                 entry["dt"],
                 precipitation_intensity=as_float(entry.get("precipitation")),
-                precipitation_probability=normalize_probability(entry.get("pop")),
+                precipitation_probability=probability_from_fraction(entry.get("pop")),
             )
             for entry in raw.get("minutely", [])
-            if isinstance(entry, Mapping)
+            if isinstance(entry, Mapping) and "dt" in entry
         ]
         hourly = [
             _parse_hourly_entry(entry, units=self.config.units)
             for entry in raw.get("hourly", [])
-            if isinstance(entry, Mapping)
+            if isinstance(entry, Mapping) and "dt" in entry
         ]
         daily = [
-            _parse_daily_entry(entry, units=self.config.units)
+            _parse_daily_entry(
+                entry,
+                units=self.config.units,
+                utc_offset_seconds=utc_offset_seconds,
+            )
             for entry in raw.get("daily", [])
-            if isinstance(entry, Mapping)
+            if isinstance(entry, Mapping) and "dt" in entry
         ]
         alerts = [
             build_alert(
@@ -303,7 +304,8 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
                 start=entry["start"],
                 end=entry.get("end"),
                 description=str(entry.get("description") or ""),
-                url=_first_tag(entry.get("tags")),
+                # One Call alerts carry category tags, not links; there is no URL.
+                url=None,
             )
             for entry in raw.get("alerts", [])
             if isinstance(entry, Mapping) and "start" in entry

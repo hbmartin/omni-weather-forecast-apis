@@ -19,8 +19,9 @@ from omni_weather_forecast_apis.plugins._base import (
     as_float,
     cardinal_direction_to_degrees,
     normalize_percent,
-    normalize_probability,
     parse_retry_after,
+    probability_from_fraction,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import WeatherCondition
 
@@ -49,8 +50,14 @@ def test_as_float_never_raises_and_is_float_or_none(value):
 
 
 @given(anything)
-def test_normalize_probability_stays_in_unit_interval(value):
-    result = normalize_probability(value)
+def test_probability_from_percent_value_stays_in_unit_interval(value):
+    result = probability_from_percent_value(value)
+    assert result is None or 0.0 <= result <= 1.0
+
+
+@given(anything)
+def test_probability_from_fraction_stays_in_unit_interval(value):
+    result = probability_from_fraction(value)
     assert result is None or 0.0 <= result <= 1.0
 
 

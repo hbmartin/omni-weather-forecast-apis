@@ -80,14 +80,24 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Any | None:
     return None
 
 
-def normalize_probability(value: Any) -> float | None:
-    """Normalize probabilities into the 0..1 range."""
+def probability_from_percent_value(value: Any) -> float | None:
+    """Normalize a percent-scale (0-100) probability into the 0..1 range.
+
+    Callers must know their provider reports percent; a raw ``1`` means 1%.
+    """
 
     numeric = as_float(value)
     if numeric is None:
         return None
-    if numeric > 1:
-        return max(0.0, min(1.0, probability_from_percent(numeric)))
+    return max(0.0, min(1.0, probability_from_percent(numeric)))
+
+
+def probability_from_fraction(value: Any) -> float | None:
+    """Clamp an already-fractional (0..1) probability."""
+
+    numeric = as_float(value)
+    if numeric is None:
+        return None
     return max(0.0, min(1.0, numeric))
 
 
@@ -115,6 +125,23 @@ def normalize_severity(value: str | None) -> AlertSeverity | None:
         "minor": AlertSeverity.MINOR,
     }
     return mapping.get(normalized, AlertSeverity.UNKNOWN)
+
+
+def local_date_from_epoch(
+    value: Any,
+    utc_offset_seconds: float | None,
+) -> date | None:
+    """Local calendar date for an epoch using the provider's UTC offset.
+
+    Daily forecast rows are keyed by the location's local date; taking the
+    UTC date of a local-midnight epoch shifts the day east of Greenwich.
+    """
+
+    numeric = as_float(value)
+    if numeric is None:
+        return None
+    shifted = numeric + (utc_offset_seconds or 0.0)
+    return datetime.fromtimestamp(shifted, tz=UTC).date()
 
 
 def _coerce_datetime_input(value: object) -> str | int | float | datetime | None:
@@ -145,6 +172,7 @@ def build_hourly_point(
     precipitation_probability: float | None = None,
     rain: float | None = None,
     snow: float | None = None,
+    snowfall_depth: float | None = None,
     snow_depth: float | None = None,
     cloud_cover: float | None = None,
     cloud_cover_low: float | None = None,
@@ -181,6 +209,7 @@ def build_hourly_point(
         precipitation_probability=precipitation_probability,
         rain=rain,
         snow=snow,
+        snowfall_depth=snowfall_depth,
         snow_depth=snow_depth,
         cloud_cover=cloud_cover,
         cloud_cover_low=cloud_cover_low,
@@ -231,6 +260,7 @@ def build_daily_point(
     precipitation_probability_max: float | None = None,
     rain_sum: float | None = None,
     snowfall_sum: float | None = None,
+    snowfall_depth_sum: float | None = None,
     cloud_cover_mean: float | None = None,
     uv_index_max: float | None = None,
     visibility_min: float | None = None,
@@ -238,10 +268,10 @@ def build_daily_point(
     pressure_sea_mean: float | None = None,
     condition: WeatherCondition | None = None,
     summary: str | None = None,
-    sunrise: str | float | None = None,
-    sunset: str | float | None = None,
-    moonrise: str | float | None = None,
-    moonset: str | float | None = None,
+    sunrise: str | float | datetime | None = None,
+    sunset: str | float | datetime | None = None,
+    moonrise: str | float | datetime | None = None,
+    moonset: str | float | datetime | None = None,
     moon_phase: float | None = None,
     daylight_duration: float | None = None,
     solar_radiation_sum: float | None = None,
@@ -270,6 +300,7 @@ def build_daily_point(
         precipitation_probability_max=precipitation_probability_max,
         rain_sum=rain_sum,
         snowfall_sum=snowfall_sum,
+        snowfall_depth_sum=snowfall_depth_sum,
         cloud_cover_mean=cloud_cover_mean,
         uv_index_max=uv_index_max,
         visibility_min=visibility_min,

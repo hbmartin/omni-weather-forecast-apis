@@ -7,7 +7,12 @@ from typing import Any, Final, Literal
 import httpx2
 from pydantic import Field
 
-from omni_weather_forecast_apis.mapping import WMO_CODE_MAP, condition_from_text
+from omni_weather_forecast_apis.mapping import (
+    WMO_CODE_MAP,
+    condition_from_text,
+    mm_from_cm,
+    safe_convert,
+)
 from omni_weather_forecast_apis.plugins._base import (
     BasePlugin,
     BasePluginInstance,
@@ -17,7 +22,8 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_minutely_point,
     build_source_forecast,
-    normalize_probability,
+    local_date_from_epoch,
+    probability_from_fraction,
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
@@ -57,6 +63,21 @@ def _condition_for_entry(
     code_original = icon if isinstance(icon, str) else None
     summary = entry.get("summary") if isinstance(entry.get("summary"), str) else None
     return condition_from_text(summary), summary, code_original
+
+
+def _liquid_precip_mm(row: dict[str, Any]) -> float | None:
+    """Liquid-equivalent precipitation in mm for one row.
+
+    ``liquidAccumulation`` (cm) is the documented liquid amount;
+    ``precipAccumulation`` (cm) is only liquid-equivalent when the type is
+    rain — when snowing it reports snow depth, so it must not be used then.
+    """
+
+    if (liquid := safe_convert(as_float(row.get("liquidAccumulation")), mm_from_cm)) is not None:
+        return liquid
+    if row.get("precipType") == "rain":
+        return safe_convert(as_float(row.get("precipAccumulation")), mm_from_cm)
+    return None
 
 
 def _daylight_duration(entry: dict[str, Any]) -> float | None:
@@ -127,7 +148,10 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     ProviderId.PIRATE_WEATHER,
                     minutely=self._parse_minutely(payload.get("minutely")),
                     hourly=self._parse_hourly(payload.get("hourly")),
-                    daily=self._parse_daily(payload.get("daily")),
+                    daily=self._parse_daily(
+                        payload.get("daily"),
+                        as_float(payload.get("offset")),
+                    ),
                     alerts=self._parse_alerts(payload.get("alerts")),
                 ),
             ]
@@ -161,7 +185,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                 build_minutely_point(
                     row["time"],
                     precipitation_intensity=as_float(row.get("precipIntensity")),
-                    precipitation_probability=normalize_probability(
+                    precipitation_probability=probability_from_fraction(
                         row.get("precipProbability"),
                     ),
                 ),
@@ -178,9 +202,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             if not isinstance(row, dict):
                 continue
             condition, condition_original, condition_code = _condition_for_entry(row)
-            precip_accumulation = as_float(row.get("precipAccumulation"))
-            precip_intensity = as_float(row.get("precipIntensity"))
-            precip_type = row.get("precipType")
+            liquid_mm = _liquid_precip_mm(row)
             points.append(
                 build_hourly_point(
                     row["time"],
@@ -192,20 +214,15 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     wind_gust=as_float(row.get("windGust")),
                     wind_direction=as_float(row.get("windBearing")),
                     pressure_sea=as_float(row.get("pressure")),
-                    precipitation=(
-                        precip_accumulation
-                        if precip_accumulation is not None
-                        else precip_intensity
-                    ),
-                    precipitation_probability=normalize_probability(
+                    precipitation=liquid_mm,
+                    precipitation_probability=probability_from_fraction(
                         row.get("precipProbability"),
                     ),
-                    rain=(
-                        precip_intensity
-                        if isinstance(precip_type, str) and precip_type == "rain"
-                        else None
+                    rain=liquid_mm,
+                    snowfall_depth=safe_convert(
+                        as_float(row.get("snowAccumulation")),
+                        mm_from_cm,
                     ),
-                    snow=as_float(row.get("snowAccumulation")),
                     cloud_cover=_scaled_percent(row.get("cloudCover")),
                     visibility=as_float(row.get("visibility")),
                     uv_index=as_float(row.get("uvIndex")),
@@ -221,7 +238,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             )
         return points
 
-    def _parse_daily(self, section: Any) -> list[Any]:
+    def _parse_daily(self, section: Any, offset_hours: float | None) -> list[Any]:
         data = section.get("data") if isinstance(section, dict) else None
         if not isinstance(data, list):
             return []
@@ -231,9 +248,13 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             if not isinstance(row, dict):
                 continue
             condition, condition_original, _ = _condition_for_entry(row)
+            local_date = local_date_from_epoch(
+                row["time"],
+                offset_hours * 3600.0 if offset_hours is not None else None,
+            )
             points.append(
                 build_daily_point(
-                    row["time"],
+                    local_date if local_date is not None else row["time"],
                     temperature_max=as_float(row.get("temperatureHigh")),
                     temperature_min=as_float(row.get("temperatureLow")),
                     apparent_temperature_max=as_float(
@@ -245,11 +266,15 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     wind_speed_max=as_float(row.get("windSpeed")),
                     wind_gust_max=as_float(row.get("windGust")),
                     wind_direction_dominant=as_float(row.get("windBearing")),
-                    precipitation_sum=as_float(row.get("precipAccumulation")),
-                    precipitation_probability_max=normalize_probability(
+                    precipitation_sum=_liquid_precip_mm(row),
+                    precipitation_probability_max=probability_from_fraction(
                         row.get("precipProbability"),
                     ),
-                    snowfall_sum=as_float(row.get("snowAccumulation")),
+                    rain_sum=_liquid_precip_mm(row),
+                    snowfall_depth_sum=safe_convert(
+                        as_float(row.get("snowAccumulation")),
+                        mm_from_cm,
+                    ),
                     cloud_cover_mean=_scaled_percent(row.get("cloudCover")),
                     uv_index_max=as_float(row.get("uvIndex")),
                     visibility_min=as_float(row.get("visibility")),

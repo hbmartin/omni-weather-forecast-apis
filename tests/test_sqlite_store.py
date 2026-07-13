@@ -104,6 +104,49 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
     assert hp_row[0] == (point_ts - fetched_ts) / 3600.0
 
 
+def test_save_forecast_response_records_archive_path_and_version(tmp_path) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    response = ForecastResponse(
+        request=ForecastResponseRequest(
+            latitude=34.0,
+            longitude=-118.0,
+            granularity=[],
+            language="en",
+        ),
+        results=[],
+        summary=ForecastResponseSummary(total=0, succeeded=0, failed=0),
+        completed_at=datetime(2026, 3, 12, 12, 1, tzinfo=UTC),
+        total_latency_ms=20.1,
+    )
+
+    with_archive = save_forecast_response(
+        database_path,
+        response,
+        raw_archive_path=tmp_path / "raw" / "20260312T120000Z.jsonl.gz",
+    )
+    without_archive = save_forecast_response(database_path, response)
+
+    connection = sqlite3.connect(database_path)
+    try:
+        rows = dict(
+            connection.execute(
+                "SELECT id, raw_archive_path FROM forecast_runs",
+            ).fetchall(),
+        )
+        versions = [
+            row[0]
+            for row in connection.execute(
+                "SELECT app_version FROM forecast_runs",
+            ).fetchall()
+        ]
+    finally:
+        connection.close()
+
+    assert rows[with_archive] == str(tmp_path / "raw" / "20260312T120000Z.jsonl.gz")
+    assert rows[without_archive] is None
+    assert all(isinstance(item, str) and item for item in versions)
+
+
 def test_save_forecast_response_uses_foreign_keys(tmp_path) -> None:
     database_path = tmp_path / "forecast.sqlite"
     response = ForecastResponse(
@@ -321,8 +364,8 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
         connection.close()
 
     assert {"fetched_at_unix", "run_cycle"} <= provider_columns
-    assert "horizon_hours" in hourly_columns
-    assert "run_id" in view_columns
+    assert {"horizon_hours", "snowfall_depth"} <= hourly_columns
+    assert {"run_id", "snowfall_depth"} <= view_columns
     assert "legacy_column" not in view_columns
     assert {
         "idx_provider_results_run_cycle",

@@ -17,7 +17,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_minutely_point,
     build_source_forecast,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
@@ -53,6 +53,7 @@ DEFAULT_HOURLY_FIELDS: Final[tuple[str, ...]] = (
     "precipitation_probability",
     "rain",
     "snowfall",
+    "snowfall_water_equivalent",
     "cloud_cover",
     "cloud_cover_low",
     "cloud_cover_mid",
@@ -60,7 +61,7 @@ DEFAULT_HOURLY_FIELDS: Final[tuple[str, ...]] = (
     "visibility",
     "uv_index",
     "shortwave_radiation",
-    "direct_radiation",
+    "direct_normal_irradiance",
     "diffuse_radiation",
     "weather_code",
     "is_day",
@@ -77,6 +78,7 @@ DEFAULT_DAILY_FIELDS: Final[tuple[str, ...]] = (
     "precipitation_probability_max",
     "rain_sum",
     "snowfall_sum",
+    "snowfall_water_equivalent_sum",
     "cloud_cover_mean",
     "uv_index_max",
     "visibility_min",
@@ -351,7 +353,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                     precipitation_intensity=_hourly_rate_from_quarter_hour_sum(
                         row.get("precipitation"),
                     ),
-                    precipitation_probability=normalize_probability(
+                    precipitation_probability=probability_from_percent_value(
                         row.get("precipitation_probability"),
                     ),
                 ),
@@ -379,11 +381,12 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                     pressure_sea=as_float(row.get("pressure_msl")),
                     pressure_surface=as_float(row.get("surface_pressure")),
                     precipitation=as_float(row.get("precipitation")),
-                    precipitation_probability=normalize_probability(
+                    precipitation_probability=probability_from_percent_value(
                         row.get("precipitation_probability"),
                     ),
                     rain=as_float(row.get("rain")),
-                    snow=_millimeters_from_centimeters(row.get("snowfall")),
+                    snow=as_float(row.get("snowfall_water_equivalent")),
+                    snowfall_depth=_millimeters_from_centimeters(row.get("snowfall")),
                     cloud_cover=as_float(row.get("cloud_cover")),
                     cloud_cover_low=as_float(row.get("cloud_cover_low")),
                     cloud_cover_mid=as_float(row.get("cloud_cover_mid")),
@@ -393,7 +396,9 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                     ),
                     uv_index=as_float(row.get("uv_index")),
                     solar_radiation_ghi=as_float(row.get("shortwave_radiation")),
-                    solar_radiation_dni=as_float(row.get("direct_radiation")),
+                    solar_radiation_dni=as_float(
+                        row.get("direct_normal_irradiance"),
+                    ),
                     solar_radiation_dhi=as_float(row.get("diffuse_radiation")),
                     condition=condition,
                     condition_code_original=code,
@@ -427,11 +432,12 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                         row.get("wind_direction_10m_dominant"),
                     ),
                     precipitation_sum=as_float(row.get("precipitation_sum")),
-                    precipitation_probability_max=normalize_probability(
+                    precipitation_probability_max=probability_from_percent_value(
                         row.get("precipitation_probability_max"),
                     ),
                     rain_sum=as_float(row.get("rain_sum")),
-                    snowfall_sum=_millimeters_from_centimeters(
+                    snowfall_sum=as_float(row.get("snowfall_water_equivalent_sum")),
+                    snowfall_depth_sum=_millimeters_from_centimeters(
                         row.get("snowfall_sum"),
                     ),
                     cloud_cover_mean=as_float(row.get("cloud_cover_mean")),

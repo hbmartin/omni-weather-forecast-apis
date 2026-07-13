@@ -127,6 +127,11 @@ lint.ignore = [
     "S101",   # assert is expected in tests
     "SLF001", # Private member access is fine in tests
 ]
+"scripts/**/*.py" = [
+    "INP001",  # Standalone maintenance scripts, not a package
+    "T201",    # print is the output mechanism for these scripts
+    "SLF001",  # Scripts intentionally reuse package-internal helpers
+]
 
 [tool.ruff.format]
 quote-style = "double"

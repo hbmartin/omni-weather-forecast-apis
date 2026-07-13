@@ -16,7 +16,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_source_forecast,
     fallback_condition,
     first_present,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -55,15 +55,45 @@ _CAPABILITIES = PluginCapabilities(
     max_horizon_daily_days=30,
     alerts=True,
 )
+# Official Meteosource icon table (docs "Icon list"); 1 = "Not available" is
+# deliberately unmapped so the summary-text fallback applies. 26-36 are the
+# night variants of the corresponding day icons.
 _ICON_NUM_MAP: dict[int, WeatherCondition] = {
-    1: WeatherCondition.CLEAR,
-    2: WeatherCondition.PARTLY_CLOUDY,
-    3: WeatherCondition.OVERCAST,
-    4: WeatherCondition.FOG,
-    5: WeatherCondition.DRIZZLE,
-    6: WeatherCondition.RAIN,
-    7: WeatherCondition.SNOW,
-    8: WeatherCondition.THUNDERSTORM,
+    2: WeatherCondition.CLEAR,
+    3: WeatherCondition.MOSTLY_CLEAR,
+    4: WeatherCondition.PARTLY_CLOUDY,
+    5: WeatherCondition.MOSTLY_CLOUDY,
+    6: WeatherCondition.MOSTLY_CLOUDY,
+    7: WeatherCondition.OVERCAST,
+    8: WeatherCondition.OVERCAST,
+    9: WeatherCondition.FOG,
+    10: WeatherCondition.LIGHT_RAIN,
+    11: WeatherCondition.RAIN,
+    12: WeatherCondition.RAIN,
+    13: WeatherCondition.RAIN,
+    14: WeatherCondition.THUNDERSTORM,
+    15: WeatherCondition.THUNDERSTORM,
+    16: WeatherCondition.LIGHT_SNOW,
+    17: WeatherCondition.SNOW,
+    18: WeatherCondition.SNOW,
+    19: WeatherCondition.SNOW,
+    20: WeatherCondition.SLEET,
+    21: WeatherCondition.SLEET,
+    22: WeatherCondition.SLEET,
+    23: WeatherCondition.FREEZING_RAIN,
+    24: WeatherCondition.FREEZING_RAIN,
+    25: WeatherCondition.HAIL,
+    26: WeatherCondition.CLEAR,
+    27: WeatherCondition.MOSTLY_CLEAR,
+    28: WeatherCondition.PARTLY_CLOUDY,
+    29: WeatherCondition.MOSTLY_CLOUDY,
+    30: WeatherCondition.MOSTLY_CLOUDY,
+    31: WeatherCondition.OVERCAST,
+    32: WeatherCondition.RAIN,
+    33: WeatherCondition.THUNDERSTORM,
+    34: WeatherCondition.SNOW,
+    35: WeatherCondition.SLEET,
+    36: WeatherCondition.FREEZING_RAIN,
 }
 
 
@@ -142,7 +172,7 @@ def _parse_minutely(entry: Mapping[str, Any]) -> MinutelyDataPoint:
                 first_present(entry, "precipitation", "precip"),
             ),
         ),
-        precipitation_probability=normalize_probability(
+        precipitation_probability=probability_from_percent_value(
             _first_of(
                 first_present(probability, "precipitation", "pop"),
                 first_present(entry, "precipitation_probability", "pop"),
@@ -191,7 +221,7 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
                 first_present(entry, "precipitation", "precip"),
             ),
         ),
-        precipitation_probability=normalize_probability(
+        precipitation_probability=probability_from_percent_value(
             _first_of(
                 first_present(probability, "precipitation", "pop"),
                 first_present(entry, "precipitation_probability", "pop"),
@@ -292,7 +322,7 @@ def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
                 first_present(entry, "precipitation"),
             ),
         ),
-        precipitation_probability_max=normalize_probability(
+        precipitation_probability_max=probability_from_percent_value(
             _first_of(
                 first_present(probability, "precipitation", "pop"),
                 first_present(all_day, "precipitation_probability", "pop"),

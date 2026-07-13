@@ -13,6 +13,8 @@ nav = [
   { "CLI" = "cli.md" },
   { "Scheduling" = "scheduling.md" },
   { "Database Design" = "database.md" },
+  { "Data Corrections" = "data-corrections.md" },
+  { "Future Work" = "future-work.md" },
   { "Extending" = "extending.md" },
   { "API Reference" = "api-reference.md" },
 ]

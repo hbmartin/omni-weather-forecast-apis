@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,8 @@ from omni_weather_forecast_apis.types import (
 def save_forecast_response(
     database_path: str | Path,
     response: ForecastResponse,
+    *,
+    raw_archive_path: str | Path | None = None,
 ) -> int:
     """Persist one normalized forecast response into SQLite."""
 
@@ -24,7 +27,7 @@ def save_forecast_response(
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         _create_schema(connection)
-        run_id = _insert_run(connection, response)
+        run_id = _insert_run(connection, response, raw_archive_path)
         for result in response.results:
             if isinstance(result, ProviderSuccess):
                 fetched_at_unix = int(result.fetched_at.timestamp())
@@ -58,7 +61,9 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             total_latency_ms REAL NOT NULL,
             total_results INTEGER NOT NULL,
             succeeded INTEGER NOT NULL,
-            failed INTEGER NOT NULL
+            failed INTEGER NOT NULL,
+            raw_archive_path TEXT,
+            app_version TEXT
         );
 
         CREATE TABLE IF NOT EXISTS provider_results (
@@ -109,6 +114,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             precipitation_probability REAL,
             rain REAL,
             snow REAL,
+            snowfall_depth REAL,
             snow_depth REAL,
             cloud_cover REAL,
             cloud_cover_low REAL,
@@ -139,6 +145,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             precipitation_probability_max REAL,
             rain_sum REAL,
             snowfall_sum REAL,
+            snowfall_depth_sum REAL,
             cloud_cover_mean REAL,
             uv_index_max REAL,
             visibility_min REAL,
@@ -182,7 +189,9 @@ def _create_schema(connection: sqlite3.Connection) -> None:
     )
     _ensure_provider_logs_columns(connection)
     _ensure_provider_results_columns(connection)
+    _ensure_forecast_runs_columns(connection)
     _ensure_hourly_points_columns(connection)
+    _ensure_daily_points_columns(connection)
     _create_indexes_and_views(connection)
 
 
@@ -213,7 +222,7 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
     view_columns = {
         row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
     }
-    if "run_id" in view_columns:
+    if {"run_id", "snowfall_depth"} <= view_columns:
         return
 
     connection.executescript(
@@ -245,6 +254,7 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
             hp.precipitation_probability,
             hp.rain,
             hp.snow,
+            hp.snowfall_depth,
             hp.snow_depth,
             hp.cloud_cover,
             hp.cloud_cover_low,
@@ -288,15 +298,50 @@ def _ensure_provider_results_columns(connection: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_forecast_runs_columns(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(forecast_runs)")}
+    if "raw_archive_path" not in columns:
+        connection.execute(
+            "ALTER TABLE forecast_runs ADD COLUMN raw_archive_path TEXT",
+        )
+    if "app_version" not in columns:
+        connection.execute(
+            "ALTER TABLE forecast_runs ADD COLUMN app_version TEXT",
+        )
+
+
 def _ensure_hourly_points_columns(connection: sqlite3.Connection) -> None:
     columns = {row[1] for row in connection.execute("PRAGMA table_info(hourly_points)")}
     if "horizon_hours" not in columns:
         connection.execute(
             "ALTER TABLE hourly_points ADD COLUMN horizon_hours REAL",
         )
+    if "snowfall_depth" not in columns:
+        connection.execute(
+            "ALTER TABLE hourly_points ADD COLUMN snowfall_depth REAL",
+        )
 
 
-def _insert_run(connection: sqlite3.Connection, response: ForecastResponse) -> int:
+def _ensure_daily_points_columns(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(daily_points)")}
+    if "snowfall_depth_sum" not in columns:
+        connection.execute(
+            "ALTER TABLE daily_points ADD COLUMN snowfall_depth_sum REAL",
+        )
+
+
+def _app_version() -> str | None:
+    try:
+        return version("omni-weather-forecast-apis")
+    except PackageNotFoundError:
+        return None
+
+
+def _insert_run(
+    connection: sqlite3.Connection,
+    response: ForecastResponse,
+    raw_archive_path: str | Path | None,
+) -> int:
     cursor = connection.execute(
         """
         INSERT INTO forecast_runs (
@@ -308,8 +353,10 @@ def _insert_run(connection: sqlite3.Connection, response: ForecastResponse) -> i
             total_latency_ms,
             total_results,
             succeeded,
-            failed
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            failed,
+            raw_archive_path,
+            app_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             response.request.latitude,
@@ -321,6 +368,8 @@ def _insert_run(connection: sqlite3.Connection, response: ForecastResponse) -> i
             response.summary.total,
             response.summary.succeeded,
             response.summary.failed,
+            str(raw_archive_path) if raw_archive_path is not None else None,
+            _app_version(),
         ),
     )
     return _lastrowid(cursor)
@@ -460,6 +509,7 @@ def _insert_hourly(
             precipitation_probability,
             rain,
             snow,
+            snowfall_depth,
             snow_depth,
             cloud_cover,
             cloud_cover_low,
@@ -474,7 +524,7 @@ def _insert_hourly(
             condition_original,
             condition_code_original,
             is_day
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -495,6 +545,7 @@ def _insert_hourly(
                 point.precipitation_probability,
                 point.rain,
                 point.snow,
+                point.snowfall_depth,
                 point.snow_depth,
                 point.cloud_cover,
                 point.cloud_cover_low,
@@ -540,6 +591,7 @@ def _insert_daily(
             precipitation_probability_max,
             rain_sum,
             snowfall_sum,
+            snowfall_depth_sum,
             cloud_cover_mean,
             uv_index_max,
             visibility_min,
@@ -554,7 +606,7 @@ def _insert_daily(
             moon_phase,
             daylight_duration,
             solar_radiation_sum
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -571,6 +623,7 @@ def _insert_daily(
                 point.precipitation_probability_max,
                 point.rain_sum,
                 point.snowfall_sum,
+                point.snowfall_depth_sum,
                 point.cloud_cover_mean,
                 point.uv_index_max,
                 point.visibility_min,
