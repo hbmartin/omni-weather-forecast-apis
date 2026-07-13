@@ -152,9 +152,15 @@ def _scope_model_section(raw: dict[str, Any], model: str) -> dict[str, Any]:
     if not isinstance(times, list):
         return {"time": times} | fields
 
-    retained_indices = [
-        index for index in range(len(times)) if _has_model_data(fields, index)
-    ]
+    last_index = next(
+        (
+            index
+            for index in range(len(times) - 1, -1, -1)
+            if _has_model_data(fields, index)
+        ),
+        -1,
+    )
+    retained_indices = range(last_index + 1)
     scoped_fields = {
         field: (
             [

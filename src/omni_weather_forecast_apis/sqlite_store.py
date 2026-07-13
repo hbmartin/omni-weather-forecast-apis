@@ -207,7 +207,17 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
             ON minutely_points(source_forecast_id, timestamp_unix);
         CREATE INDEX IF NOT EXISTS idx_daily_points_source_date
             ON daily_points(source_forecast_id, forecast_date);
+        """,
+    )
 
+    view_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
+    }
+    if "run_id" in view_columns:
+        return
+
+    connection.executescript(
+        """
         DROP VIEW IF EXISTS stacking_features;
         CREATE VIEW stacking_features AS
         SELECT

@@ -331,6 +331,24 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
     } <= indexes
 
 
+def test_create_schema_preserves_current_stacking_features_view(tmp_path) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    connection = sqlite3.connect(database_path)
+    statements: list[str] = []
+    try:
+        _create_schema(connection)
+        connection.set_trace_callback(statements.append)
+
+        _create_schema(connection)
+    finally:
+        connection.set_trace_callback(None)
+        connection.close()
+
+    normalized_statements = [statement.upper() for statement in statements]
+    assert not any("DROP VIEW" in statement for statement in normalized_statements)
+    assert not any("CREATE VIEW" in statement for statement in normalized_statements)
+
+
 def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
     database_path = tmp_path / "forecast.sqlite"
     fetched = datetime(2026, 3, 12, 14, 23, tzinfo=UTC)
