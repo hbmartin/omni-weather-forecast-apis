@@ -20,7 +20,7 @@ config = { models = ["best_match"] }
 
 [[providers]]
 plugin_id = "met_norway"
-config = { user_agent = "MyApp/1.0 ops@example.com" }
+config = { user_agent = "MyApp/1.0 you@yourdomain.com" }
 EOF
 
 uv run omni-weather \

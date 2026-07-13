@@ -230,33 +230,59 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         data: dict[str, Any],
         section: str,
         model: str,
+        *,
+        multi_model: bool,
     ) -> dict[str, Any] | None:
-        """Get a data section, handling multi-model key suffixes.
+        """Get a data section with its variable keys scoped to one model.
 
-        Open-Meteo returns flat keys with model suffixes for multi-model
-        requests (e.g. ``hourly_ecmwf``, ``daily_gfs``).  For the default
-        ``best_match`` model the un-suffixed key is used.
+        Open-Meteo always returns a single section per granularity. Asking for
+        more than one model suffixes every variable key inside it with the
+        model name (``temperature_2m_ecmwf_ifs025``); a single-model request
+        leaves the keys bare. Strip the suffix so the parsers always see the
+        canonical field names.
         """
-        if model != "best_match" and f"{section}_{model}" in data:
-            return data[f"{section}_{model}"]
-        return data.get(section)
+        raw = data.get(section)
+        if not multi_model or not isinstance(raw, dict):
+            return raw
+        suffix = f"_{model}"
+        return {"time": raw.get("time")} | {
+            key.removesuffix(suffix): values
+            for key, values in raw.items()
+            if key.endswith(suffix)
+        }
 
     def _parse_payloads(self, payload: dict[str, Any]) -> list[Any]:
-        data = payload
+        models = self.config.models or ["best_match"]
+        multi_model = len(models) > 1
         forecasts: list[Any] = []
-        for model in self.config.models or ["best_match"]:
+        for model in models:
             forecasts.append(
                 build_source_forecast(
                     ProviderId.OPEN_METEO,
                     model=model,
                     minutely=self._parse_minutely(
-                        self._get_section(data, "minutely_15", model),
+                        self._get_section(
+                            payload,
+                            "minutely_15",
+                            model,
+                            multi_model=multi_model,
+                        ),
                     ),
                     hourly=self._parse_hourly(
-                        self._get_section(data, "hourly", model),
+                        self._get_section(
+                            payload,
+                            "hourly",
+                            model,
+                            multi_model=multi_model,
+                        ),
                     ),
                     daily=self._parse_daily(
-                        self._get_section(data, "daily", model),
+                        self._get_section(
+                            payload,
+                            "daily",
+                            model,
+                            multi_model=multi_model,
+                        ),
                     ),
                 ),
             )

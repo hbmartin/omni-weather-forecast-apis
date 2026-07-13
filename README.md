@@ -10,7 +10,28 @@
 
 Async Python library that fans out forecast requests across multiple weather providers and normalizes the results into one typed Pydantic schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
 
+Requires **Python 3.13 or newer**.
+
 📖 **[Documentation site](https://hbmartin.github.io/omni-weather-forecast-apis/)**
+
+## Contents
+
+- [Features](#features)
+- [Supported Providers](#supported-providers)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [How It Works](#how-it-works)
+- [Configuration](#configuration)
+- [Library Usage](#library-usage)
+- [CLI Usage](#cli-usage)
+- [Observability](#observability)
+- [Partial Failures](#partial-failures)
+- [Normalized Schema](#normalized-schema)
+- [Provider Configuration Reference](#provider-configuration-reference)
+- [SQLite Output](#sqlite-output)
+- [Extending](#extending)
+- [Documentation](#documentation)
+- [Development](#development)
 
 ## Features
 
@@ -25,46 +46,88 @@ Async Python library that fans out forecast requests across multiple weather pro
 
 ## Supported Providers
 
-| Provider | Plugin ID | API Key | Notes |
-|----------|-----------|---------|-------|
-| [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | Free tier; multiple forecast models |
-| [MET Norway](https://api.met.no/) | `met_norway` | No | Requires `user_agent` identification |
-| [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | No | US coverage only; requires `user_agent` |
-| [OpenWeather](https://openweathermap.org/api) | `openweather` | Yes | |
-| [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Yes | |
-| [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Yes | |
-| [Visual Crossing](https://www.visualcrossing.com/) | `visual_crossing` | Yes | |
-| [Weatherbit](https://www.weatherbit.io/) | `weatherbit` | Yes | |
-| [Meteosource](https://www.meteosource.com/) | `meteosource` | Yes | |
-| [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Yes | Dark Sky-compatible API |
-| [Stormglass](https://stormglass.io/) | `stormglass` | Yes | Hourly only; multi-model |
-| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Yes | Requires `app_id` + `app_key` |
-| [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Yes | Google Maps Platform Weather API |
+Three of the thirteen providers need no API key at all, so you can try the
+library without signing up for anything.
+
+| Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
+|----------|-----------|---------|---------:|-------:|------:|:------:|:-----------:|----------|
+| [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | 1 h | 16 d | 16 d | — | ✅ | Global |
+| [MET Norway](https://api.met.no/) | `met_norway` | None | — | 9 d | — | — | — | Nordics |
+| [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | None | — | ✅ | ✅ | ✅ | — | US only |
+| [OpenWeather](https://openweathermap.org/api) | `openweather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
+| [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Required | — | 14 d | 14 d | ✅ | — | Global |
+| [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Required | 1 h | 5 d | 6 d | — | — | Global |
+| [Visual Crossing](https://www.visualcrossing.com/) | `visual_crossing` | Required | — | 15 d | 15 d | ✅ | — | Global |
+| [Weatherbit](https://www.weatherbit.io/) | `weatherbit` | Required | — | 10 d | 16 d | — | — | Global |
+| [Meteosource](https://www.meteosource.com/) | `meteosource` | Required | 1 h | 7 d | 30 d | ✅ | — | Global |
+| [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
+| [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
+| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Required | — | ✅ | ✅ | — | — | Global |
+| [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
+
+The minutely, hourly, and daily columns give each provider's **maximum forecast
+horizon**. `✅` means the granularity is supported but the plugin declares no
+horizon bound, and `—` means it is not supported at all. **Multi-model**
+providers return several independent forecasts per request — Open-Meteo exposes
+named numerical weather models (`best_match`, `ecmwf_ifs025`, …) and Stormglass
+returns multiple upstream sources — which is what makes them useful for
+ensembles.
+
+MET Norway and NWS additionally require a `user_agent` identifying your
+application; Weather Unlocked uses an `app_id` + `app_key` pair rather than a
+single key. Pirate Weather's hourly horizon extends to 168 h when
+`extend_hourly = true`. See the [provider configuration
+reference](#provider-configuration-reference) for every key each plugin accepts.
 
 ## Quick Start
 
-```bash
-# 1. Install
-uv sync
+Open-Meteo, MET Norway, and NWS need no API keys, so this runs end to end
+without any signup. No install step — [uv](https://docs.astral.sh/uv/) fetches
+the package into a throwaway environment:
 
-# 2. Create a minimal config (Open-Meteo and MET Norway require no API keys)
+```bash
 cat > config.toml << 'EOF'
 [[providers]]
 plugin_id = "open_meteo"
-config = { models = ["best_match"] }
+config = { models = ["best_match", "ecmwf_ifs025"] }
 
 [[providers]]
 plugin_id = "met_norway"
-config = { user_agent = "MyApp/1.0 ops@example.com" }
+config = { user_agent = "MyApp/1.0 you@yourdomain.com" }
+
+[[providers]]
+plugin_id = "nws"
+config = { user_agent = "MyApp/1.0 you@yourdomain.com" }
 EOF
 
-# 3. Run a forecast
-uv run omni-weather \
+uvx --from "omni-weather-forecast-apis[cli]" omni-weather \
   --config ./config.toml \
   --lat 40.7128 \
   --lon -74.0060 \
   --sqlite ./forecasts.sqlite
 ```
+
+Put a real contact address in `user_agent` before running this. MET Norway's
+terms require one to identify the caller, and their API rejects placeholder
+domains such as `example.com` with a `403 Forbidden`.
+
+Which prints:
+
+```
+                              Run 1 — 3/3 succeeded
+┏━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Provider   ┃ Status ┃ Latency ┃ Hourly ┃ Daily ┃ Minutely ┃ Alerts ┃ Detail      ┃
+┡━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━┩
+│ open_meteo │   OK   │   924ms │    336 │    14 │        0 │      - │ 2 source(s) │
+│ met_norway │   OK   │   705ms │     90 │     0 │        0 │      - │ 1 source(s) │
+│ nws        │   OK   │   283ms │    156 │     8 │        0 │      - │ 1 source(s) │
+└────────────┴────────┴─────────┴────────┴───────┴──────────┴────────┴─────────────┘
+                       Saved to forecasts.sqlite in 924ms
+```
+
+Open-Meteo contributes two sources because two models were requested. Every
+forecast is now in `forecasts.sqlite`, normalized and ready to
+[query](#sqlite-output).
 
 ## Installation
 
@@ -75,12 +138,15 @@ pip install omni-weather-forecast-apis
 # With CLI niceties — rich tables and loguru debug logging
 pip install "omni-weather-forecast-apis[cli]"
 
-# For development in this repository
-uv sync
+# Run the CLI without installing anything
+uvx --from "omni-weather-forecast-apis[cli]" omni-weather --help
 ```
 
-The CLI works without the `cli` extra: table output falls back to plain
-text and `--debug` falls back to stdlib logging.
+Requires Python 3.13 or newer. The CLI works without the `cli` extra: table
+output falls back to plain text and `--debug` falls back to stdlib logging.
+
+Contributing to this repository instead? See [Development](#development) for the
+`uv sync` workflow.
 
 ## How It Works
 
@@ -128,7 +194,7 @@ config = { models = ["best_match", "ecmwf_ifs025"] }
 [[providers]]
 plugin_id = "met_norway"
 enabled = true
-config = { user_agent = "MyApp/1.0 ops@example.com", variant = "complete" }
+config = { user_agent = "MyApp/1.0 you@yourdomain.com", variant = "complete" }
 
 [[providers]]
 plugin_id = "openweather"
@@ -191,7 +257,7 @@ async def main() -> None:
             ),
             ProviderRegistration(
                 plugin_id=ProviderId.MET_NORWAY,
-                config={"user_agent": "MyApp/1.0 ops@example.com"},
+                config={"user_agent": "MyApp/1.0 you@yourdomain.com"},
             ),
         ],
     )
@@ -232,14 +298,14 @@ ProviderId.MET_NORWAY 2026-03-13 18:00:00+00:00: 12.1°C, WeatherCondition.RAIN
 ## CLI Usage
 
 ```bash
-uv run omni-weather \
+omni-weather \
   --config ./config.toml \
   --lat 34.2484 \
   --lon -117.1931 \
   --sqlite ./forecasts.sqlite
 
 # Query only specific providers
-uv run omni-weather \
+omni-weather \
   --config ./config.toml \
   --lat 34.2484 \
   --lon -117.1931 \
@@ -249,16 +315,16 @@ uv run omni-weather \
   --granularity hourly
 
 # Emit the full normalized response as JSON (no SQLite required)
-uv run omni-weather \
+omni-weather \
   --config ./config.toml \
   --lat 34.2484 \
   --lon -117.1931 \
   --format json | jq '.results[] | {provider, status}'
 
 # Pipe flattened per-point rows into data tools
-uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
   --format csv > forecast.csv
-uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
   --format ndjson | jq 'select(.type == "forecast_point") | .temperature'
 ```
 
@@ -439,7 +505,28 @@ The CLI creates a normalized database with these tables:
 | `provider_logs` | Per-provider lifecycle log entries (`start`, `retry`, `success`, `error`) per run |
 | `provider_quota_usage` | Requests per provider per UTC day, used for daily quota enforcement |
 
-The `stacking_features` SQL view joins hourly points with their provider, model, run cycle, and forecast horizon — a ready-made feature matrix for downstream ensemble/verification work.
+The `stacking_features` SQL view joins hourly points with their provider, model, run cycle, and forecast horizon — a ready-made feature matrix for downstream ensemble/verification work. Every provider that forecast the same valid time lines up on one axis:
+
+```sql
+SELECT provider, model, ROUND(temperature, 1) AS temp_c, ROUND(wind_speed, 1) AS wind_ms
+FROM stacking_features
+WHERE CAST(horizon_hours AS INT) = 24
+ORDER BY provider, model;
+```
+
+```
+provider    model         temp_c  wind_ms
+----------  ------------  ------  -------
+met_norway  met_norway    23.2    4.5
+nws         nws           25.0    4.5
+open_meteo  best_match    22.0    5.1
+open_meteo  ecmwf_ifs025  23.2    3.3
+```
+
+Four independent 24-hour-ahead forecasts for the same point and time, already
+unit-normalized — the input a blending or verification model wants. `run_cycle`
+and `horizon_hours` let you group by forecast age, and `fetched_at_unix`
+distinguishes successive runs.
 
 ## Extending
 
@@ -470,6 +557,9 @@ uv run zensical serve
 ## Development
 
 ```bash
+# Set up the repository (Python 3.13+)
+uv sync
+
 # Lint, format, and type-check
 uv run ruff check src --fix
 uv run ruff format src tests
