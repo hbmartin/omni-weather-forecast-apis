@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from omni_weather_forecast_apis.sqlite_store import (
+    _create_schema,
     save_forecast_response,
     save_provider_logs,
 )
@@ -239,6 +240,87 @@ def test_save_provider_logs_migrates_schema_and_persists_metadata(tmp_path) -> N
         json.dumps({"attempt": 1}, sort_keys=True),
         event_timestamp.isoformat(),
     )
+
+
+def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE provider_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fetched_at TEXT,
+                latency_ms REAL NOT NULL,
+                error_code TEXT,
+                error_message TEXT,
+                http_status INTEGER,
+                raw_json TEXT
+            );
+
+            CREATE TABLE hourly_points (
+                source_forecast_id INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                timestamp_unix INTEGER NOT NULL,
+                temperature REAL,
+                apparent_temperature REAL,
+                dew_point REAL,
+                humidity REAL,
+                wind_speed REAL,
+                wind_gust REAL,
+                wind_direction REAL,
+                pressure_sea REAL,
+                pressure_surface REAL,
+                precipitation REAL,
+                precipitation_probability REAL,
+                rain REAL,
+                snow REAL,
+                snow_depth REAL,
+                cloud_cover REAL,
+                cloud_cover_low REAL,
+                cloud_cover_mid REAL,
+                cloud_cover_high REAL,
+                visibility REAL,
+                uv_index REAL,
+                solar_radiation_ghi REAL,
+                solar_radiation_dni REAL,
+                solar_radiation_dhi REAL,
+                condition TEXT,
+                condition_original TEXT,
+                condition_code_original TEXT,
+                is_day INTEGER
+            );
+            """,
+        )
+
+        _create_schema(connection)
+
+        provider_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(provider_results)")
+        }
+        hourly_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(hourly_points)")
+        }
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+            )
+        }
+        connection.execute("SELECT * FROM stacking_features LIMIT 0")
+    finally:
+        connection.close()
+
+    assert {"fetched_at_unix", "run_cycle"} <= provider_columns
+    assert "horizon_hours" in hourly_columns
+    assert {
+        "idx_provider_results_run_cycle",
+        "idx_hourly_points_horizon",
+        "idx_hourly_points_horizon_timestamp",
+    } <= indexes
 
 
 def test_stacking_features_view_returns_joined_data(tmp_path) -> None:

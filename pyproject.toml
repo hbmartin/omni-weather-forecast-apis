@@ -87,7 +87,7 @@ pythonpath = ["src"]
 relative_files = true
 
 [tool.coverage.report]
-fail_under = 87
+fail_under = 88
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

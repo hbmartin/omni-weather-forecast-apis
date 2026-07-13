@@ -178,6 +178,17 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             extra_json TEXT,
             logged_at TEXT NOT NULL
         );
+        """,
+    )
+    _ensure_provider_logs_columns(connection)
+    _ensure_provider_results_columns(connection)
+    _ensure_hourly_points_columns(connection)
+    _create_indexes_and_views(connection)
+
+
+def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
         CREATE INDEX IF NOT EXISTS idx_provider_results_run_provider
             ON provider_results(run_id, provider);
         CREATE INDEX IF NOT EXISTS idx_provider_results_run_cycle
@@ -241,9 +252,6 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         WHERE pr.status = 'success';
         """,
     )
-    _ensure_provider_logs_columns(connection)
-    _ensure_provider_results_columns(connection)
-    _ensure_hourly_points_columns(connection)
 
 
 def _ensure_provider_logs_columns(connection: sqlite3.Connection) -> None:

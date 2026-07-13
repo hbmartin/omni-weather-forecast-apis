@@ -1,0 +1,16 @@
+rules:
+  - id: cli-filehandler-requires-utf8
+    languages: [python]
+    message: Set encoding="utf-8" when constructing logging.FileHandler.
+    severity: ERROR
+    patterns:
+      - pattern: logging.FileHandler(...)
+      - pattern-not: logging.FileHandler(..., encoding=..., ...)
+
+  - id: cli-stdout-csv-requires-line-terminator
+    languages: [python]
+    message: Set lineterminator when constructing a CSV writer for sys.stdout.
+    severity: ERROR
+    patterns:
+      - pattern: csv.DictWriter(sys.stdout, ...)
+      - pattern-not: csv.DictWriter(sys.stdout, ..., lineterminator=..., ...)
