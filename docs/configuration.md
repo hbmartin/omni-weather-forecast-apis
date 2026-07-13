@@ -3,6 +3,19 @@
 The client and CLI both use a TOML configuration file that matches
 `OmniWeatherConfig`.
 
+When the CLI has no explicit `--config`, it first checks
+`platformdirs.user_config_path("omni-weather", appauthor=False) / "config.toml"`,
+then the legacy
+`~/.config/omni_weather_forecast_apis.toml`. If neither exists, an interactive
+terminal starts `omni-weather init`; non-interactive use exits `2` with setup
+instructions. An explicitly supplied missing file never launches the wizard.
+
+The platform default is normally `~/.config/omni-weather/config.toml` on Linux,
+`~/Library/Application Support/omni-weather/config.toml` on macOS, and
+`%LOCALAPPDATA%\omni-weather\config.toml` on Windows. XDG and other platform
+overrides are honored. The wizard's default database uses the corresponding
+platform data directory and the filename `forecasts.sqlite`.
+
 ```toml
 latitude = 40.7128
 longitude = -74.0060
@@ -152,3 +165,10 @@ tables and arrays. A placeholder naming an unset variable turns into a
 per-provider initialization error; other providers are unaffected. Partial
 interpolation (`"prefix-${VAR}"`) is intentionally not supported — only
 whole-string placeholders are resolved.
+
+`omni-weather init` instead collects credential values with masked prompts and
+stores them directly in TOML. Its exact preview includes those values by
+design. Confirm only in a private terminal and protect the generated file; the
+wizard writes it atomically with mode `0600` and creates new config/data
+directories privately on POSIX. `omni-weather doctor` reports missing
+environment references by name without printing their resolved values.

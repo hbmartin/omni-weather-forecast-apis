@@ -12,8 +12,13 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from pydantic import ValidationError
-
+from omni_weather_forecast_apis._cli_discovery import print_providers, run_doctor
+from omni_weather_forecast_apis._cli_paths import (
+    default_config_path,
+    find_config_path,
+    init_target_path,
+)
+from omni_weather_forecast_apis._cli_setup import InitDefaults, run_init
 from omni_weather_forecast_apis.client import create_omni_weather
 from omni_weather_forecast_apis.quota import SqliteQuotaTracker
 from omni_weather_forecast_apis.sqlite_store import (
@@ -55,8 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path.home() / ".config" / "omni_weather_forecast_apis.toml",
-        help="Path to TOML config (default: ~/.config/omni_weather_forecast_apis.toml)",
+        default=None,
+        help="Path to TOML config (default: platform-native config directory)",
     )
     parser.add_argument(
         "--lat",
@@ -128,6 +133,46 @@ def build_parser() -> argparse.ArgumentParser:
             "database, or ./omni-weather.log when --sqlite is omitted"
         ),
     )
+    subcommands = parser.add_subparsers(dest="command")
+    init_parser = subcommands.add_parser(
+        "init",
+        help="Interactively create or replace a configuration",
+    )
+    init_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        dest="command_config",
+        help="Configuration path to create or edit",
+    )
+    subcommands.add_parser(
+        "providers",
+        help="Show provider coverage, granularities, authentication, and setup links",
+    )
+    doctor_parser = subcommands.add_parser(
+        "doctor",
+        help="Validate configuration and optionally contact providers",
+    )
+    doctor_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        dest="command_config",
+        help="Configuration path to diagnose",
+    )
+    doctor_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Opt in to live provider API checks",
+    )
+    doctor_parser.add_argument(
+        "--provider",
+        action="append",
+        default=[],
+        type=_parse_provider_id,
+        dest="doctor_provider",
+        help="Restrict provider-specific checks (repeatable)",
+    )
     return parser
 
 
@@ -136,15 +181,88 @@ def main(argv: list[str] | None = None) -> int:
 
     parsed = build_parser().parse_args(argv)
     try:
-        return asyncio.run(_async_main(parsed))
-    except (
-        FileNotFoundError,
-        OSError,
-        tomllib.TOMLDecodeError,
-        ValidationError,
-    ) as exc:
+        return asyncio.run(_dispatch(parsed))
+    except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _init_defaults(parsed: argparse.Namespace) -> InitDefaults:
+    granularity_values = cast(list[str], parsed.granularity)
+    return InitDefaults(
+        latitude=cast(float | None, parsed.lat),
+        longitude=cast(float | None, parsed.lon),
+        sqlite=cast(Path | None, parsed.sqlite),
+        granularities=tuple(Granularity(item) for item in granularity_values),
+        providers=tuple(cast(list[ProviderId], parsed.provider)),
+    )
+
+
+def _config_argument(parsed: argparse.Namespace) -> Path | None:
+    command_path = cast(Path | None, getattr(parsed, "command_config", None))
+    return command_path or cast(Path | None, parsed.config)
+
+
+def _automatic_setup_available() -> bool:
+    return sys.stdin.isatty() and sys.stderr.isatty()
+
+
+async def _run_explicit_init(parsed: argparse.Namespace) -> int:
+    target_path = init_target_path(_config_argument(parsed))
+    result = run_init(
+        target_path,
+        defaults=_init_defaults(parsed),
+        automatic=False,
+    )
+    if result is None or not result.run_forecast:
+        return 0
+    forecast_args = build_parser().parse_args(["--config", str(result.path)])
+    return await _async_main(forecast_args)
+
+
+async def _run_forecast(parsed: argparse.Namespace) -> int:
+    explicit_path = cast(Path | None, parsed.config)
+    if (config_path := find_config_path(explicit_path)) is not None:
+        parsed.config = config_path
+        return await _async_main(parsed)
+    expected_path = default_config_path()
+    if not _automatic_setup_available():
+        print(
+            f"error: no configuration found at {expected_path}",
+            file=sys.stderr,
+        )
+        print(
+            f"run 'omni-weather init --config {expected_path}' in an interactive terminal",
+            file=sys.stderr,
+        )
+        return 2
+    result = run_init(
+        expected_path,
+        defaults=_init_defaults(parsed),
+        automatic=True,
+    )
+    if result is None:
+        return 2
+    parsed.config = result.path
+    return await _async_main(parsed)
+
+
+async def _dispatch(parsed: argparse.Namespace) -> int:
+    match parsed.command:
+        case "init":
+            return await _run_explicit_init(parsed)
+        case "providers":
+            print_providers()
+            return 0
+        case "doctor":
+            path = find_config_path(_config_argument(parsed)) or default_config_path()
+            return await run_doctor(
+                path,
+                live=cast(bool, parsed.live),
+                provider_filter=cast(list[ProviderId], parsed.doctor_provider),
+            )
+        case _:
+            return await _run_forecast(parsed)
 
 
 def _resolve_required(

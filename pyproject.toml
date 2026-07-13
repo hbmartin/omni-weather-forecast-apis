@@ -43,14 +43,16 @@ dependencies = [
 [project.optional-dependencies]
 cli = [
     "loguru>=0.7.3",
+    "platformdirs>=4.3",
     "rich>=14.3.3",
+    "tomli-w>=1.2",
 ]
 otel = [
     "opentelemetry-api>=1.30",
 ]
 
 [project.scripts]
-omni-weather = "omni_weather_forecast_apis.cli:main"
+omni-weather = "omni_weather_forecast_apis.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/hbmartin/omni-weather-forecast-apis"
@@ -140,4 +142,4 @@ opentelemetry-api = "opentelemetry"
 
 [tool.deptry.per_rule_ignores]
 # CLI extras are loaded dynamically so the core library works without them.
-DEP002 = ["loguru", "rich"]
+DEP002 = ["loguru", "platformdirs", "rich", "tomli-w"]
