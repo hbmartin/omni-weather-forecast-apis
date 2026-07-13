@@ -187,6 +187,7 @@ max_keepalive_connections = 10
 connect_timeout_ms = 5000
 cache_enabled = true      # conditional-request HTTP cache (ETag/Last-Modified/Expires)
 cache_max_entries = 256
+raw_archive_enabled = true  # archive raw HTTP payloads next to the SQLite database
 
 [[providers]]
 plugin_id = "open_meteo"
@@ -214,6 +215,8 @@ Transient failures — network errors, timeouts, and HTTP 429 rate limits — ar
 ### HTTP caching and connection limits
 
 The shared HTTP client is powered by [HTTPX2](https://httpx2.pydantic.dev/), uses explicit connection pool limits and a connect timeout, and caches GET responses in memory. Fresh responses (`Cache-Control: max-age` / `Expires`) are served without a network round-trip; stale responses carrying `ETag`/`Last-Modified` validators are revalidated with conditional requests and reused on `304 Not Modified`. Responses that declare `Vary` are only reused for requests sending the same values for the named headers (`Vary: *` is never cached). Requests carrying `Authorization` or `Cookie` headers bypass the shared cache. MET Norway's terms of service require conditional requests and the NWS strongly encourages caching. Disable with `cache_enabled = false` under `[http]`.
+
+When persisting to SQLite, every network response is additionally archived as gzipped JSONL (one line per response: timestamp, method, URL, status, body) into a `raw/` directory next to the database — one file per invocation, linked from `forecast_runs.raw_archive_path`. The archive makes historical runs reparseable if a parser bug is ever found. URLs are stored verbatim, including API keys in query strings, so keep archives out of version control (the repo ignores `raw/`). Disable with `--no-raw-archive` or `raw_archive_enabled = false` under `[http]`. Files accumulate until deleted manually.
 
 ### Daily quotas
 
@@ -397,6 +400,7 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 | `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | config value | Provider language preference |
 | `--include-raw` | No | config value | Persist raw provider payloads |
+| `--no-raw-archive` | No | archiving on | Skip writing the raw HTTP payload archive (`raw/<UTC timestamp>.jsonl.gz` next to the SQLite database) |
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
 | `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database, or `./omni-weather.log` when SQLite is omitted |
 
@@ -484,7 +488,8 @@ All provider responses are normalized into a common set of Pydantic models. Unit
 | `wind_speed`, `wind_gust` | float \| None | m/s |
 | `wind_direction` | float \| None | degrees |
 | `pressure_sea`, `pressure_surface` | float \| None | hPa |
-| `precipitation`, `rain`, `snow`, `snow_depth` | float \| None | mm |
+| `precipitation`, `rain`, `snow` (liquid equivalent), `snow_depth` | float \| None | mm |
+| `snowfall_depth` (new snow depth; providers report either this or `snow`, not both) | float \| None | mm |
 | `precipitation_probability` | float \| None | 0-1 |
 | `cloud_cover`, `cloud_cover_low`, `cloud_cover_mid`, `cloud_cover_high` | float \| None | % |
 | `visibility` | float \| None | km |
@@ -501,7 +506,7 @@ All provider responses are normalized into a common set of Pydantic models. Unit
 | `temperature_max`, `temperature_min` | float \| None | °C |
 | `apparent_temperature_max`, `apparent_temperature_min` | float \| None | °C |
 | `wind_speed_max`, `wind_gust_max` | float \| None | m/s |
-| `precipitation_sum`, `rain_sum`, `snowfall_sum` | float \| None | mm |
+| `precipitation_sum`, `rain_sum`, `snowfall_sum` (liquid equivalent), `snowfall_depth_sum` (depth) | float \| None | mm |
 | `precipitation_probability_max` | float \| None | 0-1 |
 | `cloud_cover_mean` | float \| None | % |
 | `humidity_mean` | float \| None | % |

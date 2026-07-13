@@ -39,6 +39,7 @@ from omni_weather_forecast_apis.types import (
     ProviderSuccess,
     WeatherDataPoint,
 )
+from omni_weather_forecast_apis.utils import utc_now
 
 T = TypeVar("T")
 
@@ -118,6 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-raw",
         action="store_true",
         help="Persist raw provider payloads alongside normalized results",
+    )
+    parser.add_argument(
+        "--no-raw-archive",
+        action="store_true",
+        help=(
+            "Do not archive raw HTTP payloads to the raw/ directory next to "
+            "the SQLite database"
+        ),
     )
     parser.add_argument(
         "--timeout-ms",
@@ -281,6 +290,13 @@ def _resolve_optional(cli_value: T | None, config_value: T) -> T:
     return cli_value if cli_value is not None else config_value
 
 
+def _default_raw_archive_path(sqlite_path: Path) -> Path:
+    """One archive file per CLI invocation, named by UTC start time."""
+
+    stamp = utc_now().strftime("%Y%m%dT%H%M%SZ")
+    return sqlite_path.parent / "raw" / f"{stamp}.jsonl.gz"
+
+
 def _setup_debug_logging(log_path: Path) -> LogHook:
     """Configure debug output to stderr and a log file.
 
@@ -438,6 +454,15 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         loguru_hook = _setup_debug_logging(log_path)
         log_hooks.append(loguru_hook)
 
+    raw_archive_path: Path | None = None
+    if (
+        sqlite_path is not None
+        and config.http.raw_archive_enabled
+        and not cast(bool, parsed.no_raw_archive)
+    ):
+        raw_archive_path = _default_raw_archive_path(sqlite_path)
+        config.http.raw_archive_path = str(raw_archive_path)
+
     quota_tracker = SqliteQuotaTracker(sqlite_path) if sqlite_path is not None else None
     async with await create_omni_weather(
         config,
@@ -448,7 +473,17 @@ async def _async_main(parsed: argparse.Namespace) -> int:
 
     run_id: int | None = None
     if sqlite_path is not None:
-        run_id = save_forecast_response(sqlite_path, response)
+        # The archive file is created lazily on the first network response;
+        # a zero-traffic run leaves the column NULL rather than dangling.
+        run_id = save_forecast_response(
+            sqlite_path,
+            response,
+            raw_archive_path=(
+                raw_archive_path
+                if raw_archive_path is not None and raw_archive_path.exists()
+                else None
+            ),
+        )
         save_provider_logs(sqlite_path, log_events, run_id=run_id)
 
     match cast(str, parsed.output_format):

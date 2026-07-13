@@ -244,3 +244,7 @@ reviews_triage
 *.sqlite
 config.toml
 .agents
+
+# Raw HTTP payload archives (contain provider URLs incl. API keys)
+raw/
+*.jsonl.gz

@@ -43,7 +43,7 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
                     "temperature": 10.0,
                     "weather": {
                         "summary": "Cloudy",
-                        "icon": 3,
+                        "icon": 6,
                     },
                     "wind": {
                         "speed": 4.0,
@@ -81,7 +81,7 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
                         "cloud_cover": {},
                     },
                     "summary": "Light rain",
-                    "icon": 6,
+                    "icon": 10,
                     "wind": {
                         "speed": 5.0,
                         "gust": 8.0,
@@ -157,10 +157,12 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
     assert len(forecast.hourly) == 1
     assert len(forecast.daily) == 1
     assert len(forecast.alerts) == 1
-    assert forecast.hourly[0].condition == WeatherCondition.OVERCAST
+    # Regression: icon 6 is "Cloudy" in the official table; the old map
+    # translated it to RAIN.
+    assert forecast.hourly[0].condition == WeatherCondition.MOSTLY_CLOUDY
     assert forecast.hourly[0].rain == 1.2
     assert forecast.hourly[0].is_day is False
-    assert forecast.daily[0].condition == WeatherCondition.RAIN
+    assert forecast.daily[0].condition == WeatherCondition.LIGHT_RAIN
     assert forecast.daily[0].precipitation_sum == 8.0
     assert forecast.daily[0].rain_sum == 7.0
     assert forecast.daily[0].cloud_cover_mean == 70.0

@@ -1,5 +1,7 @@
 """Tests for OpenWeather plugin using httpx2 mocks."""
 
+from datetime import date
+
 import httpx2
 import pytest
 import pytest_asyncio
@@ -96,6 +98,50 @@ class TestOpenWeatherInstance:
         assert result.forecasts[0].hourly[0].temperature == 20.0
         assert len(result.forecasts[0].daily) == 1
         assert result.forecasts[0].daily[0].temperature_max == 25.0
+
+    @pytest.mark.asyncio
+    async def test_daily_dates_use_timezone_offset_and_alerts_have_no_url(
+        self,
+        instance: PluginInstance,
+    ) -> None:
+        # Daily dt 2023-12-31 22:00 UTC is 2024-01-01 00:00 at UTC+2; the
+        # local calendar date must win over the UTC date.
+        mock_response = {
+            "timezone_offset": 7200,
+            "daily": [
+                {
+                    "dt": 1704060000,
+                    "temp": {"max": 5.0, "min": -1.0},
+                },
+            ],
+            "alerts": [
+                {
+                    "sender_name": "Test Bureau",
+                    "event": "Wind Advisory",
+                    "start": 1704060000,
+                    "end": 1704070000,
+                    "description": "Windy.",
+                    "tags": ["Extreme temperature value"],
+                },
+            ],
+        }
+
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            params = PluginFetchParams(
+                latitude=52.0,
+                longitude=21.0,
+                granularity=[Granularity.DAILY],
+            )
+            result = await instance.fetch_forecast(params, client)
+
+        assert isinstance(result, PluginFetchSuccess)
+        forecast = result.forecasts[0]
+        assert forecast.daily[0].date == date(2024, 1, 1)
+        # One Call alert tags are category labels, never links.
+        assert forecast.alerts[0].url is None
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance: PluginInstance) -> None:

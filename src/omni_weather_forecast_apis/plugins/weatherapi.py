@@ -15,7 +15,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_daily_point,
     build_hourly_point,
     build_source_forecast,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -52,6 +52,15 @@ _CAPABILITIES = PluginCapabilities(
 )
 
 
+def _max_chance(*values: Any) -> float | None:
+    """Largest present chance value; keeps a valid 0 instead of dropping it."""
+
+    present = [
+        numeric for value in values if (numeric := as_float(value)) is not None
+    ]
+    return max(present) if present else None
+
+
 def _parse_condition(entry: Mapping[str, Any]) -> tuple[str | None, int | str | None]:
     condition = entry.get("condition")
     if not isinstance(condition, Mapping):
@@ -84,8 +93,8 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
         wind_direction=as_float(entry.get("wind_degree")),
         pressure_sea=as_float(entry.get("pressure_mb")),
         precipitation=as_float(entry.get("precip_mm")),
-        precipitation_probability=normalize_probability(
-            entry.get("chance_of_rain") or entry.get("chance_of_snow"),
+        precipitation_probability=probability_from_percent_value(
+            _max_chance(entry.get("chance_of_rain"), entry.get("chance_of_snow")),
         ),
         rain=as_float(entry.get("precip_mm")),
         cloud_cover=as_float(entry.get("cloud")),
@@ -107,20 +116,23 @@ def _parse_forecast_day(entry: Mapping[str, Any]) -> DailyDataPoint:
         entry["date"],
         temperature_max=as_float(day.get("maxtemp_c")),
         temperature_min=as_float(day.get("mintemp_c")),
-        apparent_temperature_max=as_float(day.get("maxtemp_c")),
-        apparent_temperature_min=as_float(day.get("mintemp_c")),
+        # WeatherAPI has no daily feels-like; leave apparent temps unset
+        # rather than duplicating the air temperature.
         wind_speed_max=(
             ms_from_kmh(as_float(day.get("maxwind_kph")) or 0.0)
             if as_float(day.get("maxwind_kph")) is not None
             else None
         ),
         precipitation_sum=as_float(day.get("totalprecip_mm")),
-        precipitation_probability_max=normalize_probability(
-            day.get("daily_chance_of_rain") or day.get("daily_chance_of_snow"),
+        precipitation_probability_max=probability_from_percent_value(
+            _max_chance(
+                day.get("daily_chance_of_rain"),
+                day.get("daily_chance_of_snow"),
+            ),
         ),
         rain_sum=as_float(day.get("totalprecip_mm")),
         uv_index_max=as_float(day.get("uv")),
-        visibility_min=as_float(day.get("avgvis_km")),
+        # avgvis_km is a daily average, not a minimum; no min is available.
         humidity_mean=as_float(day.get("avghumidity")),
         condition=condition_from_text(text),
         summary=text,

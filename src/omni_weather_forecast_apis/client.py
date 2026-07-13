@@ -12,6 +12,7 @@ from typing import Any, cast
 import httpx2
 
 from omni_weather_forecast_apis.http_cache import CachingTransport
+from omni_weather_forecast_apis.http_recorder import RawArchiveTransport
 from omni_weather_forecast_apis.plugins import get_plugin_registry
 from omni_weather_forecast_apis.quota import InMemoryQuotaTracker, QuotaTracker
 from omni_weather_forecast_apis.rate_limiter import (
@@ -165,6 +166,9 @@ class OmniWeatherClient:
                 max_keepalive_connections=http_config.max_keepalive_connections,
             ),
         )
+        # The recorder sits inside the cache so cache hits are not recorded.
+        if http_config.raw_archive_enabled and http_config.raw_archive_path:
+            transport = RawArchiveTransport(transport, http_config.raw_archive_path)
         if http_config.cache_enabled:
             transport = CachingTransport(
                 transport,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,7 +13,14 @@ from omni_weather_forecast_apis.cli import (
     _setup_debug_logging,
     build_parser,
 )
-from omni_weather_forecast_apis.types import ErrorCode, ProviderId, ProviderLogEvent
+from omni_weather_forecast_apis.types import (
+    ErrorCode,
+    ForecastResponse,
+    ForecastResponseRequest,
+    ForecastResponseSummary,
+    ProviderId,
+    ProviderLogEvent,
+)
 
 
 def test_resolve_required_preserves_zero_values() -> None:
@@ -110,3 +118,101 @@ def test_debug_logging_falls_back_to_stdlib_without_loguru(
     contents = log_path.read_text(encoding="utf-8")
     assert "boom" in contents
     assert "done: 18°C" in contents
+
+
+class _ArchiveStubClient:
+    def __init__(self) -> None:
+        self._response = ForecastResponse(
+            request=ForecastResponseRequest(
+                latitude=34.0,
+                longitude=-118.0,
+                granularity=[],
+                language="en",
+            ),
+            results=[],
+            summary=ForecastResponseSummary(total=0, succeeded=0, failed=0),
+            completed_at=datetime(2026, 7, 13, 12, 0, tzinfo=UTC),
+            total_latency_ms=1.0,
+        )
+
+    async def __aenter__(self) -> _ArchiveStubClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def forecast(self, request: object) -> object:
+        del request
+        return self._response
+
+
+def _run_cli_capturing_config(monkeypatch, tmp_path, argv, config_body=None):
+    """Run main() with a stubbed client; return the config it received."""
+
+    captured: dict[str, object] = {}
+
+    async def fake_create(config, **kwargs):
+        del kwargs
+        captured["config"] = config
+        return _ArchiveStubClient()
+
+    monkeypatch.setattr(cli, "create_omni_weather", fake_create)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        config_body
+        or '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n',
+    )
+    exit_code = cli.main(
+        ["--config", str(config_path), "--lat", "34.0", "--lon", "-118.0", *argv],
+    )
+    assert exit_code == 0
+    return captured["config"]
+
+
+def test_sqlite_enables_raw_archive_with_run_scoped_path(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "forecasts.sqlite"
+    config = _run_cli_capturing_config(
+        monkeypatch,
+        tmp_path,
+        ["--sqlite", str(db_path)],
+    )
+
+    archive_path = config.http.raw_archive_path
+    assert archive_path is not None
+    assert archive_path.startswith(str(tmp_path / "raw"))
+    assert archive_path.endswith(".jsonl.gz")
+
+
+def test_no_raw_archive_flag_disables_archiving(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "forecasts.sqlite"
+    config = _run_cli_capturing_config(
+        monkeypatch,
+        tmp_path,
+        ["--sqlite", str(db_path), "--no-raw-archive"],
+    )
+
+    assert config.http.raw_archive_path is None
+
+
+def test_raw_archive_requires_sqlite(monkeypatch, tmp_path) -> None:
+    config = _run_cli_capturing_config(monkeypatch, tmp_path, [])
+
+    assert config.http.raw_archive_path is None
+
+
+def test_raw_archive_config_kill_switch(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "forecasts.sqlite"
+    config = _run_cli_capturing_config(
+        monkeypatch,
+        tmp_path,
+        ["--sqlite", str(db_path)],
+        config_body=(
+            "[http]\nraw_archive_enabled = false\n\n"
+            '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n'
+        ),
+    )
+
+    assert config.http.raw_archive_path is None

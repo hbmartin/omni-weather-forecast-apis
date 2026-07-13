@@ -301,6 +301,8 @@ class TestOpenMeteoInstance:
                         "temperature_2m": [10.0],
                         "weather_code": [71],
                         "snowfall": [1.2],
+                        "snowfall_water_equivalent": [1.4],
+                        "direct_normal_irradiance": [512.0],
                     },
                     "daily": {
                         "time": ["2024-01-01"],
@@ -308,6 +310,7 @@ class TestOpenMeteoInstance:
                         "temperature_2m_min": [5.0],
                         "weather_code": [71],
                         "snowfall_sum": [2.3],
+                        "snowfall_water_equivalent_sum": [2.6],
                     },
                 },
             )
@@ -329,5 +332,10 @@ class TestOpenMeteoInstance:
         assert captured_params["wind_speed_unit"] == "ms"
         forecast = result.forecasts[0]
         assert forecast.minutely[0].precipitation_intensity == 2.0
-        assert forecast.hourly[0].snow == 12.0
-        assert forecast.daily[0].snowfall_sum == 23.0
+        # snowfall (cm of depth) feeds snowfall_depth; the liquid field comes
+        # from snowfall_water_equivalent (already mm).
+        assert forecast.hourly[0].snowfall_depth == 12.0
+        assert forecast.hourly[0].snow == 1.4
+        assert forecast.hourly[0].solar_radiation_dni == 512.0
+        assert forecast.daily[0].snowfall_depth_sum == 23.0
+        assert forecast.daily[0].snowfall_sum == 2.6

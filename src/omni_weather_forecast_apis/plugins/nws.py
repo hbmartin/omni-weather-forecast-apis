@@ -22,7 +22,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_source_forecast,
     cardinal_direction_to_degrees,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -96,7 +96,7 @@ def _probability(entry: Mapping[str, Any]) -> float | None:
     probability = entry.get("probabilityOfPrecipitation")
     if not isinstance(probability, Mapping):
         return None
-    return normalize_probability(probability.get("value"))
+    return probability_from_percent_value(probability.get("value"))
 
 
 def _local_start_date(period: Mapping[str, Any]) -> str | None:

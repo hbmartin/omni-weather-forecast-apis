@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from omni_weather_forecast_apis.mapping import condition_from_text
 from omni_weather_forecast_apis.mapping.units import (
     celsius_from_fahrenheit,
+    celsius_from_kelvin,
+    km_from_miles,
     mm_from_inches,
     ms_from_mph,
 )
@@ -18,7 +20,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_daily_point,
     build_hourly_point,
     build_source_forecast,
-    normalize_probability,
+    probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
@@ -98,7 +100,26 @@ _WEATHERBIT_CONDITION_MAP: dict[int, WeatherCondition] = {
 def _normalize_temperature(value: float | None, units: str) -> float | None:
     if value is None:
         return None
-    return celsius_from_fahrenheit(value) if units == "I" else value
+    match units:
+        case "I":
+            return celsius_from_fahrenheit(value)
+        case "S":
+            # Weatherbit "scientific" units report temperatures in Kelvin.
+            return celsius_from_kelvin(value)
+        case _:
+            return value
+
+
+def _normalize_visibility(value: float | None, units: str) -> float | None:
+    if value is None:
+        return None
+    return km_from_miles(value) if units == "I" else value
+
+
+def _normalize_snow_depth(value: float | None, units: str) -> float | None:
+    if value is None:
+        return None
+    return mm_from_inches(value) if units == "I" else value
 
 
 def _normalize_precipitation(value: float | None, units: str) -> float | None:
@@ -150,12 +171,12 @@ def _parse_hour(entry: Mapping[str, Any], units: str) -> WeatherDataPoint:
         pressure_sea=as_float(entry.get("slp")),
         pressure_surface=as_float(entry.get("pres")),
         precipitation=_normalize_precipitation(as_float(entry.get("precip")), units),
-        precipitation_probability=normalize_probability(entry.get("pop")),
+        precipitation_probability=probability_from_percent_value(entry.get("pop")),
         rain=_normalize_precipitation(as_float(entry.get("precip")), units),
         snow=_normalize_precipitation(as_float(entry.get("snow")), units),
-        snow_depth=as_float(entry.get("snow_depth")),
+        snow_depth=_normalize_snow_depth(as_float(entry.get("snow_depth")), units),
         cloud_cover=as_float(entry.get("clouds")),
-        visibility=as_float(entry.get("vis")),
+        visibility=_normalize_visibility(as_float(entry.get("vis")), units),
         uv_index=as_float(entry.get("uv")),
         condition=_map_condition(description, code),
         condition_original=description,
@@ -184,12 +205,12 @@ def _parse_day(entry: Mapping[str, Any], units: str) -> DailyDataPoint:
             as_float(entry.get("precip")),
             units,
         ),
-        precipitation_probability_max=normalize_probability(entry.get("pop")),
+        precipitation_probability_max=probability_from_percent_value(entry.get("pop")),
         rain_sum=_normalize_precipitation(as_float(entry.get("precip")), units),
         snowfall_sum=_normalize_precipitation(as_float(entry.get("snow")), units),
         cloud_cover_mean=as_float(entry.get("clouds")),
         uv_index_max=as_float(entry.get("uv")),
-        visibility_min=as_float(entry.get("vis")),
+        visibility_min=_normalize_visibility(as_float(entry.get("vis")), units),
         humidity_mean=as_float(entry.get("rh")),
         pressure_sea_mean=as_float(entry.get("slp")),
         condition=_map_condition(description, code),
@@ -239,6 +260,7 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
                 _parse_hour(entry, self.config.units)
                 for entry in raw_hourly.get("data", [])
                 if isinstance(entry, Mapping)
+                and ("timestamp_utc" in entry or "ts" in entry)
             ]
 
         if Granularity.DAILY in params.granularity:
@@ -259,7 +281,7 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
             daily = [
                 _parse_day(entry, self.config.units)
                 for entry in raw_daily.get("data", [])
-                if isinstance(entry, Mapping)
+                if isinstance(entry, Mapping) and "valid_date" in entry
             ]
 
         return self._success(

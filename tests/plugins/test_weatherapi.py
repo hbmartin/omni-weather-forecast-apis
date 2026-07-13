@@ -241,14 +241,17 @@ class TestWeatherAPIInstance:
         assert day.date == date(2024, 1, 1)
         assert day.temperature_max == 25.5
         assert day.temperature_min == 10.2
-        assert day.apparent_temperature_max == 25.5
-        assert day.apparent_temperature_min == 10.2
+        # WeatherAPI has no daily feels-like; the air temps must not be
+        # duplicated into the apparent-temperature fields.
+        assert day.apparent_temperature_max is None
+        assert day.apparent_temperature_min is None
         assert day.wind_speed_max == pytest.approx(8.0)  # 28.8 km/h -> m/s
         assert day.precipitation_sum == 4.2
         assert day.rain_sum == 4.2
         assert day.precipitation_probability_max == 0.8
         assert day.uv_index_max == 6.0
-        assert day.visibility_min == 9.5
+        # avgvis_km is an average, not a minimum, so it is not stored.
+        assert day.visibility_min is None
         assert day.humidity_mean == 60.0
         assert day.condition == WeatherCondition.LIGHT_RAIN
         assert day.summary == "Light rain"
