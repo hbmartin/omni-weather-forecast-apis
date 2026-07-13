@@ -135,15 +135,17 @@ forecast is now in `forecasts.sqlite`, normalized and ready to
 # As a library dependency
 pip install omni-weather-forecast-apis
 
-# With CLI niceties — rich tables and loguru debug logging
+# With the interactive CLI, discovery, diagnostics, and rich output
 pip install "omni-weather-forecast-apis[cli]"
 
 # Run the CLI without installing anything
 uvx --from "omni-weather-forecast-apis[cli]" omni-weather --help
 ```
 
-Requires Python 3.13 or newer. The CLI works without the `cli` extra: table
-output falls back to plain text and `--debug` falls back to stdlib logging.
+Requires Python 3.13 or newer. The console-script wrapper is installed with the
+base package, but CLI commands require the `cli` extra. Without it the wrapper
+exits with the exact installation command instead of failing with an import
+traceback.
 
 Contributing to this repository instead? See [Development](#development) for the
 `uv sync` workflow.
@@ -297,6 +299,43 @@ ProviderId.MET_NORWAY 2026-03-13 18:00:00+00:00: 12.1°C, WeatherCondition.RAIN
 
 ## CLI Usage
 
+The easiest first run is the interactive setup wizard:
+
+```bash
+omni-weather init
+```
+
+It requires default coordinates, recommends keyless Open-Meteo, groups the
+remaining providers by authentication needs, chooses a platform-native SQLite
+path, and lets you select one or more granularities. The generated TOML is
+parsed and fully validated before an exact preview is shown. Credential prompts
+are masked, but the selected values are intentionally stored in the TOML and
+shown in that preview; protect the terminal session as well as the resulting
+owner-only (`0600` on POSIX) file. The final test forecast defaults to yes.
+
+If a forecast command omits `--config`, configuration is resolved in this
+order:
+
+1. The platform-native `omni-weather/config.toml` path.
+2. The legacy `~/.config/omni_weather_forecast_apis.toml` path.
+3. Interactive setup when neither file exists.
+
+Automatic setup requires interactive stdin and stderr. In a pipe, cron job, or
+other non-interactive process, the CLI exits `2` and prints the expected path
+and `init` command. An explicit missing `--config` is always an error. When
+automatic setup succeeds, the original forecast request runs immediately with
+all its CLI overrides. Wizard messages go to stderr, so JSON, CSV, and NDJSON
+stdout remains machine-readable.
+
+Default platform paths (with platform conventions such as XDG overrides still
+honored) are:
+
+| Platform | Configuration | SQLite data |
+|----------|---------------|-------------|
+| Linux | `~/.config/omni-weather/config.toml` | `~/.local/share/omni-weather/forecasts.sqlite` |
+| macOS | `~/Library/Application Support/omni-weather/config.toml` | `~/Library/Application Support/omni-weather/forecasts.sqlite` |
+| Windows | `%LOCALAPPDATA%\omni-weather\config.toml` | `%LOCALAPPDATA%\omni-weather\forecasts.sqlite` |
+
 ```bash
 omni-weather \
   --config ./config.toml \
@@ -326,6 +365,15 @@ omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
   --format csv > forecast.csv
 omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
   --format ndjson | jq 'select(.type == "forecast_point") | .temperature'
+
+# Browse setup requirements and signup links
+omni-weather providers
+
+# Aggregate local configuration diagnostics (no network requests)
+omni-weather doctor
+
+# Opt in to live checks, optionally for selected providers
+omni-weather doctor --live --provider open_meteo
 ```
 
 The CLI performs one forecast collection per invocation. For recurring
@@ -340,7 +388,7 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--config PATH` | No | `~/.config/omni_weather_forecast_apis.toml` | Path to TOML configuration file |
+| `--config PATH` | No | platform path, then legacy path | Path to TOML configuration file |
 | `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
 | `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
 | `--sqlite PATH` | No | config value | SQLite database output path; overrides config. Persistence is skipped when neither is set |
@@ -352,7 +400,20 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 | `--timeout-ms MS` | No | config value | Override the default timeout; provider-specific timeouts still take precedence |
 | `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database, or `./omni-weather.log` when SQLite is omitted |
 
-**Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
+`omni-weather providers` shows every provider's coverage, supported
+granularities, authentication shape, and official setup link. `omni-weather
+doctor` aggregates TOML, coordinates, environment references, provider
+settings, granularity compatibility, output paths, duplicates, and POSIX
+permission checks. It never prints resolved environment values. `--provider`
+narrows provider-specific checks while retaining top-level checks. Only
+`--live` contacts providers; live checks do not persist results, but they can
+consume API quota and be subject to rate limits.
+
+**Exit codes:** forecast and doctor return `0` when required checks or providers
+succeed and `1` for provider/diagnostic failures. Warnings alone return `0`.
+Invalid invocation, load failures outside doctor, and unexpected operational
+errors return `2`. Cancelling explicit `init` returns `0`; cancelling automatic
+first-run setup returns `2`.
 
 ## Observability
 
@@ -580,7 +641,7 @@ uv run zensical serve
 
 ```bash
 # Set up the repository (Python 3.13+)
-uv sync
+uv sync --extra cli
 
 # Lint, format, and type-check
 uv run ruff check src --fix
@@ -593,7 +654,7 @@ uv run deptry src
 uv run pyroma --min 8 .
 uv run lizard -Eduplicate -C 27 src
 
-# Tests and the 87% coverage floor
+# Tests and the 88% coverage floor
 uv run pytest tests/ --cov=src --cov-report=term-missing
 ```
 

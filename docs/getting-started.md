@@ -3,12 +3,35 @@
 ## Install
 
 ```bash
-uv sync
+uv sync --extra cli
 ```
 
 Requires Python 3.13+.
 
-## Minimal CLI run
+## Interactive CLI setup
+
+```bash
+uv run omni-weather init
+```
+
+The wizard asks for required coordinates, providers, provider credentials,
+SQLite output, and forecast granularities. Open-Meteo is the recommended
+keyless default. MET Norway and NWS share one application/contact identity;
+the other providers are grouped as requiring API keys. The wizard validates
+the generated TOML and provider settings, shows an exact preview, asks before
+writing or overwriting, and offers a test forecast (default: yes).
+
+Credential input is masked, but credentials are deliberately written directly
+to the config and visible in the preview. The generated config is owner-only
+on POSIX. Use environment placeholders in a manually maintained config when
+you do not want secrets stored there.
+
+Running `uv run omni-weather` without `--config` uses the platform-native
+config, falls back to the legacy `~/.config/omni_weather_forecast_apis.toml`,
+and starts this wizard if neither exists. Automatic setup only runs in an
+interactive terminal; after setup it executes the original forecast command.
+
+## Manual minimal CLI run
 
 Open-Meteo and MET Norway require no API keys, so this works out of the box:
 
@@ -32,6 +55,11 @@ uv run omni-weather \
 
 Add `--format json` to emit the full normalized response as JSON on stdout,
 or omit `--sqlite` to skip persistence entirely.
+
+Use `uv run omni-weather providers` to compare provider requirements and
+official signup links. Use `uv run omni-weather doctor` for static aggregated
+diagnostics. `doctor --live` opts into real provider calls, which can consume
+quota; add repeatable `--provider ID` filters to narrow those checks.
 
 ## Library usage
 

@@ -1,0 +1,6 @@
+rules:
+  - id: github-actions-avoid-top-level-pages-or-oidc-write
+    languages: [generic]
+    message: Scope Pages and OIDC write permissions to the deploy job.
+    severity: ERROR
+    pattern-regex: '(?m)^permissions:\s*\n(?: {2}[a-z-]+:\s+[a-z-]+\s*(?:#.*)?\n)* {2}(?:pages|id-token):\s+write\b'

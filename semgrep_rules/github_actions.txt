@@ -1,0 +1,16 @@
+# ruleid: github-actions-avoid-top-level-pages-or-oidc-write
+permissions:
+  contents: read
+  id-token: write
+
+# ruleid: github-actions-avoid-top-level-pages-or-oidc-write
+permissions:
+  contents: read
+  pages: write
+
+# ok: github-actions-avoid-top-level-pages-or-oidc-write
+jobs:
+  deploy:
+    permissions:
+      pages: write
+      id-token: write

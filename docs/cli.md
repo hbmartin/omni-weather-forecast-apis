@@ -1,5 +1,48 @@
 # CLI
 
+Install the CLI extra:
+
+```bash
+pip install "omni-weather-forecast-apis[cli]"
+```
+
+The base package still installs the `omni-weather` wrapper because Python
+extras cannot conditionally install console scripts. If the CLI dependencies
+are absent, it exits `2` with an installation hint.
+
+## Interactive setup
+
+```bash
+omni-weather init [--config PATH]
+```
+
+The wizard writes all interaction to stderr and prompts in this order:
+
+1. Required latitude and longitude.
+2. At least one provider. Open-Meteo is the recommended, preselected keyless
+   provider; MET Norway and NWS are also keyless, and the other ten are grouped
+   under “Requires API key.”
+3. One shared application name/contact email when MET Norway or NWS is used.
+4. Masked credentials for keyed providers. Weather Unlocked collects both an
+   application ID and application key.
+5. A required SQLite path, defaulting to the platform data directory.
+6. One or more compatible granularities, defaulting to hourly and daily.
+
+Generated TOML and every provider setting are validated before an exact preview
+is displayed. The preview contains collected credentials. Nothing is created
+or overwritten until the final confirmation. Writes are atomic; new
+directories and the config receive private POSIX permissions. Explicit `init`
+then offers a test forecast, defaulting to yes.
+
+With no explicit `--config`, forecasts use the platform-native
+`omni-weather/config.toml`, then the legacy
+`~/.config/omni_weather_forecast_apis.toml`. If neither exists and stdin/stderr
+are interactive, the wizard runs automatically and the original forecast
+continues with its overrides. Non-interactive first use exits `2` with setup
+instructions. An explicitly supplied missing file is always an error.
+
+## Forecast
+
 ```bash
 uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 ```
@@ -8,7 +51,7 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 
 | Flag | Description |
 |------|-------------|
-| `--config PATH` | TOML config path (default: `~/.config/omni_weather_forecast_apis.toml`) |
+| `--config PATH` | TOML config path (default: platform path, then legacy path) |
 | `--lat` / `--lon` | Coordinates in decimal degrees (override config) |
 | `--sqlite PATH` | SQLite output file (overrides config); persistence is skipped when neither is set |
 | `--format {table,json,csv,ndjson}` | Output format (default: `table`) |
@@ -19,14 +62,42 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 | `--timeout-ms N` | Override the default request timeout |
 | `--debug` | Verbose logging to stderr and a log file next to the SQLite database, or `./omni-weather.log` when `--sqlite` is omitted |
 
-The exit code is `0` when every provider succeeded, `1` when at least one
-provider failed, and `2` for invalid arguments or configuration/load errors.
-Partial provider failures are visible to schedulers and shell scripts.
+The forecast exit code is `0` when every provider succeeded, `1` when at least
+one provider failed, and `2` for invalid arguments or configuration/load
+errors. Partial provider failures are visible to schedulers and shell scripts.
 
-Rich tables and loguru debug logging require the `cli` extra
-(`pip install "omni-weather-forecast-apis[cli]"`). Without it the CLI
-degrades gracefully: tables render as plain text and `--debug` uses
-stdlib logging.
+## Provider discovery
+
+```bash
+omni-weather providers
+```
+
+This renders one catalog shared with the setup wizard, including provider ID
+and name, coverage, supported granularities, authentication requirements, and
+official signup/setup links.
+
+## Diagnostics
+
+```bash
+omni-weather doctor [--config PATH] [--provider ID]... [--live]
+```
+
+Static doctor checks aggregate config presence, TOML and Pydantic validation,
+required coordinates, typed provider settings, recursive environment
+references, config/SQLite path type and writability, POSIX config permissions,
+duplicate registrations, and provider/granularity compatibility. Environment
+variable names and presence are shown; values are never printed.
+
+Repeatable `--provider` filters narrow provider-specific static and live checks;
+top-level config and path checks always run. Static mode never contacts a
+weather API. `--live` checks all enabled providers (or the selected filters),
+skips statically invalid providers, and does not persist results. These calls
+can consume provider quota, trigger rate limits, or incur provider charges.
+
+Doctor exits `0` when required checks pass, including when there are warnings
+only, and `1` for any static or live failure. Exit `2` is reserved for invalid
+invocation or unexpected operational errors. Cancelling explicit `init` exits
+`0`; cancelling automatic setup exits `2`.
 
 ## Output formats
 
