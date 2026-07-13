@@ -11,7 +11,7 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 | `--config PATH` | TOML config path (default: `~/.config/omni_weather_forecast_apis.toml`) |
 | `--lat` / `--lon` | Coordinates in decimal degrees (override config) |
 | `--sqlite PATH` | SQLite output file (overrides config); persistence is skipped when neither is set |
-| `--format {table,json}` | Output format (default: `table`) |
+| `--format {table,json,csv,ndjson}` | Output format (default: `table`) |
 | `--provider ID` | Restrict to one or more configured providers (repeatable) |
 | `--granularity {minutely,hourly,daily}` | Granularity to request (repeatable) |
 | `--language CODE` | Provider language preference |
@@ -22,6 +22,11 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 The exit code is `0` when every provider succeeded, `1` when at least one
 provider failed, and `2` for invalid arguments or configuration/load errors.
 Partial provider failures are visible to schedulers and shell scripts.
+
+Rich tables and loguru debug logging require the `cli` extra
+(`pip install "omni-weather-forecast-apis[cli]"`). Without it the CLI
+degrades gracefully: tables render as plain text and `--debug` uses
+stdlib logging.
 
 ## Output formats
 
@@ -34,6 +39,24 @@ stdout — ideal for piping into `jq` or another program:
 ```bash
 uv run omni-weather --config config.toml --lat 40.7 --lon -74.0 --format json \
   | jq '.results[] | {provider, status}'
+```
+
+`--format csv` and `--format ndjson` emit one row/line per forecast data
+point, flattened for data tooling (pandas, DuckDB, `jq`). Every row starts
+with `provider`, `model`, and `granularity` (`minutely` / `hourly` /
+`daily`), followed by the normalized point fields; fields that don't apply
+to a row's granularity are empty.
+
+- **csv** — a single wide table with a fixed column order derived from the
+  normalized schema. Weather alerts are omitted (a note is printed to
+  stderr) and provider errors are summarized on stderr, so stdout stays
+  machine-parseable.
+- **ndjson** — one compact JSON object per line, each tagged with a `type`
+  of `forecast_point`, `alert`, or `provider_error`:
+
+```bash
+uv run omni-weather --config config.toml --lat 40.7 --lon -74.0 --format ndjson \
+  | jq 'select(.type == "forecast_point") | {provider, timestamp, temperature}'
 ```
 
 ## SQLite output

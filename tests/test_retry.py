@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import httpx
 import pytest
 
 from omni_weather_forecast_apis.client import (
@@ -17,17 +16,13 @@ from omni_weather_forecast_apis.types import (
     ErrorCode,
     ForecastRequest,
     OmniWeatherConfig,
-    PluginCapabilities,
-    PluginFetchError,
-    PluginFetchParams,
-    PluginFetchResult,
-    PluginFetchSuccess,
     ProviderId,
     ProviderLogEvent,
     ProviderRegistration,
     ProviderSuccess,
     RetryPolicy,
 )
+from tests.helpers import DummyPlugin, FlakyInstance
 
 FAST_RETRIES = RetryPolicy(
     max_attempts=3,
@@ -37,64 +32,12 @@ FAST_RETRIES = RetryPolicy(
 )
 
 
-class FlakyInstance:
-    """Fails with a retryable error a fixed number of times, then succeeds."""
-
-    provider_id = ProviderId.OPEN_METEO
-
-    def __init__(self, failures: int, code: ErrorCode = ErrorCode.NETWORK) -> None:
-        self.failures = failures
-        self.code = code
-        self.calls = 0
-
-    def get_capabilities(self) -> PluginCapabilities:
-        return PluginCapabilities(requires_api_key=False)
-
-    async def fetch_forecast(
-        self,
-        params: PluginFetchParams,
-        client: httpx.AsyncClient,
-    ) -> PluginFetchResult:
-        del params, client
-        self.calls += 1
-        if self.calls <= self.failures:
-            return PluginFetchError(code=self.code, message="transient failure")
-        return PluginFetchSuccess(forecasts=[])
-
-
-class DummyPlugin:
-    def __init__(self, provider_id: ProviderId, instance: Any) -> None:
-        self._provider_id = provider_id
-        self._instance = instance
-
-    @property
-    def id(self) -> ProviderId:
-        return self._provider_id
-
-    @property
-    def name(self) -> str:
-        return self._provider_id.value
-
-    def validate_config(self, config: dict[str, Any]) -> dict[str, Any]:
-        return config
-
-    async def initialize(self, config: dict[str, Any]) -> Any:
-        del config
-        return self._instance
-
-
 def _client_for(
     instance: Any,
-    monkeypatch: pytest.MonkeyPatch,
     *,
     retry: RetryPolicy = FAST_RETRIES,
     log_hooks: list[Any] | None = None,
 ) -> OmniWeatherClient:
-    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     return OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -102,16 +45,15 @@ def _client_for(
             ],
             retry=retry,
         ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
         log_hooks=log_hooks,
     )
 
 
-def test_retryable_error_is_retried_until_success(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_retryable_error_is_retried_until_success() -> None:
     instance = FlakyInstance(failures=2)
     events: list[ProviderLogEvent] = []
-    client = _client_for(instance, monkeypatch, log_hooks=[events.append])
+    client = _client_for(instance, log_hooks=[events.append])
 
     async def scenario() -> ProviderSuccess:
         await client.initialize()
@@ -127,9 +69,9 @@ def test_retryable_error_is_retried_until_success(
     assert sum(event.phase == "retry" for event in events) == 2
 
 
-def test_retries_stop_at_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_retries_stop_at_max_attempts() -> None:
     instance = FlakyInstance(failures=10)
-    client = _client_for(instance, monkeypatch)
+    client = _client_for(instance)
 
     async def scenario() -> str:
         await client.initialize()
@@ -143,9 +85,9 @@ def test_retries_stop_at_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
     assert instance.calls == 3
 
 
-def test_non_retryable_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_non_retryable_error_is_not_retried() -> None:
     instance = FlakyInstance(failures=10, code=ErrorCode.AUTH_FAILED)
-    client = _client_for(instance, monkeypatch)
+    client = _client_for(instance)
 
     async def scenario() -> str:
         await client.initialize()
@@ -159,15 +101,8 @@ def test_non_retryable_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> 
     assert instance.calls == 1
 
 
-def test_per_provider_retry_policy_overrides_global(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_per_provider_retry_policy_overrides_global() -> None:
     instance = FlakyInstance(failures=10)
-    registry = {ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, instance)}
-    monkeypatch.setattr(
-        "omni_weather_forecast_apis.client.get_plugin_registry",
-        lambda: registry,
-    )
     client = OmniWeatherClient(
         OmniWeatherConfig(
             providers=[
@@ -179,6 +114,7 @@ def test_per_provider_retry_policy_overrides_global(
             ],
             retry=FAST_RETRIES,
         ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
     )
 
     async def scenario() -> None:

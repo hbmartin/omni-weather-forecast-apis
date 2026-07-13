@@ -26,10 +26,10 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
-    ErrorCode,
     Granularity,
     MinutelyDataPoint,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -258,7 +258,7 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
             requested_excludes.add("hourly")
         if Granularity.DAILY not in params.granularity:
             requested_excludes.add("daily")
-        raw, error = await self._get_json(
+        raw = await self._get_json_dict(
             client,
             _ONE_CALL_URL,
             params={
@@ -269,15 +269,10 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
                 "lang": params.language,
                 "exclude": ",".join(sorted(requested_excludes)),
             },
+            payload_name="OpenWeather",
         )
-        if error is not None:
-            return error
-        if not isinstance(raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected OpenWeather payload",
-                raw=raw,
-            )
+        if isinstance(raw, PluginFetchError):
+            return raw
 
         minutely: list[MinutelyDataPoint] = [
             build_minutely_point(

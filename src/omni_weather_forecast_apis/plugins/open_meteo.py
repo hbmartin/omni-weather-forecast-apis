@@ -23,6 +23,7 @@ from omni_weather_forecast_apis.types import (
     ErrorCode,
     Granularity,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -173,15 +174,14 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         params: PluginFetchParams,
         client: httpx.AsyncClient,
     ) -> PluginFetchResult:
-        payload, error = await self._get_json(
+        payload = await self._get_json_dict(
             client,
             OPEN_METEO_URL,
             params=self._request_params(params),
+            payload_name="Open-Meteo",
         )
-        if error is not None:
-            return error
-        if payload is None:
-            return self._error(ErrorCode.UNKNOWN, "Open-Meteo returned no payload")
+        if isinstance(payload, PluginFetchError):
+            return payload
 
         try:
             forecasts = self._parse_payloads(payload)
@@ -241,8 +241,8 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             return data[f"{section}_{model}"]
         return data.get(section)
 
-    def _parse_payloads(self, payload: dict[str, Any] | list[Any]) -> list[Any]:
-        data = payload if isinstance(payload, dict) else {}
+    def _parse_payloads(self, payload: dict[str, Any]) -> list[Any]:
+        data = payload
         forecasts: list[Any] = []
         for model in self.config.models or ["best_match"]:
             forecasts.append(

@@ -23,6 +23,7 @@ from omni_weather_forecast_apis.types import (
     ErrorCode,
     MinutelyDataPoint,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -365,7 +366,7 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
     ) -> PluginFetchResult:
         """Fetch and normalize Meteosource forecast data."""
 
-        raw, error = await self._get_json(
+        raw = await self._get_json_dict(
             client,
             _POINT_URL,
             params={
@@ -377,15 +378,10 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
                 "units": "metric",
                 "key": self.config.api_key,
             },
+            payload_name="Meteosource",
         )
-        if error is not None:
-            return error
-        if not isinstance(raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected Meteosource payload",
-                raw=raw,
-            )
+        if isinstance(raw, PluginFetchError):
+            return raw
         try:
             minutely: list[MinutelyDataPoint] = []
             for entry in _section_rows(raw, "minutely"):

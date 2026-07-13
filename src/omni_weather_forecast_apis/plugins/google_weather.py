@@ -327,18 +327,14 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             }
             if page_token is not None:
                 request_params["pageToken"] = page_token
-            payload, error = await self._get_json(
+            payload = await self._get_json_dict(
                 client,
                 f"{GOOGLE_WEATHER_BASE_URL}/{endpoint}",
                 params=request_params,
+                payload_name="Google Weather",
             )
-            if error is not None:
-                return [], error
-            if not isinstance(payload, dict):
-                return [], self._error(
-                    ErrorCode.PARSE,
-                    "Google Weather returned an invalid payload",
-                )
+            if isinstance(payload, PluginFetchError):
+                return [], payload
             items = payload.get(item_key)
             if isinstance(items, list):
                 entries.extend(item for item in items if isinstance(item, dict))

@@ -21,12 +21,14 @@ from omni_weather_forecast_apis.plugins._base import (
     build_daily_point,
     build_hourly_point,
     build_source_forecast,
+    cardinal_direction_to_degrees,
     normalize_probability,
 )
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
     ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -58,26 +60,6 @@ _CAPABILITIES = PluginCapabilities(
     alerts=True,
     requires_api_key=False,
 )
-_CARDINAL_TO_DEGREES = {
-    "N": 0.0,
-    "NNE": 22.5,
-    "NE": 45.0,
-    "ENE": 67.5,
-    "E": 90.0,
-    "ESE": 112.5,
-    "SE": 135.0,
-    "SSE": 157.5,
-    "S": 180.0,
-    "SSW": 202.5,
-    "SW": 225.0,
-    "WSW": 247.5,
-    "W": 270.0,
-    "WNW": 292.5,
-    "NW": 315.0,
-    "NNW": 337.5,
-}
-
-
 def _nws_headers(user_agent: str) -> dict[str, str]:
     return {"User-Agent": user_agent, "Accept": "application/geo+json"}
 
@@ -96,7 +78,7 @@ def _wind_speed(speed_text: object) -> float | None:
 def _wind_direction(direction: object) -> float | None:
     if not isinstance(direction, str):
         return None
-    return _CARDINAL_TO_DEGREES.get(direction.strip().upper())
+    return cardinal_direction_to_degrees(direction)
 
 
 def _temperature(entry: Mapping[str, Any]) -> float | None:
@@ -212,19 +194,14 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
         headers = _nws_headers(self.config.user_agent)
         if self.config.grid_override is None:
             points_url = f"{_BASE_URL}/points/{params.latitude},{params.longitude}"
-            points_raw, error = await self._get_json(
+            points_raw = await self._get_json_dict(
                 client,
                 points_url,
                 headers=headers,
+                payload_name="NWS points",
             )
-            if error is not None:
-                return error
-            if not isinstance(points_raw, dict):
-                return self._error(
-                    ErrorCode.PARSE,
-                    "Unexpected NWS points payload",
-                    raw=points_raw,
-                )
+            if isinstance(points_raw, PluginFetchError):
+                return points_raw
             properties = points_raw.get("properties")
             if not isinstance(properties, Mapping):
                 return self._error(
@@ -252,15 +229,14 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
         hourly: list[Any] = []
         daily: list[Any] = []
 
-        hourly_raw, error = await self._get_json(client, hourly_url, headers=headers)
-        if error is not None:
-            return error
-        if not isinstance(hourly_raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected NWS hourly payload",
-                raw=hourly_raw,
-            )
+        hourly_raw = await self._get_json_dict(
+            client,
+            hourly_url,
+            headers=headers,
+            payload_name="NWS hourly",
+        )
+        if isinstance(hourly_raw, PluginFetchError):
+            return hourly_raw
         raw_payload["hourly"] = hourly_raw
         hourly_properties = hourly_raw.get("properties")
         if isinstance(hourly_properties, Mapping):
@@ -270,15 +246,14 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
                 if isinstance(period, Mapping) and "startTime" in period
             ]
 
-        daily_raw, error = await self._get_json(client, forecast_url, headers=headers)
-        if error is not None:
-            return error
-        if not isinstance(daily_raw, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Unexpected NWS daily payload",
-                raw=daily_raw,
-            )
+        daily_raw = await self._get_json_dict(
+            client,
+            forecast_url,
+            headers=headers,
+            payload_name="NWS daily",
+        )
+        if isinstance(daily_raw, PluginFetchError):
+            return daily_raw
         raw_payload["daily"] = daily_raw
         daily_properties = daily_raw.get("properties")
         if isinstance(daily_properties, Mapping):

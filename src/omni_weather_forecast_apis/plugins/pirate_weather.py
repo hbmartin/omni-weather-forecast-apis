@@ -22,6 +22,7 @@ from omni_weather_forecast_apis.plugins._base import (
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     PluginCapabilities,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchResult,
     ProviderId,
@@ -108,21 +109,17 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
         params: PluginFetchParams,
         client: httpx.AsyncClient,
     ) -> PluginFetchResult:
-        payload, error = await self._get_json(
+        payload = await self._get_json_dict(
             client,
             (
                 f"{PIRATE_WEATHER_BASE_URL}/{self.config.api_key}/"
                 f"{params.latitude},{params.longitude}"
             ),
             params=self._request_params(params),
+            payload_name="Pirate Weather",
         )
-        if error is not None:
-            return error
-        if payload is None or not isinstance(payload, dict):
-            return self._error(
-                ErrorCode.PARSE,
-                "Pirate Weather returned an invalid payload",
-            )
+        if isinstance(payload, PluginFetchError):
+            return payload
 
         try:
             forecasts = [

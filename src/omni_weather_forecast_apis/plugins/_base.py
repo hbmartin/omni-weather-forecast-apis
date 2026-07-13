@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, Final, Generic, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -440,6 +440,32 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
                 raw=response.text,
             )
 
+    async def _get_json_dict(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
+        payload_name: str | None = None,
+    ) -> dict[str, Any] | PluginFetchError:
+        """Fetch JSON and narrow the payload to a dict.
+
+        Returns the parsed object payload, or a PluginFetchError when the
+        request fails or the response is valid JSON but not an object.
+        """
+        raw, error = await self._get_json(client, url, params=params, headers=headers)
+        if error is not None:
+            return error
+        if not isinstance(raw, dict):
+            name = payload_name or self.provider_id.value
+            return self._error(
+                ErrorCode.PARSE,
+                f"Unexpected {name} payload",
+                raw=raw,
+            )
+        return raw
+
     def _success(
         self,
         forecasts: list[SourceForecast],
@@ -487,28 +513,29 @@ def fallback_condition(
     return code_condition or condition_from_text(text)
 
 
+_CARDINAL_TO_DEGREES: Final[dict[str, float]] = {
+    "N": 0.0,
+    "NNE": 22.5,
+    "NE": 45.0,
+    "ENE": 67.5,
+    "E": 90.0,
+    "ESE": 112.5,
+    "SE": 135.0,
+    "SSE": 157.5,
+    "S": 180.0,
+    "SSW": 202.5,
+    "SW": 225.0,
+    "WSW": 247.5,
+    "W": 270.0,
+    "WNW": 292.5,
+    "NW": 315.0,
+    "NNW": 337.5,
+}
+
+
 def cardinal_direction_to_degrees(value: str | None) -> float | None:
     """Convert cardinal wind directions into degrees."""
 
     if value is None:
         return None
-    normalized = value.strip().upper()
-    mapping = {
-        "N": 0.0,
-        "NNE": 22.5,
-        "NE": 45.0,
-        "ENE": 67.5,
-        "E": 90.0,
-        "ESE": 112.5,
-        "SE": 135.0,
-        "SSE": 157.5,
-        "S": 180.0,
-        "SSW": 202.5,
-        "SW": 225.0,
-        "WSW": 247.5,
-        "W": 270.0,
-        "WNW": 292.5,
-        "NW": 315.0,
-        "NNW": 337.5,
-    }
-    return mapping.get(normalized)
+    return _CARDINAL_TO_DEGREES.get(value.strip().upper())

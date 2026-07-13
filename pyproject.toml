@@ -7,7 +7,7 @@ license = { text = "Apache-2.0" }
 authors = [
     { name = "Harold Martin", email = "harold.martin@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
@@ -17,6 +17,7 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -39,6 +40,15 @@ dependencies = [
     "pydantic>=2.12.5",
 ]
 
+[project.optional-dependencies]
+cli = [
+    "loguru>=0.7.3",
+    "rich>=14.3.3",
+]
+otel = [
+    "opentelemetry-api>=1.30",
+]
+
 [project.scripts]
 omni-weather = "omni_weather_forecast_apis.cli:main"
 
@@ -52,13 +62,10 @@ requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-cli = [
-    "loguru>=0.7.3",
-    "rich>=14.3.3",
-]
 dev = [
     "black>=26.3.0",
     "codecov>=2.1.13",
+    "hypothesis>=6.100",
     "lizard>=1.21.2",
     "pyrefly>=0.55.0",
     "pytest>=8.4.2",
@@ -68,7 +75,7 @@ dev = [
     "ty>=0.0.21",
 ]
 docs = [
-    "mkdocs-material>=9.6.0",
+    "zensical>=0.0.50",
     "mkdocstrings[python]>=0.27.0",
 ]
 
@@ -80,7 +87,7 @@ relative_files = true
 
 [tool.black]
 line-length = 88
-target-version = ["py314"]
+target-version = ["py313", "py314"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -89,7 +96,7 @@ exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_ch
 # Same as Black.
 line-length = 88
 indent-width = 4
-target-version = "py314"
+target-version = "py313"
 
 lint.select = ["ALL"]
 lint.ignore = [

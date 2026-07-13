@@ -5,7 +5,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Checked with pyrefly](https://img.shields.io/badge/🪲-pyrefly-fe8801.svg)](https://pyrefly.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hbmartin/omni-weather-forecast-apis)
 
 Async Python library that fans out forecast requests across multiple weather providers and normalizes the results into one typed Pydantic schema. It preserves provider-native cadence and time boundaries while converting units and condition codes into a common representation.
@@ -69,8 +69,18 @@ uv run omni-weather \
 ## Installation
 
 ```bash
+# As a library dependency
+pip install omni-weather-forecast-apis
+
+# With CLI niceties — rich tables and loguru debug logging
+pip install "omni-weather-forecast-apis[cli]"
+
+# For development in this repository
 uv sync
 ```
+
+The CLI works without the `cli` extra: table output falls back to plain
+text and `--debug` falls back to stdlib logging.
 
 ## How It Works
 
@@ -139,7 +149,7 @@ The shared HTTP client uses explicit connection pool limits and a connect timeou
 
 ### Daily quotas
 
-Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt (including retries) counts one request. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation with atomic `try_consume` support (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
+Most free tiers are capped per day, not per second. Set `max_requests_per_day` on a provider registration and the client returns a `quota_exceeded` error once the day's budget (UTC) is spent instead of burning through it. Each fetch attempt counts one request — retries are real HTTP calls against the provider's cap, so a single `forecast()` call may consume up to `retry.max_attempts` units when transient failures trigger retries. This deliberately mirrors provider-side accounting; lower `max_attempts` if you need a tighter bound per call. The CLI persists counts in the SQLite database (`provider_quota_usage` table) so limits survive across runs; library users can pass any `QuotaTracker` implementation with atomic `try_consume` support (`InMemoryQuotaTracker` is the default, `SqliteQuotaTracker` is bundled in `omni_weather_forecast_apis.quota`).
 
 ### API keys from environment variables
 
@@ -244,7 +254,19 @@ uv run omni-weather \
   --lat 34.2484 \
   --lon -117.1931 \
   --format json | jq '.results[] | {provider, status}'
+
+# Pipe flattened per-point rows into data tools
+uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+  --format csv > forecast.csv
+uv run omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
+  --format ndjson | jq 'select(.type == "forecast_point") | .temperature'
 ```
+
+`csv` and `ndjson` emit one row/line per forecast data point, flattened with
+`provider`, `model`, and `granularity` (`minutely` / `hourly` / `daily`)
+columns followed by the normalized point fields. `ndjson` lines carry a
+`type` field (`forecast_point`, `alert`, or `provider_error`); CSV omits
+alerts (noted on stderr) and reports provider errors on stderr only.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
@@ -252,7 +274,7 @@ uv run omni-weather \
 | `--lat FLOAT` | No | config value | Latitude (-90 to 90); overrides config |
 | `--lon FLOAT` | No | config value | Longitude (-180 to 180); overrides config |
 | `--sqlite PATH` | No | config value | SQLite database output path; overrides config. Persistence is skipped when neither is set |
-| `--format FMT` | No | `table` | Output format: `table` (human-readable summary) or `json` (full normalized response on stdout) |
+| `--format FMT` | No | `table` | Output format: `table` (human-readable summary), `json` (full normalized response), `csv` (one flattened row per data point), or `ndjson` (one JSON object per line, typed `forecast_point` / `alert` / `provider_error`) |
 | `--provider ID` | No | all enabled | Restrict to specific provider(s); repeatable |
 | `--granularity GRAN` | No | config value | `minutely`, `hourly`, or `daily`; repeatable |
 | `--language LANG` | No | config value | Provider language preference |
@@ -261,6 +283,47 @@ uv run omni-weather \
 | `--debug` | No | config value | Enable verbose debug output to stderr and write a `.log` file next to the SQLite database, or `./omni-weather.log` when SQLite is omitted |
 
 **Exit codes:** `0` all providers succeeded, `1` at least one provider failed, `2` invalid arguments or configuration/load error.
+
+## Observability
+
+Beyond the structured per-provider log events (`log_hooks`), the client
+emits typed **metric events** for every request attempt, retry, HTTP cache
+lookup, and quota consumption. Register any callable as a `MetricsHook` —
+no extra dependencies required:
+
+```python
+from omni_weather_forecast_apis import MetricEvent, MetricKind, create_omni_weather
+
+def record(event: MetricEvent) -> None:
+    if event.kind is MetricKind.REQUEST_END:
+        print(event.provider, event.latency_ms, event.error_code)
+
+client = await create_omni_weather(config, metrics_hooks=[record])
+```
+
+`MetricKind` covers `request_start`, `request_end`, `retry_scheduled`,
+`cache_hit`, `cache_miss`, `quota_consumed`, and `quota_exhausted`. Cache
+events carry the request `url` instead of a provider (the HTTP cache is
+shared across providers). `response.summary.retries` reports how many
+retries a `forecast()` call needed.
+
+For OpenTelemetry, install the `otel` extra and use the prebuilt bridge:
+
+```bash
+pip install "omni-weather-forecast-apis[otel]"
+```
+
+```python
+from omni_weather_forecast_apis.otel import create_otel_metrics_hook
+
+client = await create_omni_weather(
+    config,
+    metrics_hooks=[create_otel_metrics_hook()],
+)
+```
+
+The bridge records counters for requests, retries, cache outcomes, and
+quota, plus a `omni_weather.request.duration_ms` histogram.
 
 ## Partial Failures
 
@@ -391,16 +454,17 @@ Consensus/ensemble forecasting and forecast verification are intended to live in
   client = await create_omni_weather(config, response_hooks=[record_for_verification])
   ```
 
-- **Custom provider plugins** — register any `WeatherPlugin` implementation with `omni_weather_forecast_apis.plugins.register_plugin`.
+- **Custom provider plugins** — pass any `WeatherPlugin` implementations to `create_omni_weather(config, plugins=[...])` for a per-client plugin set, or register globally with `omni_weather_forecast_apis.plugins.register_plugin` (the global registry backs the CLI and is the fallback when `plugins` is omitted).
 - **The SQLite feature matrix** — query the `stacking_features` view for aligned per-provider hourly forecasts with horizons and run cycles.
 
 ## Documentation
 
-The documentation site is built with MkDocs from the `docs/` directory:
+The documentation site is built with [Zensical](https://zensical.org/)
+(configured in `zensical.toml`) from the `docs/` directory:
 
 ```bash
 uv sync --group docs
-uv run mkdocs serve
+uv run zensical serve
 ```
 
 ## Development
