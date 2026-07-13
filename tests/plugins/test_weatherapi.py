@@ -1,10 +1,10 @@
-"""Tests for WeatherAPI.com plugin using httpx mocks."""
+"""Tests for WeatherAPI.com plugin using httpx2 mocks."""
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
@@ -191,10 +191,10 @@ class TestWeatherAPIInstance:
             },
         }
 
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -278,10 +278,10 @@ class TestWeatherAPIInstance:
         def handler(request):
             captured["url"] = request.url
             captured["params"] = dict(request.url.params)
-            return httpx.Response(200, json={})
+            return httpx2.Response(200, json={})
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -302,10 +302,10 @@ class TestWeatherAPIInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_empty_payload(self, instance):
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json={}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json={}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -321,13 +321,13 @@ class TestWeatherAPIInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance):
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(
                 401,
                 json={"error": {"code": 2006, "message": "API key is invalid."}},
             ),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -342,10 +342,10 @@ class TestWeatherAPIInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_server_error(self, instance):
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(500, json={"error": "internal"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(500, json={"error": "internal"}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -359,10 +359,10 @@ class TestWeatherAPIInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_non_dict_payload(self, instance):
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=[1, 2]),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=[1, 2]),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -377,10 +377,10 @@ class TestWeatherAPIInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_undecodable_body(self, instance):
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, content=b"not json"),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, content=b"not json"),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -418,10 +418,10 @@ class TestWeatherAPIInstance:
             },
         }
 
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,

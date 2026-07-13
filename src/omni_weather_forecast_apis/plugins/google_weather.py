@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Final
 
-import httpx
+import httpx2
 from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import (
@@ -241,7 +241,7 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         hourly: list[WeatherDataPoint] = []
         daily: list[DailyDataPoint] = []
@@ -304,7 +304,7 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
 
     async def _fetch_paged(
         self,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         *,
         endpoint: str,
         params: PluginFetchParams,
@@ -339,7 +339,11 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             if isinstance(items, list):
                 entries.extend(item for item in items if isinstance(item, dict))
             next_token = payload.get("nextPageToken")
-            if not isinstance(next_token, str) or not next_token or len(entries) >= count:
+            if (
+                not isinstance(next_token, str)
+                or not next_token
+                or len(entries) >= count
+            ):
                 break
             page_token = next_token
         return entries[:count], None

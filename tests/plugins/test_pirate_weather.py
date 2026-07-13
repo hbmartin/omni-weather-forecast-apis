@@ -1,6 +1,6 @@
 """Tests for Pirate Weather provider parsing."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.pirate_weather import (
@@ -42,8 +42,10 @@ async def test_fetch_preserves_zero_precip_and_skips_alerts_without_start() -> N
         ],
     }
 
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-    async with httpx.AsyncClient(transport=transport) as client:
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,

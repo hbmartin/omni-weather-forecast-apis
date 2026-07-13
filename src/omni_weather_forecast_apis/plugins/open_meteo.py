@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any, Final
 
-import httpx
+import httpx2
 from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import WMO_CODE_MAP, km_from_meters
@@ -172,7 +172,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         payload = await self._get_json_dict(
             client,

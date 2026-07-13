@@ -48,8 +48,9 @@ class NWSConfig(ProviderConfigModel):
     user_agent: str = Field(min_length=1)
     grid_override: NWSGridOverride | None = None
 
+
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 _BASE_URL = "https://api.weather.gov"
 _CAPABILITIES = PluginCapabilities(
@@ -60,6 +61,8 @@ _CAPABILITIES = PluginCapabilities(
     alerts=True,
     requires_api_key=False,
 )
+
+
 def _nws_headers(user_agent: str) -> dict[str, str]:
     return {"User-Agent": user_agent, "Accept": "application/geo+json"}
 
@@ -187,7 +190,7 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """Fetch and normalize NWS forecast data."""
 

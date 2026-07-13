@@ -1,8 +1,8 @@
-"""Tests for Stormglass plugin using httpx mocks."""
+"""Tests for Stormglass plugin using httpx2 mocks."""
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import pytest
 from pydantic import ValidationError
 
@@ -119,13 +119,13 @@ class TestStormglassInstance:
         captured_headers: dict[str, str] = {}
         captured_params: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured_headers["authorization"] = request.headers["Authorization"]
             captured_params.update(dict(request.url.params))
-            return httpx.Response(200, json=mock_response)
+            return httpx2.Response(200, json=mock_response)
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(_fetch_params(), client)
 
         assert captured_headers["authorization"] == "test-key"
@@ -167,13 +167,13 @@ class TestStormglassInstance:
         instance: StormglassInstance,
         status_code: int,
     ) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(
                 status_code,
                 json={"message": "unauthorized"},
             ),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(_fetch_params(), client)
 
         assert isinstance(result, PluginFetchError)
@@ -182,10 +182,10 @@ class TestStormglassInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_server_error(self, instance: StormglassInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(500, json={"message": "boom"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(500, json={"message": "boom"}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(_fetch_params(), client)
 
         assert isinstance(result, PluginFetchError)
@@ -193,10 +193,10 @@ class TestStormglassInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_non_dict_payload(self, instance: StormglassInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=[1, 2, 3]),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=[1, 2, 3]),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(_fetch_params(), client)
 
         assert isinstance(result, PluginFetchError)
@@ -219,10 +219,10 @@ class TestStormglassInstance:
                 },
             ],
         }
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(_fetch_params(), client)
 
         assert isinstance(result, PluginFetchSuccess)

@@ -1,6 +1,6 @@
 """Regression tests for provider-specific parser fixes."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.meteosource import (
@@ -91,9 +91,11 @@ async def test_meteosource_parses_data_sections_and_nested_fields() -> None:
             },
         ],
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,
@@ -126,14 +128,14 @@ async def test_meteosource_parses_data_sections_and_nested_fields() -> None:
 @pytest.mark.asyncio
 async def test_meteosource_skips_bad_rows_without_failing_provider() -> None:
     instance = _MeteosourceInstance(MeteosourceConfig(api_key="test-key"))
-    transport = httpx.MockTransport(
-        lambda _request: httpx.Response(
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(
             200,
             json={"hourly": {"data": [{"date": "not-a-timestamp"}]}},
         ),
     )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,
@@ -187,9 +189,11 @@ async def test_tomorrow_io_parses_forecast_timelines_and_daily_totals() -> None:
             ],
         },
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,
@@ -219,14 +223,14 @@ async def test_tomorrow_io_parses_forecast_timelines_and_daily_totals() -> None:
 @pytest.mark.asyncio
 async def test_tomorrow_io_ignores_null_intervals() -> None:
     instance = _TomorrowIOInstance(TomorrowIOConfig(api_key="test-key"))
-    transport = httpx.MockTransport(
-        lambda _request: httpx.Response(
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(
             200,
             json={"timelines": [{"timestep": "1h", "intervals": None}]},
         ),
     )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,

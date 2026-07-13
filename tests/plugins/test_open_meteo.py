@@ -1,6 +1,6 @@
-"""Tests for Open-Meteo plugin using httpx mocks."""
+"""Tests for Open-Meteo plugin using httpx2 mocks."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.open_meteo import (
@@ -60,10 +60,10 @@ class TestOpenMeteoInstance:
             },
         }
 
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -98,10 +98,10 @@ class TestOpenMeteoInstance:
             },
         }
 
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -118,10 +118,10 @@ class TestOpenMeteoInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_http_error(self, instance: OpenMeteoInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(500, json={"error": "server error"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(500, json={"error": "server error"}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -135,8 +135,8 @@ class TestOpenMeteoInstance:
     @pytest.mark.asyncio
     async def test_fetch_empty_models_defaults_to_best_match(self) -> None:
         instance = OpenMeteoInstance(OpenMeteoConfig(models=[]))
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(
                 200,
                 json={
                     "hourly": {
@@ -148,7 +148,7 @@ class TestOpenMeteoInstance:
                 },
             ),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 PluginFetchParams(
                     latitude=34.0,
@@ -167,9 +167,9 @@ class TestOpenMeteoInstance:
     async def test_fetch_converts_units(self, instance: OpenMeteoInstance) -> None:
         captured_params: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured_params["wind_speed_unit"] = request.url.params["wind_speed_unit"]
-            return httpx.Response(
+            return httpx2.Response(
                 200,
                 json={
                     "minutely_15": {
@@ -193,8 +193,8 @@ class TestOpenMeteoInstance:
                 },
             )
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,

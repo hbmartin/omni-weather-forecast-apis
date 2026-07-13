@@ -148,7 +148,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _resolve_required(
-    cli_value: object, config_value: object, name: str,
+    cli_value: object,
+    config_value: object,
+    name: str,
 ) -> object:
     resolved = cli_value if cli_value is not None else config_value
     if resolved is not None:
@@ -226,7 +228,9 @@ def _setup_stdlib_debug_logging(log_path: Path) -> LogHook:
 
     stream_handler = logging.StreamHandler(sys.stderr)
     stream_handler.setFormatter(
-        logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s", datefmt="%H:%M:%S"),
+        logging.Formatter(
+            "%(asctime)s | %(levelname)-7s | %(message)s", datefmt="%H:%M:%S"
+        ),
     )
     file_handler = logging.FileHandler(log_path)
     file_handler.setFormatter(
@@ -264,10 +268,12 @@ def _setup_stdlib_debug_logging(log_path: Path) -> LogHook:
 async def _async_main(parsed: argparse.Namespace) -> int:
     config = _load_config(parsed.config)
     latitude = cast(
-        float, _resolve_required(parsed.lat, config.latitude, "lat"),
+        float,
+        _resolve_required(parsed.lat, config.latitude, "lat"),
     )
     longitude = cast(
-        float, _resolve_required(parsed.lon, config.longitude, "lon"),
+        float,
+        _resolve_required(parsed.lon, config.longitude, "lon"),
     )
     sqlite_value = cast(
         Path | str | None,
@@ -409,31 +415,37 @@ def _print_ndjson(response: ForecastResponse) -> None:
             case ProviderSuccess():
                 for forecast in result.forecasts:
                     for alert in forecast.alerts:
-                        print(json.dumps(
-                            {
-                                "type": "alert",
-                                "provider": result.provider.value,
-                                "model": forecast.source.model,
-                                **alert.model_dump(mode="json"),
-                            },
-                            separators=(",", ":"),
-                        ))
+                        print(
+                            json.dumps(
+                                {
+                                    "type": "alert",
+                                    "provider": result.provider.value,
+                                    "model": forecast.source.model,
+                                    **alert.model_dump(mode="json"),
+                                },
+                                separators=(",", ":"),
+                            )
+                        )
             case ProviderError():
-                print(json.dumps(
-                    {
-                        "type": "provider_error",
-                        "provider": result.provider.value,
-                        "code": result.error.code.value,
-                        "message": result.error.message,
-                        "http_status": result.error.http_status,
-                        "latency_ms": result.error.latency_ms,
-                    },
-                    separators=(",", ":"),
-                ))
+                print(
+                    json.dumps(
+                        {
+                            "type": "provider_error",
+                            "provider": result.provider.value,
+                            "code": result.error.code.value,
+                            "message": result.error.message,
+                            "http_status": result.error.http_status,
+                            "latency_ms": result.error.latency_ms,
+                        },
+                        separators=(",", ":"),
+                    )
+                )
 
 
 def _print_results(
-    response: ForecastResponse, run_id: int | None, sqlite_path: Path | None,
+    response: ForecastResponse,
+    run_id: int | None,
+    sqlite_path: Path | None,
 ) -> None:
     try:
         console_cls = importlib.import_module("rich.console").Console
@@ -500,7 +512,9 @@ def _print_results(
 
 
 def _print_results_plain(
-    response: ForecastResponse, run_id: int | None, sqlite_path: Path | None,
+    response: ForecastResponse,
+    run_id: int | None,
+    sqlite_path: Path | None,
 ) -> None:
     summary = response.summary
     run_prefix = f"Run {run_id}: " if run_id is not None else ""
