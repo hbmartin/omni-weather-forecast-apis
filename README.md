@@ -314,7 +314,10 @@ path, and lets you select one or more granularities. The generated TOML is
 parsed and fully validated before an exact preview is shown. Credential prompts
 are masked, but the selected values are intentionally stored in the TOML and
 shown in that preview; protect the terminal session as well as the resulting
-owner-only (`0600` on POSIX) file. The final test forecast defaults to yes.
+owner-only (`0600` on POSIX) file. After saving, the wizard optionally installs
+a daily forecast job at a chosen local time using cron on Linux, launchd on
+macOS, or Windows Task Scheduler. Scheduling defaults to off; the final test
+forecast defaults to yes.
 
 If a forecast command omits `--config`, configuration is resolved in this
 order:
@@ -379,9 +382,9 @@ omni-weather doctor
 omni-weather doctor --live --provider open_meteo
 ```
 
-The CLI performs one forecast collection per invocation. For recurring
-collection, see the [Scheduling guide](https://hbmartin.github.io/omni-weather-forecast-apis/scheduling/)
-for cron (Linux) and launchd (macOS) examples.
+The CLI performs one forecast collection per invocation. `omni-weather init`
+can install a daily platform-native job. For custom cadences and manual setup,
+see the [Scheduling guide](https://hbmartin.github.io/omni-weather-forecast-apis/scheduling/).
 
 `csv` and `ndjson` emit one row/line per forecast data point, flattened with
 `provider`, `model`, and `granularity` (`minutely` / `hourly` / `daily`)
@@ -408,16 +411,19 @@ alerts (noted on stderr) and reports provider errors on stderr only.
 granularities, authentication shape, and official setup link. `omni-weather
 doctor` aggregates TOML, coordinates, environment references, provider
 settings, granularity compatibility, output paths, duplicates, and POSIX
-permission checks. It never prints resolved environment values. `--provider`
-narrows provider-specific checks while retaining top-level checks. Only
-`--live` contacts providers; live checks do not persist results, but they can
-consume API quota and be subject to rate limits.
+permission checks. It also reports whether the platform-native daily schedule
+for the selected config is installed; a missing schedule is highlighted as a
+warning and does not make `doctor` fail. It never prints resolved environment
+values. `--provider` narrows provider-specific checks while retaining top-level
+checks. Only `--live` contacts providers; live checks do not persist results,
+but they can consume API quota and be subject to rate limits.
 
 **Exit codes:** forecast and doctor return `0` when required checks or providers
 succeed and `1` for provider/diagnostic failures. Warnings alone return `0`.
 Invalid invocation, load failures outside doctor, and unexpected operational
 errors return `2`. Cancelling explicit `init` returns `0`; cancelling automatic
-first-run setup returns `2`.
+first-run setup returns `2`. Pressing Ctrl+C while a command is running prints
+`Aborted.` without a traceback and returns `130`.
 
 ## Observability
 
@@ -478,6 +484,8 @@ The CLI reflects this in exit codes: `0` means all providers succeeded, `1` mean
 ## Normalized Schema
 
 All provider responses are normalized into a common set of Pydantic models. Units are standardized: temperatures in °C, wind speeds in m/s, pressure in hPa, precipitation in mm, visibility in km.
+
+> **A note on pressure data.** Pressure is the least reliable field providers report — implausible sea-level values have been observed in the wild (Stormglass emitting 885 hPa, Weatherbit 1074 hPa). And if you compare `pressure_sea` against a personal weather station, calibrate the station first: consumer stations report an *absolute* (station-level) pressure and a *relative* (sea-level) pressure, and the relative reading requires an elevation offset to be configured — an uncalibrated station at altitude can read more than 150 hPa below the true sea-level value while its absolute sensor is perfectly healthy. Pressure plausibility checks are planned; the author will be working on this soon.
 
 ### `WeatherDataPoint` (hourly)
 
