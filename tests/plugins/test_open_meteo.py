@@ -163,6 +163,63 @@ class TestOpenMeteoInstance:
         assert ecmwf.hourly[0].wind_speed is None
 
     @pytest.mark.asyncio
+    async def test_fetch_multi_model_drops_rows_beyond_model_horizon(self) -> None:
+        """Shared time axes must not create empty rows for shorter models."""
+        config = OpenMeteoConfig(models=["best_match", "icon_d2"])
+        instance = OpenMeteoInstance(config)
+
+        mock_response = {
+            "hourly": {
+                "time": [
+                    "2024-01-01T00:00",
+                    "2024-01-01T01:00",
+                    "2024-01-01T02:00",
+                ],
+                "temperature_2m_best_match": [20.0, 19.0, 18.0],
+                "is_day_best_match": [0, 0, 0],
+                "temperature_2m_icon_d2": [21.0, None, None],
+                # Open-Meteo keeps model-independent values populated after a
+                # model's weather forecast ends.
+                "is_day_icon_d2": [0, 0, 0],
+            },
+            "daily": {
+                "time": ["2024-01-01", "2024-01-02"],
+                "temperature_2m_max_best_match": [25.0, 24.0],
+                "sunrise_best_match": [
+                    "2024-01-01T07:00",
+                    "2024-01-02T07:00",
+                ],
+                "temperature_2m_max_icon_d2": [26.0, None],
+                "sunrise_icon_d2": [
+                    "2024-01-01T07:00",
+                    "2024-01-02T07:00",
+                ],
+            },
+        }
+
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(
+                PluginFetchParams(
+                    latitude=52.5,
+                    longitude=13.4,
+                    granularity=[Granularity.HOURLY, Granularity.DAILY],
+                ),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        best_match, icon_d2 = result.forecasts
+        assert len(best_match.hourly) == 3
+        assert len(best_match.daily) == 2
+        assert len(icon_d2.hourly) == 1
+        assert icon_d2.hourly[0].temperature == 21.0
+        assert len(icon_d2.daily) == 1
+        assert icon_d2.daily[0].temperature_max == 26.0
+
+    @pytest.mark.asyncio
     async def test_fetch_http_error(self, instance: OpenMeteoInstance) -> None:
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(500, json={"error": "server error"}),

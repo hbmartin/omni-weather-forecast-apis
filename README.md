@@ -505,28 +505,46 @@ The CLI creates a normalized database with these tables:
 | `provider_logs` | Per-provider lifecycle log entries (`start`, `retry`, `success`, `error`) per run |
 | `provider_quota_usage` | Requests per provider per UTC day, used for daily quota enforcement |
 
-The `stacking_features` SQL view joins hourly points with their provider, model, run cycle, and forecast horizon — a ready-made feature matrix for downstream ensemble/verification work. Every provider that forecast the same valid time lines up on one axis:
+See the [database design and structure guide](docs/database.md) for the full
+relationship model, column and unit reference, indexes, deletion semantics,
+schema evolution, and query examples.
+
+The `stacking_features` SQL view joins hourly points with their run, provider,
+model, run cycle, and forecast horizon — a ready-made feature matrix for
+downstream ensemble/verification work. Select one run and one exact valid time
+to keep successive runs and neighboring forecast hours separate:
 
 ```sql
-SELECT provider, model, ROUND(temperature, 1) AS temp_c, ROUND(wind_speed, 1) AS wind_ms
+WITH latest_run AS (
+    SELECT MAX(id) AS run_id FROM forecast_runs
+), target_time AS (
+    SELECT MIN(valid_time_unix) AS valid_time_unix
+    FROM stacking_features
+    WHERE run_id = (SELECT run_id FROM latest_run)
+      AND horizon_hours >= 24
+)
+SELECT valid_time, provider, model,
+       ROUND(temperature, 1) AS temp_c,
+       ROUND(wind_speed, 1) AS wind_ms
 FROM stacking_features
-WHERE CAST(horizon_hours AS INT) = 24
+WHERE run_id = (SELECT run_id FROM latest_run)
+  AND valid_time_unix = (SELECT valid_time_unix FROM target_time)
 ORDER BY provider, model;
 ```
 
 ```
-provider    model         temp_c  wind_ms
-----------  ------------  ------  -------
-met_norway  met_norway    23.2    4.5
-nws         nws           25.0    4.5
-open_meteo  best_match    22.0    5.1
-open_meteo  ecmwf_ifs025  23.2    3.3
+valid_time                 provider    model         temp_c  wind_ms
+-------------------------  ----------  ------------  ------  -------
+2026-03-14T05:00:00+00:00  met_norway  met_norway    23.2    4.5
+2026-03-14T05:00:00+00:00  nws         nws           25.0    4.5
+2026-03-14T05:00:00+00:00  open_meteo  best_match    22.0    5.1
+2026-03-14T05:00:00+00:00  open_meteo  ecmwf_ifs025  23.2    3.3
 ```
 
 Four independent 24-hour-ahead forecasts for the same point and time, already
-unit-normalized — the input a blending or verification model wants. `run_cycle`
-and `horizon_hours` let you group by forecast age, and `fetched_at_unix`
-distinguishes successive runs.
+unit-normalized — the input a blending or verification model wants. `run_id`
+separates successive requests, while `run_cycle`, `horizon_hours`, and
+`fetched_at_unix` describe forecast age and provider fetch timing.
 
 ## Extending
 

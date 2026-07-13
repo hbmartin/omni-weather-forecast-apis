@@ -208,8 +208,10 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_daily_points_source_date
             ON daily_points(source_forecast_id, forecast_date);
 
-        CREATE VIEW IF NOT EXISTS stacking_features AS
+        DROP VIEW IF EXISTS stacking_features;
+        CREATE VIEW stacking_features AS
         SELECT
+            fr.id                           AS run_id,
             hp.timestamp                    AS valid_time,
             hp.timestamp_unix               AS valid_time_unix,
             hp.horizon_hours,
