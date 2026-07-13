@@ -2342,9 +2342,9 @@
 
 
 <a href="#omni_weather_forecast_apis.client.OmniWeatherClient.get_provider_capabilities" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_provider_capabilities</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="p">(</span>
-    <span class="nb">dict</span><span class="p">[</span><span class="n">ProviderId</span><span class="p">,</span> <span class="n">PluginCapabilities</span><span class="p">]</span>
-<span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_provider_capabilities</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span>
+    <span class="n">ProviderId</span><span class="p">,</span> <span class="n">PluginCapabilities</span>
+<span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -4426,7 +4426,7 @@ events carry the request <code>url</code> instead.</p>
     <div class="doc doc-contents first">
 
         <p>HTTP response caching with conditional-request revalidation.</p>
-<p>Implements a small, standards-aware cache for GET requests as an httpx
+<p>Implements a small, standards-aware cache for GET requests as an httpx2
 transport wrapper. Fresh responses (<code>Cache-Control: max-age</code> / <code>Expires</code>)
 are served without a network round-trip; stale responses that carry
 validators (<code>ETag</code> / <code>Last-Modified</code>) are revalidated with conditional
@@ -4466,7 +4466,7 @@ NWS strongly encourages caching, so the cache is enabled by default.</p>
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><span title="httpx.AsyncBaseTransport">AsyncBaseTransport</span></code></p>
+              Bases: <code><span title="httpx2.AsyncBaseTransport">AsyncBaseTransport</span></code></p>
 
 
 
