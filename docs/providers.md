@@ -1,20 +1,36 @@
 # Providers
 
-| Provider | Plugin ID | API Key | Notes |
-|----------|-----------|---------|-------|
-| [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | Free tier; multiple forecast models |
-| [MET Norway](https://api.met.no/) | `met_norway` | No | Requires `user_agent` identification |
-| [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | No | US coverage only; requires `user_agent` |
-| [OpenWeather](https://openweathermap.org/api) | `openweather` | Yes | |
-| [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Yes | |
-| [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Yes | |
-| [Visual Crossing](https://www.visualcrossing.com/) | `visual_crossing` | Yes | |
-| [Weatherbit](https://www.weatherbit.io/) | `weatherbit` | Yes | |
-| [Meteosource](https://www.meteosource.com/) | `meteosource` | Yes | |
-| [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Yes | Dark Sky-compatible API |
-| [Stormglass](https://stormglass.io/) | `stormglass` | Yes | Hourly only; multi-model |
-| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Yes | Requires `app_id` + `app_key` |
-| [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Yes | Google Maps Platform Weather API |
+Three of the thirteen providers need no API key at all, so you can try the
+library without signing up for anything.
+
+| Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
+|----------|-----------|---------|---------:|-------:|------:|:------:|:-----------:|----------|
+| [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | 1 h | 16 d | 16 d | — | ✅ | Global |
+| [MET Norway](https://api.met.no/) | `met_norway` | None | — | 9 d | — | — | — | Nordics |
+| [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | None | — | ✅ | ✅ | ✅ | — | US only |
+| [OpenWeather](https://openweathermap.org/api) | `openweather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
+| [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Required | — | 14 d | 14 d | ✅ | — | Global |
+| [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Required | 1 h | 5 d | 6 d | — | — | Global |
+| [Visual Crossing](https://www.visualcrossing.com/) | `visual_crossing` | Required | — | 15 d | 15 d | ✅ | — | Global |
+| [Weatherbit](https://www.weatherbit.io/) | `weatherbit` | Required | — | 10 d | 16 d | — | — | Global |
+| [Meteosource](https://www.meteosource.com/) | `meteosource` | Required | 1 h | 7 d | 30 d | ✅ | — | Global |
+| [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
+| [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
+| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Required | — | ✅ | ✅ | — | — | Global |
+| [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
+
+The minutely, hourly, and daily columns give each provider's **maximum forecast
+horizon**. `✅` means the granularity is supported but the plugin declares no
+horizon bound, and `—` means it is not supported at all. **Multi-model**
+providers return several independent forecasts per request — Open-Meteo exposes
+named numerical weather models (`best_match`, `ecmwf_ifs025`, …) and Stormglass
+returns multiple upstream sources — which is what makes them useful for
+ensembles.
+
+MET Norway and NWS additionally require a `user_agent` identifying your
+application; Weather Unlocked uses an `app_id` + `app_key` pair rather than a
+single key. Pirate Weather's hourly horizon extends to 168 h when
+`extend_hourly = true`.
 
 ## Configuration reference
 

@@ -79,22 +79,69 @@ class TestOpenMeteoInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_multi_model(self) -> None:
-        """Multi-model responses use flat keys with model suffixes."""
+        """Multi-model responses suffix each variable key inside one section.
+
+        Open-Meteo returns a single ``hourly``/``daily`` section no matter how
+        many models are requested; asking for more than one suffixes every
+        variable key with the model name. Parsing must scope the keys per model
+        rather than looking for a per-model section.
+        """
         config = OpenMeteoConfig(models=["ecmwf_ifs025", "gfs_seamless"])
         instance = OpenMeteoInstance(config)
 
         mock_response = {
-            "hourly_ecmwf_ifs025": {
+            "hourly": {
                 "time": ["2024-01-01T00:00"],
-                "temperature_2m": [21.0],
-                "weather_code": [0],
-                "is_day": [1],
+                "temperature_2m_ecmwf_ifs025": [21.0],
+                "weather_code_ecmwf_ifs025": [0],
+                "is_day_ecmwf_ifs025": [1],
+                "temperature_2m_gfs_seamless": [22.0],
+                "weather_code_gfs_seamless": [1],
+                "is_day_gfs_seamless": [1],
             },
-            "hourly_gfs_seamless": {
+            "daily": {
+                "time": ["2024-01-01"],
+                "temperature_2m_max_ecmwf_ifs025": [25.0],
+                "temperature_2m_max_gfs_seamless": [26.0],
+            },
+        }
+
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            params = PluginFetchParams(
+                latitude=34.0,
+                longitude=-117.0,
+                granularity=[Granularity.HOURLY, Granularity.DAILY],
+            )
+            result = await instance.fetch_forecast(params, client)
+
+        assert isinstance(result, PluginFetchSuccess)
+        assert len(result.forecasts) == 2
+
+        ecmwf, gfs = result.forecasts
+        assert ecmwf.source.model == "ecmwf_ifs025"
+        assert ecmwf.hourly[0].temperature == 21.0
+        assert ecmwf.daily[0].temperature_max == 25.0
+
+        assert gfs.source.model == "gfs_seamless"
+        assert gfs.hourly[0].temperature == 22.0
+        assert gfs.daily[0].temperature_max == 26.0
+
+    @pytest.mark.asyncio
+    async def test_fetch_multi_model_does_not_bleed_across_models(self) -> None:
+        """A model missing a variable must not inherit another model's values."""
+        config = OpenMeteoConfig(models=["best_match", "ecmwf_ifs025"])
+        instance = OpenMeteoInstance(config)
+
+        mock_response = {
+            "hourly": {
                 "time": ["2024-01-01T00:00"],
-                "temperature_2m": [22.0],
-                "weather_code": [1],
-                "is_day": [1],
+                "temperature_2m_best_match": [21.0],
+                "temperature_2m_ecmwf_ifs025": [22.0],
+                # Only best_match reports wind.
+                "wind_speed_10m_best_match": [5.0],
             },
         }
 
@@ -110,11 +157,10 @@ class TestOpenMeteoInstance:
             result = await instance.fetch_forecast(params, client)
 
         assert isinstance(result, PluginFetchSuccess)
-        assert len(result.forecasts) == 2
-        assert result.forecasts[0].source.model == "ecmwf_ifs025"
-        assert result.forecasts[0].hourly[0].temperature == 21.0
-        assert result.forecasts[1].source.model == "gfs_seamless"
-        assert result.forecasts[1].hourly[0].temperature == 22.0
+        best_match, ecmwf = result.forecasts
+        assert best_match.hourly[0].wind_speed == 5.0
+        assert ecmwf.hourly[0].temperature == 22.0
+        assert ecmwf.hourly[0].wind_speed is None
 
     @pytest.mark.asyncio
     async def test_fetch_http_error(self, instance: OpenMeteoInstance) -> None:
