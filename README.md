@@ -328,6 +328,10 @@ omni-weather --config ./config.toml --lat 34.2 --lon -117.2 \
   --format ndjson | jq 'select(.type == "forecast_point") | .temperature'
 ```
 
+The CLI performs one forecast collection per invocation. For recurring
+collection, see the [Scheduling guide](https://hbmartin.github.io/omni-weather-forecast-apis/scheduling/)
+for cron (Linux) and launchd (macOS) examples.
+
 `csv` and `ndjson` emit one row/line per forecast data point, flattened with
 `provider`, `model`, and `granularity` (`minutely` / `hourly` / `daily`)
 columns followed by the normalized point fields. `ndjson` lines carry a

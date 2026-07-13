@@ -6,6 +6,7 @@ import pytest
 from omni_weather_forecast_apis.plugins.open_meteo import (
     OpenMeteoConfig,
     OpenMeteoInstance,
+    _scope_model_section,
     open_meteo_plugin,
 )
 from omni_weather_forecast_apis.types import (
@@ -39,6 +40,20 @@ class TestOpenMeteoInstance:
         caps = instance.get_capabilities()
         assert caps.requires_api_key is False
         assert caps.multi_model is True
+
+    def test_scope_model_section_handles_non_list_time(self) -> None:
+        section = _scope_model_section(
+            {
+                "time": "invalid",
+                "temperature_2m_icon_d2": [21.0],
+            },
+            "icon_d2",
+        )
+
+        assert section == {
+            "time": "invalid",
+            "temperature_2m": [21.0],
+        }
 
     @pytest.mark.asyncio
     async def test_fetch_success(self, instance: OpenMeteoInstance) -> None:
@@ -174,13 +189,14 @@ class TestOpenMeteoInstance:
                     "2024-01-01T00:00",
                     "2024-01-01T01:00",
                     "2024-01-01T02:00",
+                    "2024-01-01T03:00",
                 ],
-                "temperature_2m_best_match": [20.0, 19.0, 18.0],
-                "is_day_best_match": [0, 0, 0],
-                "temperature_2m_icon_d2": [21.0, None, None],
+                "temperature_2m_best_match": [20.0, 19.0, 18.0, 17.0],
+                "is_day_best_match": [0, 0, 0, 0],
+                "temperature_2m_icon_d2": [21.0, None, 19.0, None],
                 # Open-Meteo keeps model-independent values populated after a
                 # model's weather forecast ends.
-                "is_day_icon_d2": [0, 0, 0],
+                "is_day_icon_d2": [0, 0, 0, 0],
             },
             "daily": {
                 "time": ["2024-01-01", "2024-01-02"],
@@ -212,10 +228,10 @@ class TestOpenMeteoInstance:
 
         assert isinstance(result, PluginFetchSuccess)
         best_match, icon_d2 = result.forecasts
-        assert len(best_match.hourly) == 3
+        assert len(best_match.hourly) == 4
         assert len(best_match.daily) == 2
-        assert len(icon_d2.hourly) == 1
-        assert icon_d2.hourly[0].temperature == 21.0
+        assert len(icon_d2.hourly) == 3
+        assert [point.temperature for point in icon_d2.hourly] == [21.0, None, 19.0]
         assert len(icon_d2.daily) == 1
         assert icon_d2.daily[0].temperature_max == 26.0
 
