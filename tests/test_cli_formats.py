@@ -140,6 +140,23 @@ def test_csv_output_has_one_row_per_point(capsys: pytest.CaptureFixture[str]) ->
     assert daily_row["temperature"] == ""
 
 
+def test_csv_output_uses_single_windows_line_endings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class WindowsTextStream(io.StringIO):
+        def write(self, value: str) -> int:
+            return super().write(value.replace("\n", "\r\n"))
+
+    stdout = WindowsTextStream()
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+
+    _print_csv(_sample_response(with_alert=False))
+
+    output = stdout.getvalue()
+    assert "\r\r\n" not in output
+    assert "\r\n" in output
+
+
 def test_csv_reports_alerts_and_errors_on_stderr(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

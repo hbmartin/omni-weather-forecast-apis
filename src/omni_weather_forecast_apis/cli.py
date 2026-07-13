@@ -232,7 +232,7 @@ def _setup_stdlib_debug_logging(log_path: Path) -> LogHook:
             "%(asctime)s | %(levelname)-7s | %(message)s", datefmt="%H:%M:%S"
         ),
     )
-    file_handler = logging.FileHandler(log_path)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"),
     )
@@ -381,6 +381,7 @@ def _print_csv(response: ForecastResponse) -> None:
         fieldnames=_csv_field_names(),
         restval="",
         extrasaction="ignore",
+        lineterminator="\n",
     )
     writer.writeheader()
     for row in _iter_point_rows(response):

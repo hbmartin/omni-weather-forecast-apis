@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 import pytest
 
@@ -93,10 +94,19 @@ def test_debug_logging_falls_back_to_stdlib_without_loguru(
         ProviderLogEvent(
             provider=ProviderId.OPEN_METEO,
             phase="success",
-            message="done",
+            message="done: 18°C",
         ),
     )
 
-    contents = log_path.read_text()
+    file_handler = next(
+        handler
+        for handler in logging.getLogger(
+            "omni_weather_forecast_apis.cli.debug"
+        ).handlers
+        if isinstance(handler, logging.FileHandler)
+    )
+    assert file_handler.encoding == "utf-8"
+
+    contents = log_path.read_text(encoding="utf-8")
     assert "boom" in contents
-    assert "done" in contents
+    assert "done: 18°C" in contents

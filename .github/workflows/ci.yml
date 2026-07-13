@@ -45,6 +45,11 @@ jobs:
         run: |
           uv run ruff format --check src tests
 
+      - name: Check CLI portability patterns with Semgrep
+        run: |
+          uvx --from semgrep==1.169.0 semgrep scan --config semgrep_rules/ --error src
+          uvx --from semgrep==1.169.0 semgrep test semgrep_rules/
+
       - name: Run Pyrefly check
         run: |
           uv run pyrefly check src
