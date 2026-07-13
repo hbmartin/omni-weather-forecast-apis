@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.google_weather import (
@@ -127,9 +127,11 @@ async def test_fetch_hourly_normalizes_units_and_conditions() -> None:
         "forecastHours": [_hour_entry("2026-07-03T15:00:00Z", 25.9)],
         "timeZone": {"id": "America/Los_Angeles"},
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.HOURLY]),
             client,
@@ -163,9 +165,11 @@ async def test_fetch_hourly_maps_windy_to_unknown() -> None:
         "forecastHours": [windy],
         "timeZone": {"id": "America/Los_Angeles"},
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.HOURLY]),
             client,
@@ -188,14 +192,14 @@ async def test_fetch_hourly_follows_pagination() -> None:
     }
     seen_tokens: list[str | None] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         token = request.url.params.get("pageToken")
         seen_tokens.append(token)
-        return httpx.Response(200, json=pages[token])
+        return httpx2.Response(200, json=pages[token])
 
-    transport = httpx.MockTransport(handler)
+    transport = httpx2.MockTransport(handler)
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.HOURLY]),
             client,
@@ -213,9 +217,11 @@ async def test_fetch_daily_aggregates_day_and_night_parts() -> None:
         "forecastDays": [_day_entry()],
         "timeZone": {"id": "America/Los_Angeles"},
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.DAILY]),
             client,
@@ -248,9 +254,11 @@ async def test_fetch_daily_skips_malformed_display_date() -> None:
         "forecastDays": [malformed_day],
         "timeZone": {"id": "America/Los_Angeles"},
     }
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.DAILY]),
             client,
@@ -262,15 +270,15 @@ async def test_fetch_daily_skips_malformed_display_date() -> None:
 
 @pytest.mark.asyncio
 async def test_request_parameters_are_sent() -> None:
-    captured: list[httpx.Request] = []
+    captured: list[httpx2.Request] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         captured.append(request)
-        return httpx.Response(200, json={"forecastHours": []})
+        return httpx2.Response(200, json={"forecastHours": []})
 
-    transport = httpx.MockTransport(handler)
+    transport = httpx2.MockTransport(handler)
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.HOURLY]),
             client,
@@ -289,15 +297,15 @@ async def test_request_parameters_are_sent() -> None:
 @pytest.mark.asyncio
 async def test_http_error_maps_to_fetch_error() -> None:
     error_payload = {"error": {"code": 403, "message": "API key invalid"}}
-    transport = httpx.MockTransport(
-        lambda _request: httpx.Response(
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(
             403,
             content=json.dumps(error_payload).encode(),
             headers={"Content-Type": "application/json"},
         ),
     )
 
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await _instance().fetch_forecast(
             _params([Granularity.HOURLY]),
             client,

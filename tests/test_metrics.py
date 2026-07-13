@@ -6,7 +6,7 @@ import asyncio
 import builtins
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.client import OmniWeatherClient
@@ -172,24 +172,24 @@ def test_caching_transport_reports_cache_outcomes() -> None:
     outcomes: list[tuple[str, str]] = []
     call_count = 0
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         nonlocal call_count
         call_count += 1
         if request.headers.get("If-None-Match") == '"v1"':
-            return httpx.Response(304, headers={"ETag": '"v1"'})
-        return httpx.Response(
+            return httpx2.Response(304, headers={"ETag": '"v1"'})
+        return httpx2.Response(
             200,
             headers={"ETag": '"v1"', "Cache-Control": "max-age=1000"},
             json={"ok": call_count},
         )
 
     transport = CachingTransport(
-        httpx.MockTransport(handler),
+        httpx2.MockTransport(handler),
         on_cache_event=lambda url, outcome: outcomes.append((url, outcome)),
     )
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             await client.get("https://api.example.com/data")
             await client.get("https://api.example.com/data")
             await client.get("https://api.example.com/other")
@@ -203,17 +203,17 @@ def test_caching_transport_reports_cache_outcomes() -> None:
 def test_caching_transport_reports_miss_for_uncacheable() -> None:
     outcomes: list[str] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         del request
-        return httpx.Response(200, headers={"Cache-Control": "no-store"}, json={})
+        return httpx2.Response(200, headers={"Cache-Control": "no-store"}, json={})
 
     transport = CachingTransport(
-        httpx.MockTransport(handler),
+        httpx2.MockTransport(handler),
         on_cache_event=lambda _url, outcome: outcomes.append(outcome),
     )
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             await client.get("https://api.example.com/data")
 
     asyncio.run(scenario())

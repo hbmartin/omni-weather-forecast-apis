@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Final, Generic, TypeVar
 
-import httpx
+import httpx2
 from pydantic import BaseModel
 
 from omni_weather_forecast_apis.mapping import (
@@ -390,13 +390,13 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """Fetch and normalize provider data."""
 
     async def _get_json(
         self,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         url: str,
         *,
         params: Mapping[str, Any] | None = None,
@@ -404,9 +404,9 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
     ) -> tuple[dict[str, Any] | list[Any] | None, PluginFetchError | None]:
         try:
             response = await client.get(url, params=params, headers=headers)
-        except (httpx.ConnectError, httpx.NetworkError, httpx.ProtocolError) as exc:
+        except (httpx2.ConnectError, httpx2.NetworkError, httpx2.ProtocolError) as exc:
             return None, self._error(ErrorCode.NETWORK, str(exc))
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             return None, self._error(ErrorCode.UNKNOWN, str(exc))
 
         if response.status_code >= 400:
@@ -442,7 +442,7 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
 
     async def _get_json_dict(
         self,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         url: str,
         *,
         params: Mapping[str, Any] | None = None,

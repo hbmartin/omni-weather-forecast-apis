@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.client import OmniWeatherClient
@@ -31,7 +31,7 @@ class SuccessInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         return PluginFetchSuccess(forecasts=[])

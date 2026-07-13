@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Protocol, runtime_checkable
 
-import httpx
+import httpx2
 from pydantic import BaseModel, ConfigDict
 
 from omni_weather_forecast_apis.types.schema import (
@@ -94,7 +94,7 @@ class PluginInstance(Protocol):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """
         Fetch and normalize forecast data.
@@ -105,5 +105,3 @@ class PluginInstance(Protocol):
 
     def get_capabilities(self) -> PluginCapabilities:
         """Return provider capabilities metadata."""
-
-

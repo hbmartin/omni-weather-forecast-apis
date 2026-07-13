@@ -41,15 +41,33 @@ jobs:
         run: |
           uv run ruff check src
 
+      - name: Check Ruff formatting
+        run: |
+          uv run ruff format --check src tests
+
       - name: Run Pyrefly check
         run: |
           uv run pyrefly check src
+
       - name: Run ty check
         run: |
           uv run ty check src
+
+      - name: Check dependencies with Deptry
+        run: |
+          uv run deptry src --github-output
+
+      - name: Check package metadata with Pyroma
+        run: |
+          uv run pyroma --min 8 .
+
+      - name: Check complexity and duplication with Lizard
+        run: |
+          uv run lizard -Eduplicate -C 27 src
+
       - name: Run tests
         run: |
-          uv run pytest tests/ --cov=src --cov-report=xml
+          uv run pytest tests/ --cov=src --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

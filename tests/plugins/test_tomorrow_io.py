@@ -1,6 +1,6 @@
 """Tests for Tomorrow.io plugin parsing edge cases."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.tomorrow_io import (
@@ -72,8 +72,10 @@ async def test_fetch_handles_timeline_aliases_and_daily_accumulations() -> None:
         ],
     }
 
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-    async with httpx.AsyncClient(transport=transport) as client:
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,

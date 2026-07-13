@@ -1,6 +1,6 @@
 """HTTP response caching with conditional-request revalidation.
 
-Implements a small, standards-aware cache for GET requests as an httpx
+Implements a small, standards-aware cache for GET requests as an httpx2
 transport wrapper. Fresh responses (``Cache-Control: max-age`` / ``Expires``)
 are served without a network round-trip; stale responses that carry
 validators (``ETag`` / ``Last-Modified``) are revalidated with conditional
@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 
-import httpx
+import httpx2
 
 _MAX_AGE_PATTERN = re.compile(r"max-age=(\d+)")
 _SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie"})
@@ -30,7 +30,7 @@ type _CacheKey = tuple[str, tuple[tuple[str, str], ...]]
 @dataclass
 class _CacheEntry:
     status_code: int
-    headers: httpx.Headers
+    headers: httpx2.Headers
     content: bytes
     etag: str | None
     last_modified: str | None
@@ -50,7 +50,7 @@ def _parse_http_date(value: str | None) -> float | None:
 
 
 def _freshness_lifetime(
-    headers: httpx.Headers,
+    headers: httpx2.Headers,
     *,
     now: float,
     response_time: float | None = None,
@@ -72,17 +72,17 @@ def _freshness_lifetime(
     return None
 
 
-def _storable_headers(headers: httpx.Headers) -> httpx.Headers:
+def _storable_headers(headers: httpx2.Headers) -> httpx2.Headers:
     """Drop framing/encoding headers: cached content is already decoded."""
 
-    stored = httpx.Headers(headers)
+    stored = httpx2.Headers(headers)
     for name in ("Content-Encoding", "Content-Length", "Transfer-Encoding"):
         if name in stored:
             del stored[name]
     return stored
 
 
-def _vary_names(headers: httpx.Headers) -> tuple[str, ...] | None:
+def _vary_names(headers: httpx2.Headers) -> tuple[str, ...] | None:
     """Parsed ``Vary`` field names, or None when reuse is forbidden (``*``)."""
 
     raw = headers.get("Vary")
@@ -95,18 +95,18 @@ def _vary_names(headers: httpx.Headers) -> tuple[str, ...] | None:
 
 
 def _vary_request_values(
-    response_headers: httpx.Headers,
-    request: httpx.Request,
+    response_headers: httpx2.Headers,
+    request: httpx2.Request,
 ) -> tuple[tuple[str, str | None], ...]:
     names = _vary_names(response_headers) or ()
     return tuple((name, request.headers.get(name)) for name in names)
 
 
-def _entry_matches_variant(entry: _CacheEntry, request: httpx.Request) -> bool:
+def _entry_matches_variant(entry: _CacheEntry, request: httpx2.Request) -> bool:
     return all(request.headers.get(name) == value for name, value in entry.vary)
 
 
-def _is_cacheable(headers: httpx.Headers, *, now: float) -> bool:
+def _is_cacheable(headers: httpx2.Headers, *, now: float) -> bool:
     if "no-store" in headers.get("Cache-Control", "").lower():
         return False
     if _vary_names(headers) is None:
@@ -118,11 +118,11 @@ def _is_cacheable(headers: httpx.Headers, *, now: float) -> bool:
     )
 
 
-def _is_sensitive_request(request: httpx.Request) -> bool:
+def _is_sensitive_request(request: httpx2.Request) -> bool:
     return any(header in request.headers for header in _SENSITIVE_REQUEST_HEADERS)
 
 
-def _cache_key(request: httpx.Request) -> _CacheKey:
+def _cache_key(request: httpx2.Request) -> _CacheKey:
     variant_headers = tuple(
         (header, request.headers[header])
         for header in _VARIANT_REQUEST_HEADERS
@@ -131,12 +131,12 @@ def _cache_key(request: httpx.Request) -> _CacheKey:
     return str(request.url), variant_headers
 
 
-class CachingTransport(httpx.AsyncBaseTransport):
+class CachingTransport(httpx2.AsyncBaseTransport):
     """Wrap a transport with an in-memory ETag/Expires-aware GET cache."""
 
     def __init__(
         self,
-        transport: httpx.AsyncBaseTransport,
+        transport: httpx2.AsyncBaseTransport,
         *,
         max_entries: int = 256,
         on_cache_event: Callable[[str, str], None] | None = None,
@@ -147,11 +147,11 @@ class CachingTransport(httpx.AsyncBaseTransport):
         self._lock = asyncio.Lock()
         self._on_cache_event = on_cache_event
 
-    def _emit_cache_event(self, request: httpx.Request, outcome: str) -> None:
+    def _emit_cache_event(self, request: httpx2.Request, outcome: str) -> None:
         if self._on_cache_event is not None:
             self._on_cache_event(str(request.url), outcome)
 
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         if request.method != "GET" or _is_sensitive_request(request):
             return await self._transport.handle_async_request(request)
 
@@ -178,7 +178,7 @@ class CachingTransport(httpx.AsyncBaseTransport):
 
         response = await self._transport.handle_async_request(request)
 
-        if entry is not None and response.status_code == httpx.codes.NOT_MODIFIED:
+        if entry is not None and response.status_code == httpx2.codes.NOT_MODIFIED:
             self._emit_cache_event(request, "revalidated")
             return await self._response_from_revalidation(
                 key,
@@ -188,7 +188,7 @@ class CachingTransport(httpx.AsyncBaseTransport):
                 now,
             )
 
-        if response.status_code == httpx.codes.OK and _is_cacheable(
+        if response.status_code == httpx2.codes.OK and _is_cacheable(
             response.headers,
             now=now,
         ):
@@ -205,10 +205,10 @@ class CachingTransport(httpx.AsyncBaseTransport):
         self,
         key: _CacheKey,
         entry: _CacheEntry,
-        request: httpx.Request,
-        response: httpx.Response,
+        request: httpx2.Request,
+        response: httpx2.Response,
         now: float,
-    ) -> httpx.Response:
+    ) -> httpx2.Response:
         await response.aread()
         await response.aclose()
         entry.headers.update(_storable_headers(response.headers))
@@ -234,10 +234,10 @@ class CachingTransport(httpx.AsyncBaseTransport):
     async def _response_from_store(
         self,
         key: _CacheKey,
-        request: httpx.Request,
-        response: httpx.Response,
+        request: httpx2.Request,
+        response: httpx2.Response,
         now: float,
-    ) -> httpx.Response:
+    ) -> httpx2.Response:
         content = await response.aread()
         await response.aclose()
         new_entry = _CacheEntry(
@@ -259,11 +259,11 @@ class CachingTransport(httpx.AsyncBaseTransport):
     @staticmethod
     def _response_from_entry(
         entry: _CacheEntry,
-        request: httpx.Request,
+        request: httpx2.Request,
         *,
         hit: bool = True,
-    ) -> httpx.Response:
-        return httpx.Response(
+    ) -> httpx2.Response:
+        return httpx2.Response(
             status_code=entry.status_code,
             headers=entry.headers,
             content=entry.content,

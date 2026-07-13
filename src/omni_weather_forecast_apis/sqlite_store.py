@@ -29,9 +29,14 @@ def save_forecast_response(
             if isinstance(result, ProviderSuccess):
                 fetched_at_unix = int(result.fetched_at.timestamp())
                 provider_result_id = _insert_provider_result(
-                    connection, run_id, result, fetched_at_unix,
+                    connection,
+                    run_id,
+                    result,
+                    fetched_at_unix,
                 )
-                _insert_forecasts(connection, provider_result_id, result, fetched_at_unix)
+                _insert_forecasts(
+                    connection, provider_result_id, result, fetched_at_unix
+                )
             else:
                 _insert_provider_result(connection, run_id, result)
         connection.commit()
@@ -237,6 +242,8 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         """,
     )
     _ensure_provider_logs_columns(connection)
+    _ensure_provider_results_columns(connection)
+    _ensure_hourly_points_columns(connection)
 
 
 def _ensure_provider_logs_columns(connection: sqlite3.Connection) -> None:
@@ -245,6 +252,28 @@ def _ensure_provider_logs_columns(connection: sqlite3.Connection) -> None:
     }
     if "extra_json" not in provider_log_columns:
         connection.execute("ALTER TABLE provider_logs ADD COLUMN extra_json TEXT")
+
+
+def _ensure_provider_results_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(provider_results)")
+    }
+    if "fetched_at_unix" not in columns:
+        connection.execute(
+            "ALTER TABLE provider_results ADD COLUMN fetched_at_unix INTEGER",
+        )
+    if "run_cycle" not in columns:
+        connection.execute(
+            "ALTER TABLE provider_results ADD COLUMN run_cycle TEXT",
+        )
+
+
+def _ensure_hourly_points_columns(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(hourly_points)")}
+    if "horizon_hours" not in columns:
+        connection.execute(
+            "ALTER TABLE hourly_points ADD COLUMN horizon_hours REAL",
+        )
 
 
 def _insert_run(connection: sqlite3.Connection, response: ForecastResponse) -> int:
@@ -618,7 +647,11 @@ def _compute_run_cycle(fetched_at: datetime) -> str:
     """Bucket fetched_at to the previous 6-hour NWP cycle boundary (00/06/12/18 UTC)."""
     hour_bucket = (fetched_at.hour // 6) * 6
     return fetched_at.replace(
-        hour=hour_bucket, minute=0, second=0, microsecond=0, tzinfo=UTC,
+        hour=hour_bucket,
+        minute=0,
+        second=0,
+        microsecond=0,
+        tzinfo=UTC,
     ).isoformat()
 
 

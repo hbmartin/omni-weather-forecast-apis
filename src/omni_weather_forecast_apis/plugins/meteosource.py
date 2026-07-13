@@ -33,7 +33,7 @@ from omni_weather_forecast_apis.types import (
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 from pydantic import Field
 
@@ -43,6 +43,7 @@ class MeteosourceConfig(ProviderConfigModel):
     sections: list[str] = Field(
         default_factory=lambda: ["current", "hourly", "daily"],
     )
+
 
 _POINT_URL = "https://www.meteosource.com/api/v1/free/point"
 _CAPABILITIES = PluginCapabilities(
@@ -362,7 +363,7 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """Fetch and normalize Meteosource forecast data."""
 

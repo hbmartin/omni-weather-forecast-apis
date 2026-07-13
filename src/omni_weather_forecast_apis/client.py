@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
-import httpx
+import httpx2
 
 from omni_weather_forecast_apis.http_cache import CachingTransport
 from omni_weather_forecast_apis.plugins import get_plugin_registry
@@ -71,6 +71,7 @@ def _normalize_plugins(
         case _:
             return {plugin.id: plugin for plugin in plugins}
 
+
 _PHASE_LOG_LEVELS: dict[str, int] = {
     "start": logging.DEBUG,
     "retry": logging.INFO,
@@ -105,7 +106,7 @@ class OmniWeatherClient:
         self._instances: dict[ProviderId, PluginInstance] = {}
         self._provider_registrations: dict[ProviderId, ProviderRegistration] = {}
         self._initialization_errors: dict[ProviderId, str] = {}
-        self._http_client: httpx.AsyncClient | None = None
+        self._http_client: httpx2.AsyncClient | None = None
         self._global_rate_limiter = TokenBucketRateLimiter(
             config.rate_limiting.max_requests_per_second,
         )
@@ -117,9 +118,7 @@ class OmniWeatherClient:
     async def initialize(self) -> None:
         """Validate provider configs and initialize provider instances."""
 
-        registry = (
-            self._plugins if self._plugins is not None else get_plugin_registry()
-        )
+        registry = self._plugins if self._plugins is not None else get_plugin_registry()
         self._instances.clear()
         self._provider_registrations = {
             registration.plugin_id: registration
@@ -158,10 +157,10 @@ class OmniWeatherClient:
         if self._http_client is None:
             self._http_client = self._build_http_client()
 
-    def _build_http_client(self) -> httpx.AsyncClient:
+    def _build_http_client(self) -> httpx2.AsyncClient:
         http_config = self._config.http
-        transport: httpx.AsyncBaseTransport = httpx.AsyncHTTPTransport(
-            limits=httpx.Limits(
+        transport: httpx2.AsyncBaseTransport = httpx2.AsyncHTTPTransport(
+            limits=httpx2.Limits(
                 max_connections=http_config.max_connections,
                 max_keepalive_connections=http_config.max_keepalive_connections,
             ),
@@ -172,9 +171,9 @@ class OmniWeatherClient:
                 max_entries=http_config.cache_max_entries,
                 on_cache_event=self._handle_cache_event,
             )
-        return httpx.AsyncClient(
+        return httpx2.AsyncClient(
             follow_redirects=True,
-            timeout=httpx.Timeout(
+            timeout=httpx2.Timeout(
                 None,
                 connect=http_config.connect_timeout_ms / 1000,
             ),
@@ -283,11 +282,13 @@ class OmniWeatherClient:
             if outcome in {"hit", "revalidated"}
             else MetricKind.CACHE_MISS
         )
-        self._emit_metric(MetricEvent(
-            kind=kind,
-            url=url,
-            extra={"outcome": outcome},
-        ))
+        self._emit_metric(
+            MetricEvent(
+                kind=kind,
+                url=url,
+                extra={"outcome": outcome},
+            )
+        )
 
     async def _run_response_hooks(self, response: ForecastResponse) -> None:
         for hook in self._response_hooks:
@@ -302,7 +303,7 @@ class OmniWeatherClient:
         self,
         provider_id: ProviderId,
         request: ForecastRequest,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         stats: _RequestStats,
     ) -> ProviderResult:
         started_at = time.perf_counter()
@@ -345,11 +346,13 @@ class OmniWeatherClient:
                 started_at,
             )
 
-        self._emit_log(ProviderLogEvent(
-            provider=provider_id,
-            phase="start",
-            message=f"Fetching forecast from {provider_id.value}",
-        ))
+        self._emit_log(
+            ProviderLogEvent(
+                provider=provider_id,
+                phase="start",
+                message=f"Fetching forecast from {provider_id.value}",
+            )
+        )
         params = PluginFetchParams(
             latitude=request.latitude,
             longitude=request.longitude,
@@ -405,26 +408,30 @@ class OmniWeatherClient:
             if delay_seconds is None:
                 return result
             stats.retries += 1
-            self._emit_metric(MetricEvent(
-                kind=MetricKind.RETRY_SCHEDULED,
-                provider=provider_id,
-                attempt=attempt,
-                error_code=result.error.code,
-                http_status=result.error.http_status,
-                extra={"delay_seconds": delay_seconds},
-            ))
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="retry",
-                message=(
-                    f"Attempt {attempt}/{policy.max_attempts} failed with "
-                    f"{result.error.code.value}; retrying in {delay_seconds:.1f}s"
-                ),
-                latency_ms=(time.perf_counter() - started_at) * 1000,
-                error_code=result.error.code,
-                http_status=result.error.http_status,
-                extra={"attempt": attempt, "delay_seconds": delay_seconds},
-            ))
+            self._emit_metric(
+                MetricEvent(
+                    kind=MetricKind.RETRY_SCHEDULED,
+                    provider=provider_id,
+                    attempt=attempt,
+                    error_code=result.error.code,
+                    http_status=result.error.http_status,
+                    extra={"delay_seconds": delay_seconds},
+                )
+            )
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="retry",
+                    message=(
+                        f"Attempt {attempt}/{policy.max_attempts} failed with "
+                        f"{result.error.code.value}; retrying in {delay_seconds:.1f}s"
+                    ),
+                    latency_ms=(time.perf_counter() - started_at) * 1000,
+                    error_code=result.error.code,
+                    http_status=result.error.http_status,
+                    extra={"attempt": attempt, "delay_seconds": delay_seconds},
+                )
+            )
             await asyncio.sleep(delay_seconds)
             attempt += 1
 
@@ -433,7 +440,7 @@ class OmniWeatherClient:
         provider_id: ProviderId,
         instance: PluginInstance,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
         limiter: CompositeRateLimiter,
         timeout_ms: float,
         started_at: float,
@@ -441,11 +448,13 @@ class OmniWeatherClient:
         attempt: int,
     ) -> tuple[ProviderResult, float | None]:
         attempt_started = time.perf_counter()
-        self._emit_metric(MetricEvent(
-            kind=MetricKind.REQUEST_START,
-            provider=provider_id,
-            attempt=attempt,
-        ))
+        self._emit_metric(
+            MetricEvent(
+                kind=MetricKind.REQUEST_START,
+                provider=provider_id,
+                attempt=attempt,
+            )
+        )
 
         def _attempt_latency_ms() -> float:
             return (time.perf_counter() - attempt_started) * 1000
@@ -454,14 +463,16 @@ class OmniWeatherClient:
             error_code: ErrorCode | None,
             http_status: int | None = None,
         ) -> None:
-            self._emit_metric(MetricEvent(
-                kind=MetricKind.REQUEST_END,
-                provider=provider_id,
-                attempt=attempt,
-                latency_ms=_attempt_latency_ms(),
-                error_code=error_code,
-                http_status=http_status,
-            ))
+            self._emit_metric(
+                MetricEvent(
+                    kind=MetricKind.REQUEST_END,
+                    provider=provider_id,
+                    attempt=attempt,
+                    latency_ms=_attempt_latency_ms(),
+                    error_code=error_code,
+                    http_status=http_status,
+                )
+            )
 
         try:
             async with limiter.slot():
@@ -470,29 +481,33 @@ class OmniWeatherClient:
         except TimeoutError:
             latency_ms = (time.perf_counter() - started_at) * 1000
             _end_metric(ErrorCode.TIMEOUT)
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="error",
-                message=f"Request exceeded timeout of {timeout_ms} ms.",
-                latency_ms=latency_ms,
-                error_code=ErrorCode.TIMEOUT,
-            ))
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=f"Request exceeded timeout of {timeout_ms} ms.",
+                    latency_ms=latency_ms,
+                    error_code=ErrorCode.TIMEOUT,
+                )
+            )
             return self._provider_error(
                 provider_id,
                 ErrorCode.TIMEOUT,
                 f"Request exceeded timeout of {timeout_ms} ms.",
                 started_at,
             ), None
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
             _end_metric(ErrorCode.NETWORK)
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="error",
-                message=str(exc),
-                latency_ms=latency_ms,
-                error_code=ErrorCode.NETWORK,
-            ))
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=str(exc),
+                    latency_ms=latency_ms,
+                    error_code=ErrorCode.NETWORK,
+                )
+            )
             return self._provider_error(
                 provider_id,
                 ErrorCode.NETWORK,
@@ -503,13 +518,15 @@ class OmniWeatherClient:
             latency_ms = (time.perf_counter() - started_at) * 1000
             error_code = _exception_error_code(exc)
             _end_metric(error_code)
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="error",
-                message=str(exc),
-                latency_ms=latency_ms,
-                error_code=error_code,
-            ))
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=str(exc),
+                    latency_ms=latency_ms,
+                    error_code=error_code,
+                )
+            )
             return self._provider_error(
                 provider_id,
                 error_code,
@@ -521,14 +538,16 @@ class OmniWeatherClient:
         match result:
             case PluginFetchError():
                 _end_metric(result.code, result.http_status)
-                self._emit_log(ProviderLogEvent(
-                    provider=provider_id,
-                    phase="error",
-                    message=result.message,
-                    latency_ms=latency_ms,
-                    error_code=result.code,
-                    http_status=result.http_status,
-                ))
+                self._emit_log(
+                    ProviderLogEvent(
+                        provider=provider_id,
+                        phase="error",
+                        message=result.message,
+                        latency_ms=latency_ms,
+                        error_code=result.code,
+                        http_status=result.http_status,
+                    )
+                )
                 return ProviderError(
                     provider=provider_id,
                     error=ProviderErrorDetail(
@@ -541,12 +560,14 @@ class OmniWeatherClient:
                 ), result.retry_after_seconds
             case _:
                 _end_metric(None)
-                self._emit_log(ProviderLogEvent(
-                    provider=provider_id,
-                    phase="success",
-                    message=f"Succeeded in {latency_ms:.0f}ms",
-                    latency_ms=latency_ms,
-                ))
+                self._emit_log(
+                    ProviderLogEvent(
+                        provider=provider_id,
+                        phase="success",
+                        message=f"Succeeded in {latency_ms:.0f}ms",
+                        latency_ms=latency_ms,
+                    )
+                )
                 return ProviderSuccess(
                     provider=provider_id,
                     forecasts=result.forecasts,
@@ -574,13 +595,15 @@ class OmniWeatherClient:
             )
         except (Exception,) as exc:  # noqa: B013
             message = f"Quota tracking failed: {exc}"
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="error",
-                message=message,
-                latency_ms=(time.perf_counter() - started_at) * 1000,
-                error_code=ErrorCode.UNKNOWN,
-            ))
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=message,
+                    latency_ms=(time.perf_counter() - started_at) * 1000,
+                    error_code=ErrorCode.UNKNOWN,
+                )
+            )
             return self._provider_error(
                 provider_id,
                 ErrorCode.UNKNOWN,
@@ -588,30 +611,35 @@ class OmniWeatherClient:
                 started_at,
             )
         if consumed:
-            self._emit_metric(MetricEvent(
-                kind=MetricKind.QUOTA_CONSUMED,
-                provider=provider_id,
-                extra={"limit": limit},
-            ))
+            self._emit_metric(
+                MetricEvent(
+                    kind=MetricKind.QUOTA_CONSUMED,
+                    provider=provider_id,
+                    extra={"limit": limit},
+                )
+            )
         else:
-            self._emit_metric(MetricEvent(
-                kind=MetricKind.QUOTA_EXHAUSTED,
-                provider=provider_id,
-                error_code=ErrorCode.QUOTA_EXCEEDED,
-                extra={"limit": limit},
-            ))
+            self._emit_metric(
+                MetricEvent(
+                    kind=MetricKind.QUOTA_EXHAUSTED,
+                    provider=provider_id,
+                    error_code=ErrorCode.QUOTA_EXCEEDED,
+                    extra={"limit": limit},
+                )
+            )
         if not consumed:
             message = (
-                f"Daily quota of {limit} requests is exhausted "
-                f"for {today.isoformat()}."
+                f"Daily quota of {limit} requests is exhausted for {today.isoformat()}."
             )
-            self._emit_log(ProviderLogEvent(
-                provider=provider_id,
-                phase="error",
-                message=message,
-                latency_ms=(time.perf_counter() - started_at) * 1000,
-                error_code=ErrorCode.QUOTA_EXCEEDED,
-            ))
+            self._emit_log(
+                ProviderLogEvent(
+                    provider=provider_id,
+                    phase="error",
+                    message=message,
+                    latency_ms=(time.perf_counter() - started_at) * 1000,
+                    error_code=ErrorCode.QUOTA_EXCEEDED,
+                )
+            )
             return self._provider_error(
                 provider_id,
                 ErrorCode.QUOTA_EXCEEDED,
@@ -744,9 +772,9 @@ def _compute_backoff_seconds(
 
 def _exception_error_code(exc: Exception) -> ErrorCode:
     match exc:
-        case httpx.TimeoutException():
+        case httpx2.TimeoutException():
             return ErrorCode.TIMEOUT
-        case httpx.NetworkError():
+        case httpx2.NetworkError():
             return ErrorCode.NETWORK
         case ValueError():
             return ErrorCode.PARSE

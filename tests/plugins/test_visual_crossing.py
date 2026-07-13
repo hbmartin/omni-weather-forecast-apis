@@ -1,11 +1,11 @@
-"""Tests for Visual Crossing plugin using httpx mocks."""
+"""Tests for Visual Crossing plugin using httpx2 mocks."""
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
@@ -46,10 +46,10 @@ def _forecast_params(**overrides: Any) -> PluginFetchParams:
 
 async def _fetch(
     instance: PluginInstance,
-    transport: httpx.MockTransport,
+    transport: httpx2.MockTransport,
     params: PluginFetchParams | None = None,
 ) -> PluginFetchResult:
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         return await instance.fetch_forecast(params or _forecast_params(), client)
 
 
@@ -211,8 +211,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_success_hourly(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=_timeline_payload()),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=_timeline_payload()),
         )
         result = await _fetch(instance, transport)
 
@@ -258,8 +258,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_success_daily(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=_timeline_payload()),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=_timeline_payload()),
         )
         result = await _fetch(instance, transport)
 
@@ -298,8 +298,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_success_alerts(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=_timeline_payload()),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=_timeline_payload()),
         )
         result = await _fetch(instance, transport)
 
@@ -327,8 +327,8 @@ class TestVisualCrossingInstance:
     @pytest.mark.asyncio
     async def test_fetch_include_raw(self, instance: PluginInstance) -> None:
         payload = _timeline_payload()
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=payload),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=payload),
         )
         result = await _fetch(instance, transport, _forecast_params(include_raw=True))
 
@@ -339,15 +339,15 @@ class TestVisualCrossingInstance:
     async def test_fetch_request_parameters(self, instance: PluginInstance) -> None:
         captured: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured["path"] = request.url.path
             captured["unitGroup"] = request.url.params["unitGroup"]
             captured["include"] = request.url.params["include"]
             captured["key"] = request.url.params["key"]
             captured["lang"] = request.url.params["lang"]
-            return httpx.Response(200, json={"days": []})
+            return httpx2.Response(200, json={"days": []})
 
-        transport = httpx.MockTransport(handler)
+        transport = httpx2.MockTransport(handler)
         result = await _fetch(instance, transport, _forecast_params(language="de"))
 
         assert isinstance(result, PluginFetchSuccess)
@@ -367,19 +367,19 @@ class TestVisualCrossingInstance:
         instance = await visual_crossing_plugin.initialize(config)
         captured: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured["include"] = request.url.params["include"]
-            return httpx.Response(200, json={"days": []})
+            return httpx2.Response(200, json={"days": []})
 
-        result = await _fetch(instance, httpx.MockTransport(handler))
+        result = await _fetch(instance, httpx2.MockTransport(handler))
 
         assert isinstance(result, PluginFetchSuccess)
         assert captured["include"] == "days"
 
     @pytest.mark.asyncio
     async def test_fetch_empty_payload(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json={}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json={}),
         )
         result = await _fetch(instance, transport)
 
@@ -391,8 +391,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(401, json={"message": "Invalid API key"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(401, json={"message": "Invalid API key"}),
         )
         result = await _fetch(instance, transport)
 
@@ -403,8 +403,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_server_error(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(500, json={"error": "server error"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(500, json={"error": "server error"}),
         )
         result = await _fetch(instance, transport)
 
@@ -414,8 +414,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_non_dict_payload(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=[{"days": []}]),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=[{"days": []}]),
         )
         result = await _fetch(instance, transport)
 
@@ -426,8 +426,8 @@ class TestVisualCrossingInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_undecodable_body(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, content=b"not json"),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, content=b"not json"),
         )
         result = await _fetch(instance, transport)
 
@@ -464,8 +464,8 @@ class TestVisualCrossingInstance:
                 {"event": "Wind Advisory", "onsetEpoch": _JAN_1_MIDNIGHT},
             ],
         }
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=payload),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=payload),
         )
         result = await _fetch(instance, transport)
 

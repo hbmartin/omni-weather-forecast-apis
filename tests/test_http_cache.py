@@ -4,23 +4,23 @@ from __future__ import annotations
 
 import json
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.http_cache import CachingTransport
 
 
-class RecordingTransport(httpx.AsyncBaseTransport):
+class RecordingTransport(httpx2.AsyncBaseTransport):
     """Scripted transport that records incoming requests."""
 
-    def __init__(self, responses: list[httpx.Response]) -> None:
+    def __init__(self, responses: list[httpx2.Response]) -> None:
         self.responses = responses
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
 
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         response = self.responses[min(len(self.requests), len(self.responses)) - 1]
-        return httpx.Response(
+        return httpx2.Response(
             status_code=response.status_code,
             headers=response.headers,
             content=response.content,
@@ -28,8 +28,8 @@ class RecordingTransport(httpx.AsyncBaseTransport):
         )
 
 
-def _json_response(payload: dict, headers: dict[str, str]) -> httpx.Response:
-    return httpx.Response(
+def _json_response(payload: dict, headers: dict[str, str]) -> httpx2.Response:
+    return httpx2.Response(
         200,
         content=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", **headers},
@@ -41,7 +41,7 @@ async def test_fresh_response_served_without_second_request() -> None:
     inner = RecordingTransport(
         [_json_response({"value": 1}, {"Cache-Control": "max-age=3600"})],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get("https://example.test/data")
         second = await client.get("https://example.test/data")
 
@@ -66,7 +66,7 @@ async def test_vary_header_partitions_cached_variants() -> None:
             ),
         ],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get(
             "https://example.test/data",
             headers={"X-Api-Key": "key-a"},
@@ -97,7 +97,7 @@ async def test_vary_star_in_list_is_uncacheable() -> None:
             ),
         ],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         await client.get("https://example.test/data")
         await client.get("https://example.test/data")
 
@@ -115,10 +115,10 @@ async def test_stale_response_revalidated_with_conditional_headers() -> None:
                     "Last-Modified": "Wed, 01 Jul 2026 00:00:00 GMT",
                 },
             ),
-            httpx.Response(304, headers={"Cache-Control": "max-age=60"}),
+            httpx2.Response(304, headers={"Cache-Control": "max-age=60"}),
         ],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get("https://example.test/data")
         second = await client.get("https://example.test/data")
         third = await client.get("https://example.test/data")
@@ -146,7 +146,7 @@ async def test_304_revalidation_refreshes_future_validators() -> None:
                     "Last-Modified": "Wed, 01 Jul 2026 00:00:00 GMT",
                 },
             ),
-            httpx.Response(
+            httpx2.Response(
                 304,
                 headers={
                     "Cache-Control": "max-age=0",
@@ -154,11 +154,11 @@ async def test_304_revalidation_refreshes_future_validators() -> None:
                     "Last-Modified": "Thu, 02 Jul 2026 00:00:00 GMT",
                 },
             ),
-            httpx.Response(304, headers={"Cache-Control": "max-age=60"}),
+            httpx2.Response(304, headers={"Cache-Control": "max-age=60"}),
         ],
     )
 
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         await client.get("https://example.test/data")
         await client.get("https://example.test/data")
         third = await client.get("https://example.test/data")
@@ -193,11 +193,11 @@ async def test_304_without_freshness_reuses_stored_cache_control(
                 {"value": 1},
                 {"Cache-Control": "max-age=1", "ETag": '"abc"'},
             ),
-            httpx.Response(304),
+            httpx2.Response(304),
         ],
     )
 
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get("https://example.test/data")
         second = await client.get("https://example.test/data")
         third = await client.get("https://example.test/data")
@@ -217,7 +217,7 @@ async def test_authorized_requests_bypass_cache() -> None:
         ],
     )
 
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get(
             "https://example.test/data",
             headers={"Authorization": "Bearer one"},
@@ -241,7 +241,7 @@ async def test_accept_language_partitions_cache_entries() -> None:
         ],
     )
 
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         first = await client.get(
             "https://example.test/data",
             headers={"Accept-Language": "en"},
@@ -259,7 +259,7 @@ async def test_accept_language_partitions_cache_entries() -> None:
 @pytest.mark.asyncio
 async def test_uncacheable_responses_always_hit_network() -> None:
     inner = RecordingTransport([_json_response({"value": 1}, {})])
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         await client.get("https://example.test/data")
         await client.get("https://example.test/data")
 
@@ -271,7 +271,7 @@ async def test_no_store_is_never_cached() -> None:
     inner = RecordingTransport(
         [_json_response({"value": 1}, {"Cache-Control": "no-store", "ETag": '"x"'})],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         await client.get("https://example.test/data")
         await client.get("https://example.test/data")
 
@@ -284,7 +284,7 @@ async def test_non_get_requests_bypass_cache() -> None:
     inner = RecordingTransport(
         [_json_response({"value": 1}, {"Cache-Control": "max-age=3600"})],
     )
-    async with httpx.AsyncClient(transport=CachingTransport(inner)) as client:
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
         await client.post("https://example.test/data")
         await client.post("https://example.test/data")
 
@@ -297,7 +297,7 @@ async def test_cache_evicts_oldest_entry_when_full() -> None:
         [_json_response({"value": 1}, {"Cache-Control": "max-age=3600"})],
     )
     transport = CachingTransport(inner, max_entries=1)
-    async with httpx.AsyncClient(transport=transport) as client:
+    async with httpx2.AsyncClient(transport=transport) as client:
         await client.get("https://example.test/one")
         await client.get("https://example.test/two")
         await client.get("https://example.test/one")

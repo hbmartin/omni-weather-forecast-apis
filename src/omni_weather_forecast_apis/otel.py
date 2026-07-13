@@ -73,9 +73,7 @@ def create_otel_metrics_hook(meter_provider: Any | None = None) -> MetricsHook:
     def hook(event: MetricEvent) -> None:
         match event.kind:
             case MetricKind.REQUEST_END:
-                outcome = (
-                    event.error_code.value if event.error_code else "success"
-                )
+                outcome = event.error_code.value if event.error_code else "success"
                 requests.add(1, {**_provider_attrs(event), "outcome": outcome})
                 if event.latency_ms is not None:
                     duration.record(event.latency_ms, _provider_attrs(event))

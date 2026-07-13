@@ -1,6 +1,6 @@
 """Tests for Weather Unlocked parsing regressions."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.weather_unlocked import (
@@ -41,8 +41,10 @@ async def test_fetch_skips_invalid_hourly_times_and_ignores_blank_sunrise() -> N
         ],
     }
 
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-    async with httpx.AsyncClient(transport=transport) as client:
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,

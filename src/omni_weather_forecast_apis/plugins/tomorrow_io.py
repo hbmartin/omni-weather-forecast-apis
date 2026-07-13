@@ -32,7 +32,7 @@ from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 from omni_weather_forecast_apis.utils import parse_date
 
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 from pydantic import Field
 
@@ -40,6 +40,7 @@ from pydantic import Field
 class TomorrowIOConfig(ProviderConfigModel):
     api_key: str = Field(min_length=1)
     fields: list[str] | None = None
+
 
 _FORECAST_URL = "https://api.tomorrow.io/v4/weather/forecast"
 _CAPABILITIES = PluginCapabilities(
@@ -268,7 +269,7 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """Fetch and normalize Tomorrow.io forecast data."""
 

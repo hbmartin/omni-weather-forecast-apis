@@ -1,6 +1,6 @@
 """Tests for Meteosource provider parsing."""
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.meteosource import (
@@ -134,8 +134,10 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
         },
     }
 
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-    async with httpx.AsyncClient(transport=transport) as client:
+    transport = httpx2.MockTransport(
+        lambda _request: httpx2.Response(200, json=payload)
+    )
+    async with httpx2.AsyncClient(transport=transport) as client:
         result = await instance.fetch_forecast(
             PluginFetchParams(
                 latitude=34.0,

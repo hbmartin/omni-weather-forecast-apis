@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Final
 
-import httpx
+import httpx2
 from pydantic import Field
 
 from omni_weather_forecast_apis.plugins._base import (
@@ -74,7 +74,7 @@ class StormglassInstance(BasePluginInstance[StormglassConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         payload = await self._get_json_dict(
             client,

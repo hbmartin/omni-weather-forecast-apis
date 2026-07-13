@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, date, datetime
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
@@ -178,16 +178,16 @@ class TestWeatherbitInstance:
 
         captured: dict[str, dict[str, str]] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured[request.url.path] = dict(request.url.params)
             if request.url.path == _HOURLY_PATH:
-                return httpx.Response(200, json=hourly_payload)
+                return httpx2.Response(200, json=hourly_payload)
             if request.url.path == _DAILY_PATH:
-                return httpx.Response(200, json=daily_payload)
-            return httpx.Response(404)
+                return httpx2.Response(200, json=daily_payload)
+            return httpx2.Response(404)
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.HOURLY, Granularity.DAILY]),
                 client,
@@ -281,12 +281,12 @@ class TestWeatherbitInstance:
 
         captured_params: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             captured_params.update(dict(request.url.params))
-            return httpx.Response(200, json=hourly_payload)
+            return httpx2.Response(200, json=hourly_payload)
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.HOURLY]),
                 client,
@@ -315,12 +315,12 @@ class TestWeatherbitInstance:
     ) -> None:
         calls: Counter[str] = Counter()
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             calls[request.url.path] += 1
-            return httpx.Response(200, json={"data": []})
+            return httpx2.Response(200, json={"data": []})
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.DAILY]),
                 client,
@@ -337,12 +337,12 @@ class TestWeatherbitInstance:
     ) -> None:
         calls: Counter[str] = Counter()
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx2.Request) -> httpx2.Response:
             calls[request.url.path] += 1
-            return httpx.Response(200, json={"data": []})
+            return httpx2.Response(200, json={"data": []})
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.HOURLY]),
                 client,
@@ -354,10 +354,10 @@ class TestWeatherbitInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_hourly_auth_error(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(401, json={"error": "Invalid API key"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(401, json={"error": "Invalid API key"}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.HOURLY]),
                 client,
@@ -369,10 +369,10 @@ class TestWeatherbitInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_hourly_list_payload(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=[1, 2, 3]),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=[1, 2, 3]),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.HOURLY]),
                 client,
@@ -384,10 +384,10 @@ class TestWeatherbitInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_daily_list_payload(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=[1, 2, 3]),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=[1, 2, 3]),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await instance.fetch_forecast(
                 _fetch_params([Granularity.DAILY]),
                 client,

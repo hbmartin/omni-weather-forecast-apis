@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-import httpx
+import httpx2
 import pytest
 
 from omni_weather_forecast_apis.client import OmniWeatherClient, create_omni_weather
@@ -40,7 +40,7 @@ class SuccessInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         forecast = build_source_forecast(ProviderId.OPEN_METEO, model="best_match")
@@ -56,7 +56,7 @@ class ErrorInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         return PluginFetchError(code=ErrorCode.AUTH_FAILED, message="bad key")
@@ -71,7 +71,7 @@ class SlowInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         await asyncio.sleep(0.05)
@@ -253,7 +253,9 @@ def test_unconfigured_requested_provider_returns_error() -> None:
 def test_plugins_param_accepts_iterable_and_mapping() -> None:
     config = OmniWeatherConfig(
         providers=[
-            ProviderRegistration(plugin_id=ProviderId.OPEN_METEO, config={"token": "a"}),
+            ProviderRegistration(
+                plugin_id=ProviderId.OPEN_METEO, config={"token": "a"}
+            ),
         ],
     )
 
@@ -270,7 +272,9 @@ def test_plugins_param_accepts_iterable_and_mapping() -> None:
     mapping_client = OmniWeatherClient(
         config,
         plugins={
-            ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
+            ProviderId.OPEN_METEO: DummyPlugin(
+                ProviderId.OPEN_METEO, SuccessInstance()
+            ),
         },
     )
 

@@ -61,7 +61,9 @@ def test_sqlite_is_optional() -> None:
 
 
 def test_debug_logging_falls_back_to_stdlib_without_loguru(
-    monkeypatch, tmp_path, capsys,
+    monkeypatch,
+    tmp_path,
+    capsys,
 ):
     real_import_module = importlib.import_module
 

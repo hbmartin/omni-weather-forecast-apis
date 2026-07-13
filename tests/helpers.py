@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+import httpx2
 
 from omni_weather_forecast_apis.types import (
     ErrorCode,
@@ -60,7 +60,7 @@ class CountingInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         self.calls += 1
@@ -87,7 +87,7 @@ class FlakyInstance:
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         del params, client
         self.calls += 1

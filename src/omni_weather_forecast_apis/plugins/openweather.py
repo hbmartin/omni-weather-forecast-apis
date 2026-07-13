@@ -39,7 +39,7 @@ from omni_weather_forecast_apis.types import (
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
-    import httpx
+    import httpx2
 
 from pydantic import Field
 
@@ -247,7 +247,7 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         """Fetch and normalize OpenWeather forecast data."""
 

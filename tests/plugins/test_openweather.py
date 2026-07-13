@@ -1,6 +1,6 @@
-"""Tests for OpenWeather plugin using httpx mocks."""
+"""Tests for OpenWeather plugin using httpx2 mocks."""
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
@@ -79,10 +79,10 @@ class TestOpenWeatherInstance:
             ],
         }
 
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(200, json=mock_response),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,
@@ -99,10 +99,10 @@ class TestOpenWeatherInstance:
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance: PluginInstance) -> None:
-        transport = httpx.MockTransport(
-            lambda _request: httpx.Response(401, json={"message": "unauthorized"}),
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(401, json={"message": "unauthorized"}),
         )
-        async with httpx.AsyncClient(transport=transport) as client:
+        async with httpx2.AsyncClient(transport=transport) as client:
             params = PluginFetchParams(
                 latitude=34.0,
                 longitude=-117.0,

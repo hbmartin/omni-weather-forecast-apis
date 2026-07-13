@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Final
 
-import httpx
+import httpx2
 from pydantic import Field
 
 from omni_weather_forecast_apis.mapping import ms_from_kmh
@@ -169,7 +169,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
-        client: httpx.AsyncClient,
+        client: httpx2.AsyncClient,
     ) -> PluginFetchResult:
         payload = await self._get_json_dict(
             client,
