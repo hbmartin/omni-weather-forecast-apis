@@ -563,13 +563,20 @@
 
 
 <h1 id="providers">Providers<a class="headerlink" href="#providers" title="Permanent link">&para;</a></h1>
+<p>Three of the thirteen providers need no API key at all, so you can try the
+library without signing up for anything.</p>
 <table>
 <thead>
 <tr>
 <th>Provider</th>
 <th>Plugin ID</th>
-<th>API Key</th>
-<th>Notes</th>
+<th>API key</th>
+<th style="text-align: right;">Minutely</th>
+<th style="text-align: right;">Hourly</th>
+<th style="text-align: right;">Daily</th>
+<th style="text-align: center;">Alerts</th>
+<th style="text-align: center;">Multi-model</th>
+<th>Coverage</th>
 </tr>
 </thead>
 <tbody>
@@ -577,82 +584,158 @@
 <td><a href="https://open-meteo.com/">Open-Meteo</a></td>
 <td><code>open_meteo</code></td>
 <td>Optional</td>
-<td>Free tier; multiple forecast models</td>
+<td style="text-align: right;">1 h</td>
+<td style="text-align: right;">16 d</td>
+<td style="text-align: right;">16 d</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">✅</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://api.met.no/">MET Norway</a></td>
 <td><code>met_norway</code></td>
-<td>No</td>
-<td>Requires <code>user_agent</code> identification</td>
+<td>None</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">9 d</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>Nordics</td>
 </tr>
 <tr>
 <td><a href="https://www.weather.gov/documentation/services-web-api">NWS / NOAA</a></td>
 <td><code>nws</code></td>
-<td>No</td>
-<td>US coverage only; requires <code>user_agent</code></td>
+<td>None</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">✅</td>
+<td style="text-align: right;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>US only</td>
 </tr>
 <tr>
 <td><a href="https://openweathermap.org/api">OpenWeather</a></td>
 <td><code>openweather</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">1 h</td>
+<td style="text-align: right;">48 h</td>
+<td style="text-align: right;">8 d</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://www.weatherapi.com/">WeatherAPI</a></td>
 <td><code>weatherapi</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">14 d</td>
+<td style="text-align: right;">14 d</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://www.tomorrow.io/">Tomorrow.io</a></td>
 <td><code>tomorrow_io</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">1 h</td>
+<td style="text-align: right;">5 d</td>
+<td style="text-align: right;">6 d</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://www.visualcrossing.com/">Visual Crossing</a></td>
 <td><code>visual_crossing</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">15 d</td>
+<td style="text-align: right;">15 d</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://www.weatherbit.io/">Weatherbit</a></td>
 <td><code>weatherbit</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">10 d</td>
+<td style="text-align: right;">16 d</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://www.meteosource.com/">Meteosource</a></td>
 <td><code>meteosource</code></td>
-<td>Yes</td>
-<td></td>
+<td>Required</td>
+<td style="text-align: right;">1 h</td>
+<td style="text-align: right;">7 d</td>
+<td style="text-align: right;">30 d</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://pirateweather.net/">Pirate Weather</a></td>
 <td><code>pirate_weather</code></td>
-<td>Yes</td>
-<td>Dark Sky-compatible API</td>
+<td>Required</td>
+<td style="text-align: right;">1 h</td>
+<td style="text-align: right;">48 h</td>
+<td style="text-align: right;">8 d</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://stormglass.io/">Stormglass</a></td>
 <td><code>stormglass</code></td>
-<td>Yes</td>
-<td>Hourly only; multi-model</td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">✅</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">✅</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://developer.weatherunlocked.com/">Weather Unlocked</a></td>
 <td><code>weather_unlocked</code></td>
-<td>Yes</td>
-<td>Requires <code>app_id</code> + <code>app_key</code></td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">✅</td>
+<td style="text-align: right;">✅</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 <tr>
 <td><a href="https://developers.google.com/maps/documentation/weather">Google Weather</a></td>
 <td><code>google_weather</code></td>
-<td>Yes</td>
-<td>Google Maps Platform Weather API</td>
+<td>Required</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">10 d</td>
+<td style="text-align: right;">10 d</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>Global</td>
 </tr>
 </tbody>
 </table>
+<p>The minutely, hourly, and daily columns give each provider's <strong>maximum forecast
+horizon</strong>. <code>✅</code> means the granularity is supported but the plugin declares no
+horizon bound, and <code>—</code> means it is not supported at all. <strong>Multi-model</strong>
+providers return several independent forecasts per request — Open-Meteo exposes
+named numerical weather models (<code>best_match</code>, <code>ecmwf_ifs025</code>, …) and Stormglass
+returns multiple upstream sources — which is what makes them useful for
+ensembles.</p>
+<p>MET Norway and NWS additionally require a <code>user_agent</code> identifying your
+application; Weather Unlocked uses an <code>app_id</code> + <code>app_key</code> pair rather than a
+single key. Pirate Weather's hourly horizon extends to 168 h when
+<code>extend_hourly = true</code>.</p>
 <h2 id="configuration-reference">Configuration reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
 <p>Each provider accepts a typed config dict. Required fields are marked in
 <strong>bold</strong>. Any string value may be an <a href="../configuration/#environment-variable-placeholders">environment variable
