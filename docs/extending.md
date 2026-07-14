@@ -3,7 +3,7 @@
 This library deliberately stops at *collecting and normalizing* forecasts.
 Higher-level products — consensus/ensemble forecasts, forecast verification
 and provider accuracy scoring — are meant to live in separate packages built
-on three extension points.
+on the extension points below.
 
 ## 1. Response hooks
 

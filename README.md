@@ -23,6 +23,7 @@ Requires **Python 3.13 or newer**.
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
 - **CLI** — loads a TOML config, queries providers, prints a table or JSON, and optionally persists normalized output to SQLite
+- **Replayable raw archives** — SQLite runs store network responses in a unique gzipped JSONL file per invocation
 - **Extensible** — response hooks and a documented SQLite feature view for downstream ensemble/verification projects
 
 ## Supported Providers
@@ -188,7 +189,8 @@ discriminated by `status` — pattern-match on them to read forecasts and typed
 error codes. Pass the location's IANA `timezone` when requesting daily data or
 provider-local wall times. If it is omitted, plugins that need it perform an
 uncached Open-Meteo lookup; the CLI supplies and persistently caches this value
-automatically when SQLite output is enabled. See [Getting
+automatically when SQLite output is enabled. CLI cache entries retain six
+coordinate decimals and are refreshed after 30 days. See [Getting
 Started](https://hbmartin.github.io/omni-weather-forecast-apis/getting-started/)
 and the [Normalized
 Schema](https://hbmartin.github.io/omni-weather-forecast-apis/schema/).

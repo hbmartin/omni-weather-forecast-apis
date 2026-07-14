@@ -1,11 +1,14 @@
 """Tests for Meteosource provider parsing."""
 
+from datetime import UTC, datetime
+
 import httpx2
 import pytest
 
 from omni_weather_forecast_apis.plugins.meteosource import (
     MeteosourceConfig,
     _MeteosourceInstance,
+    condition_from_icon_num,
 )
 from omni_weather_forecast_apis.types import (
     Granularity,
@@ -13,6 +16,10 @@ from omni_weather_forecast_apis.types import (
     PluginFetchSuccess,
     WeatherCondition,
 )
+
+
+def test_icon_15_maps_to_light_snow() -> None:
+    assert condition_from_icon_num(15) is WeatherCondition.LIGHT_SNOW
 
 
 @pytest.mark.asyncio
@@ -167,3 +174,70 @@ async def test_fetch_parses_section_data_and_nested_daily_rows() -> None:
     assert forecast.daily[0].rain_sum == 7.0
     assert forecast.daily[0].cloud_cover_mean == 70.0
     assert forecast.daily[0].pressure_sea_mean == 1015.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_localizes_naive_timestamps_to_requested_timezone() -> None:
+    instance = _MeteosourceInstance(
+        MeteosourceConfig(
+            api_key="test-key",
+            sections=["hourly", "daily", "alerts"],
+        ),
+    )
+    captured_timezone = ""
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        nonlocal captured_timezone
+        captured_timezone = request.url.params["timezone"]
+        return httpx2.Response(
+            200,
+            json={
+                "hourly": {
+                    "data": [
+                        {
+                            "date": "2024-01-01T00:00:00",
+                            "temperature": 10.0,
+                        },
+                    ],
+                },
+                "daily": {
+                    "data": [
+                        {
+                            "day": "2024-01-01",
+                            "astro": {
+                                "sun": {"rise": "2024-01-01T07:00:00"},
+                            },
+                        },
+                    ],
+                },
+                "alerts": {
+                    "data": [
+                        {
+                            "event": "Wind Advisory",
+                            "start": "2024-01-01T06:00:00",
+                        },
+                    ],
+                },
+            },
+        )
+
+    async with httpx2.AsyncClient(
+        transport=httpx2.MockTransport(handler),
+    ) as client:
+        result = await instance.fetch_forecast(
+            PluginFetchParams(
+                latitude=34.0,
+                longitude=-117.0,
+                granularity=[Granularity.HOURLY, Granularity.DAILY],
+                timezone="America/Los_Angeles",
+            ),
+            client,
+        )
+
+    assert isinstance(result, PluginFetchSuccess)
+    forecast = result.forecasts[0]
+    assert captured_timezone == "America/Los_Angeles"
+    assert forecast.timezone == "America/Los_Angeles"
+    assert forecast.hourly[0].timestamp == datetime(2024, 1, 1, 8, tzinfo=UTC)
+    assert forecast.daily[0].sunrise == datetime(2024, 1, 1, 15, tzinfo=UTC)
+    assert forecast.alerts[0].start == datetime(2024, 1, 1, 14, tzinfo=UTC)

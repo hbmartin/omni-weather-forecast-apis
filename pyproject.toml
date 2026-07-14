@@ -1,6 +1,6 @@
 [project]
 name = "omni-weather-forecast-apis"
-version = "0.3.0"
+version = "0.3.1"
 description = "Universal weather forecast aggregation library with a typed normalized schema."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -38,6 +38,7 @@ keywords = [
 dependencies = [
     "httpx2>=2.5.0",
     "pydantic>=2.12.5",
+    "tzdata>=2025.2; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -147,4 +148,6 @@ opentelemetry-api = "opentelemetry"
 
 [tool.deptry.per_rule_ignores]
 # CLI extras are loaded dynamically so the core library works without them.
-DEP002 = ["loguru", "platformdirs", "rich", "tomli-w"]
+# CLI extras are imported dynamically; tzdata is consumed indirectly by
+# zoneinfo on platforms without a system IANA database.
+DEP002 = ["loguru", "platformdirs", "rich", "tomli-w", "tzdata"]

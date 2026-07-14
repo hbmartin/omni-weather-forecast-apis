@@ -61,11 +61,14 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
         self._lock = asyncio.Lock()
         self._file: BinaryIO | None = None
         self._recording_failed = False
+        self._closed = False
 
     async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         response = await self._transport.handle_async_request(request)
-        body = await response.aread()
-        await response.aclose()
+        try:
+            body = await response.aread()
+        finally:
+            await response.aclose()
         await self._record(request, response.status_code, body)
         return httpx2.Response(
             status_code=response.status_code,
@@ -81,8 +84,6 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
         status_code: int,
         body: bytes,
     ) -> None:
-        if self._recording_failed:
-            return
         try:
             line = json.dumps(
                 {
@@ -95,14 +96,28 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
                 separators=(",", ":"),
             )
             member = gzip.compress(f"{line}\n".encode())
-            async with self._lock:
-                await asyncio.to_thread(self._append, member)
         except (Exception,):  # noqa: B013
-            self._recording_failed = True
-            logger.exception(
-                "Raw archive write failed; disabling archiving to %s",
-                self._archive_path,
-            )
+            async with self._lock:
+                if not self._closed:
+                    self._disable_recording_after_failure()
+            return
+
+        async with self._lock:
+            if self._closed or self._recording_failed:
+                return
+            try:
+                await asyncio.to_thread(self._append, member)
+            except (Exception,):  # noqa: B013
+                self._disable_recording_after_failure()
+
+    def _disable_recording_after_failure(self) -> None:
+        if self._recording_failed:
+            return
+        self._recording_failed = True
+        logger.exception(
+            "Raw archive write failed; disabling archiving to %s",
+            self._archive_path,
+        )
 
     def _append(self, member: bytes) -> None:
         if self._file is None:
@@ -113,9 +128,11 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         try:
-            if self._file is not None:
-                self._file.close()
-                self._file = None
+            async with self._lock:
+                self._closed = True
+                if self._file is not None:
+                    self._file.close()
+                    self._file = None
         finally:
             await self._transport.aclose()
 

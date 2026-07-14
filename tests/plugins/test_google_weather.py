@@ -138,6 +138,7 @@ async def test_fetch_hourly_normalizes_units_and_conditions() -> None:
         )
 
     assert isinstance(result, PluginFetchSuccess)
+    assert result.forecasts[0].timezone == "America/Los_Angeles"
     point = result.forecasts[0].hourly[0]
     assert point.temperature == 25.9
     assert point.apparent_temperature == 24.9

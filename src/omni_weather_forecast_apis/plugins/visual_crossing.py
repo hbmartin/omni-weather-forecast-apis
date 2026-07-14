@@ -27,6 +27,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import zoneinfo_from_name
 
 if TYPE_CHECKING:
     import httpx2
@@ -181,6 +182,9 @@ class _VisualCrossingInstance(BasePluginInstance[VisualCrossingConfig]):
         if isinstance(raw, PluginFetchError):
             return raw
 
+        provider_timezone = zoneinfo_from_name(raw.get("timezone"))
+        source_timezone = provider_timezone or zoneinfo_from_name(params.timezone)
+
         days = [entry for entry in raw.get("days", []) if isinstance(entry, Mapping)]
         hourly = [
             _parse_hour(hour, day)
@@ -213,6 +217,9 @@ class _VisualCrossingInstance(BasePluginInstance[VisualCrossingConfig]):
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=(
+                        source_timezone.key if source_timezone is not None else None
+                    ),
                     hourly=hourly,
                     daily=daily,
                     alerts=alerts,

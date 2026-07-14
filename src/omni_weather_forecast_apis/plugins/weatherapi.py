@@ -15,6 +15,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_daily_point,
     build_hourly_point,
     build_source_forecast,
+    first_present,
     probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
@@ -27,6 +28,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import zoneinfo_from_name
 
 if TYPE_CHECKING:
     import httpx2
@@ -70,6 +72,29 @@ def _parse_condition(entry: Mapping[str, Any]) -> tuple[str | None, int | str | 
     )
 
 
+def _rain_amount(entry: Mapping[str, Any], amount_key: str) -> float | None:
+    """Return generic precipitation only when WeatherAPI identifies rain alone."""
+
+    amount = as_float(entry.get(amount_key))
+    if amount is None:
+        return None
+    rain_flag = as_float(
+        first_present(entry, "will_it_rain", "daily_will_it_rain"),
+    )
+    snow_flag = as_float(
+        first_present(entry, "will_it_snow", "daily_will_it_snow"),
+    )
+    if rain_flag is not None or snow_flag is not None:
+        return amount if bool(rain_flag) and not bool(snow_flag) else None
+    rain_chance = as_float(
+        first_present(entry, "chance_of_rain", "daily_chance_of_rain"),
+    )
+    snow_chance = as_float(
+        first_present(entry, "chance_of_snow", "daily_chance_of_snow"),
+    )
+    return amount if bool(rain_chance) and not bool(snow_chance) else None
+
+
 def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
     text, code = _parse_condition(entry)
     return build_hourly_point(
@@ -94,7 +119,7 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
         precipitation_probability=probability_from_percent_value(
             _max_chance(entry.get("chance_of_rain"), entry.get("chance_of_snow")),
         ),
-        rain=as_float(entry.get("precip_mm")),
+        rain=_rain_amount(entry, "precip_mm"),
         cloud_cover=as_float(entry.get("cloud")),
         visibility=as_float(entry.get("vis_km")),
         uv_index=as_float(entry.get("uv")),
@@ -128,7 +153,7 @@ def _parse_forecast_day(entry: Mapping[str, Any]) -> DailyDataPoint:
                 day.get("daily_chance_of_snow"),
             ),
         ),
-        rain_sum=as_float(day.get("totalprecip_mm")),
+        rain_sum=_rain_amount(day, "totalprecip_mm"),
         uv_index_max=as_float(day.get("uv")),
         # avgvis_km is a daily average, not a minimum; no min is available.
         humidity_mean=as_float(day.get("avghumidity")),
@@ -166,6 +191,14 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
         if isinstance(raw, PluginFetchError):
             return raw
 
+        location = raw.get("location")
+        provider_timezone = (
+            zoneinfo_from_name(location.get("tz_id"))
+            if isinstance(location, Mapping)
+            else None
+        )
+        source_timezone = provider_timezone or zoneinfo_from_name(params.timezone)
+
         forecast = raw.get("forecast")
         forecast_days = (
             forecast.get("forecastday", []) if isinstance(forecast, Mapping) else []
@@ -202,6 +235,9 @@ class _WeatherAPIInstance(BasePluginInstance[WeatherAPIConfig]):
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=(
+                        source_timezone.key if source_timezone is not None else None
+                    ),
                     hourly=hourly,
                     daily=daily,
                     alerts=alerts,

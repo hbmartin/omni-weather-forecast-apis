@@ -221,6 +221,7 @@ class TestVisualCrossingInstance:
         assert len(result.forecasts) == 1
         forecast = result.forecasts[0]
         assert forecast.source.provider == ProviderId.VISUAL_CROSSING
+        assert forecast.timezone == "America/Los_Angeles"
 
         assert len(forecast.hourly) == 2
         night = forecast.hourly[0]

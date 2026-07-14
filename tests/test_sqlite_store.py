@@ -4,6 +4,8 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 
+import pytest
+
 from omni_weather_forecast_apis.sqlite_store import (
     _create_schema,
     save_forecast_response,
@@ -32,6 +34,7 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
             longitude=-118.0,
             granularity=[],
             language="en",
+            timezone="America/Los_Angeles",
         ),
         results=[
             ProviderSuccess(
@@ -96,6 +99,12 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
         source_row = connection.execute(
             "SELECT timezone FROM source_forecasts LIMIT 1",
         ).fetchone()
+        run_row = connection.execute(
+            "SELECT request_timezone, normalization_revision FROM forecast_runs",
+        ).fetchone()
+        schema_row = connection.execute(
+            "SELECT schema_version FROM schema_metadata WHERE id = 1",
+        ).fetchone()
     finally:
         connection.close()
 
@@ -107,6 +116,8 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
     assert hp_row is not None
     assert hp_row[0] == (point_ts - fetched_ts) / 3600.0
     assert source_row == ("America/Los_Angeles",)
+    assert run_row == ("America/Los_Angeles", 2)
+    assert schema_row == (2,)
 
 
 def test_save_forecast_response_records_archive_path_and_version(tmp_path) -> None:
@@ -361,9 +372,9 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'index'",
             )
         }
-        view_columns = {
+        view_columns = [
             row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
-        }
+        ]
         source_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(source_forecasts)")
         }
@@ -373,7 +384,8 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
 
     assert {"fetched_at_unix", "run_cycle"} <= provider_columns
     assert {"horizon_hours", "snowfall_depth"} <= hourly_columns
-    assert {"run_id", "snowfall_depth", "timezone"} <= view_columns
+    assert {"run_id", "snowfall_depth", "timezone"} <= set(view_columns)
+    assert view_columns[-1] == "timezone"
     assert "timezone" in source_columns
     assert "legacy_column" not in view_columns
     assert {
@@ -381,6 +393,60 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
         "idx_hourly_points_horizon",
         "idx_hourly_points_horizon_timestamp",
     } <= indexes
+
+
+def test_create_schema_marks_legacy_runs_with_revision_one(tmp_path) -> None:
+    connection = sqlite3.connect(tmp_path / "legacy.sqlite")
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE forecast_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                granularity TEXT NOT NULL,
+                language TEXT NOT NULL,
+                completed_at TEXT NOT NULL,
+                total_latency_ms REAL NOT NULL,
+                total_results INTEGER NOT NULL,
+                succeeded INTEGER NOT NULL,
+                failed INTEGER NOT NULL
+            );
+            INSERT INTO forecast_runs (
+                latitude, longitude, granularity, language, completed_at,
+                total_latency_ms, total_results, succeeded, failed
+            ) VALUES (34.0, -118.0, '[]', 'en', '2026-01-01T00:00:00Z', 1, 0, 0, 0);
+            """,
+        )
+
+        _create_schema(connection)
+
+        row = connection.execute(
+            "SELECT request_timezone, normalization_revision FROM forecast_runs",
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert row == (None, 1)
+
+
+def test_create_schema_rejects_newer_database_version(tmp_path) -> None:
+    connection = sqlite3.connect(tmp_path / "future.sqlite")
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE schema_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                schema_version INTEGER NOT NULL
+            );
+            INSERT INTO schema_metadata (id, schema_version) VALUES (1, 999);
+            """,
+        )
+
+        with pytest.raises(RuntimeError, match="newer than supported"):
+            _create_schema(connection)
+    finally:
+        connection.close()
 
 
 def test_create_schema_preserves_current_stacking_features_view(tmp_path) -> None:

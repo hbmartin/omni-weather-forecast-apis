@@ -1,5 +1,7 @@
 """Tests for Open-Meteo plugin using httpx2 mocks."""
 
+from datetime import UTC, datetime
+
 import httpx2
 import pytest
 
@@ -91,6 +93,51 @@ class TestOpenMeteoInstance:
         assert len(result.forecasts[0].hourly) == 2
         assert result.forecasts[0].hourly[0].temperature == 20.0
         assert len(result.forecasts[0].daily) == 1
+
+    @pytest.mark.asyncio
+    async def test_fetch_uses_and_localizes_requested_timezone(
+        self,
+        instance: OpenMeteoInstance,
+    ) -> None:
+        captured_timezone = ""
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            nonlocal captured_timezone
+            captured_timezone = request.url.params["timezone"]
+            return httpx2.Response(
+                200,
+                json={
+                    "timezone": "America/Los_Angeles",
+                    "hourly": {
+                        "time": ["2024-01-01T00:00"],
+                        "temperature_2m": [20.0],
+                    },
+                    "daily": {
+                        "time": ["2024-01-01"],
+                        "sunrise": ["2024-01-01T07:00"],
+                    },
+                },
+            )
+
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(handler),
+        ) as client:
+            result = await instance.fetch_forecast(
+                PluginFetchParams(
+                    latitude=34.0,
+                    longitude=-117.0,
+                    granularity=[Granularity.HOURLY, Granularity.DAILY],
+                    timezone="America/Los_Angeles",
+                ),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        forecast = result.forecasts[0]
+        assert captured_timezone == "America/Los_Angeles"
+        assert forecast.timezone == "America/Los_Angeles"
+        assert forecast.hourly[0].timestamp == datetime(2024, 1, 1, 8, tzinfo=UTC)
+        assert forecast.daily[0].sunrise == datetime(2024, 1, 1, 15, tzinfo=UTC)
 
     @pytest.mark.asyncio
     async def test_fetch_multi_model(self) -> None:

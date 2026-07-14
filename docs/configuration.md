@@ -125,15 +125,26 @@ When persisting to SQLite, every network response is additionally archived as
 gzipped JSONL — one line per response, carrying the timestamp, method, URL,
 status, and body — into a `raw/` directory next to the database. Each
 invocation writes one file, linked from `forecast_runs.raw_archive_path` (see
-[Database Design](database.md#forecast_runs)). The archive makes historical
-runs reparseable if a parser bug is ever found, which is how the corrections
-in [Data corrections](data-corrections.md) were applied to already-collected
-data.
+[Database Design](database.md#forecast_runs)). The archive preserves response
+bodies for future parser investigation and replay. It only covers requests
+recorded after archiving is enabled, so it cannot reconstruct older
+normalized-only runs.
 
 URLs are stored verbatim, **including API keys in query strings**, so keep
 archives out of version control — this repository ignores `raw/`. Files
 accumulate until deleted manually. Disable with `raw_archive_enabled = false`
 here, or `--no-raw-archive` for a single run.
+
+### Location-timezone cache
+
+When the CLI persists forecasts to SQLite, it keeps coordinate-to-IANA-zone
+resolutions in a separate companion database (`forecasts.timezones.sqlite`).
+Keys retain six decimal places. Each entry records its source, resolver
+version, and resolution timestamp; entries older than 30 days or from an older
+resolver version are refreshed. Lookup misses use the aggregation client's
+configured connection pool, HTTP cache, metrics hooks, and raw-response
+recorder. Cache failures produce warnings and do not prevent providers that
+can determine their own timezone from running.
 
 ## Provider registrations — `[[providers]]`
 

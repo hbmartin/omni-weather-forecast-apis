@@ -11,6 +11,7 @@ import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TypeVar, cast
+from uuid import uuid4
 
 from omni_weather_forecast_apis._cli_discovery import print_providers, run_doctor
 from omni_weather_forecast_apis._cli_paths import (
@@ -300,8 +301,9 @@ def _resolve_optional(cli_value: T | None, config_value: T) -> T:
 def _default_raw_archive_path(sqlite_path: Path) -> Path:
     """One archive file per CLI invocation, named by UTC start time."""
 
-    stamp = utc_now().strftime("%Y%m%dT%H%M%SZ")
-    return sqlite_path.parent / "raw" / f"{stamp}.jsonl.gz"
+    stamp = utc_now().strftime("%Y%m%dT%H%M%S.%fZ")
+    unique_suffix = uuid4().hex[:12]
+    return sqlite_path.parent / "raw" / f"{stamp}-{unique_suffix}.jsonl.gz"
 
 
 def _selected_provider_ids(
@@ -458,32 +460,6 @@ async def _async_main(parsed: argparse.Namespace) -> int:
     providers = cast(list[ProviderId], parsed.provider) or None
     language = _resolve_optional(cast(str | None, parsed.language), config.language)
     include_raw = cast(bool, parsed.include_raw) or config.include_raw
-    timezone: str | None = None
-    if sqlite_path is not None:
-        timezone_resolution = await resolve_cli_timezone(
-            sqlite_path,
-            latitude,
-            longitude,
-            needs_lookup=_cli_needs_timezone_lookup(
-                _selected_provider_ids(config, providers),
-                granularity,
-            ),
-        )
-        timezone = timezone_resolution.timezone
-        _print_timezone_warnings(timezone_resolution.warnings)
-    request = ForecastRequest(
-        latitude=latitude,
-        longitude=longitude,
-        granularity=granularity,
-        language=language,
-        timezone=timezone,
-        include_raw=include_raw,
-        providers=providers,
-        timeout_ms=_resolve_optional(
-            cast(float | None, parsed.timeout_ms),
-            config.default_timeout_ms,
-        ),
-    )
 
     log_events: list[ProviderLogEvent] = []
     log_hooks: list[LogHook] = []
@@ -518,6 +494,33 @@ async def _async_main(parsed: argparse.Namespace) -> int:
         log_hooks=log_hooks,
         quota_tracker=quota_tracker,
     ) as client:
+        timezone: str | None = None
+        if sqlite_path is not None:
+            timezone_resolution = await resolve_cli_timezone(
+                sqlite_path,
+                latitude,
+                longitude,
+                needs_lookup=_cli_needs_timezone_lookup(
+                    _selected_provider_ids(config, providers),
+                    granularity,
+                ),
+                client=client,
+            )
+            timezone = timezone_resolution.timezone
+            _print_timezone_warnings(timezone_resolution.warnings)
+        request = ForecastRequest(
+            latitude=latitude,
+            longitude=longitude,
+            granularity=granularity,
+            language=language,
+            timezone=timezone,
+            include_raw=include_raw,
+            providers=providers,
+            timeout_ms=_resolve_optional(
+                cast(float | None, parsed.timeout_ms),
+                config.default_timeout_ms,
+            ),
+        )
         response = await client.forecast(request)
 
     run_id: int | None = None

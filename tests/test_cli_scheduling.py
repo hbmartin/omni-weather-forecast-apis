@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import plistlib
 import stat
 import subprocess
@@ -94,7 +93,13 @@ def test_cron_install_replaces_managed_block_and_inspects(
     crontab["text"] = "MAILTO=ops@example.org\n"
     missing = inspect_daily_schedule(config_path)
     assert missing.installed is False
-    assert "missing or inactive" in missing.detail
+    assert "missing, inactive, or stale" in missing.detail
+
+    begin, end = scheduling._cron_markers(
+        build_schedule_spec(config_path, time(hour=7, minute=45), kind="cron"),
+    )
+    crontab["text"] = f"{begin}\n{end}\n"
+    assert inspect_daily_schedule(config_path).installed is False
 
 
 def test_cron_install_handles_empty_crontab_and_read_failure(
@@ -176,14 +181,29 @@ def test_task_scheduler_install_and_inspection(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(scheduling, "scheduler_kind", lambda: "task-scheduler")
     commands = []
 
+    config_path = tmp_path / "config.toml"
+    spec = build_schedule_spec(
+        config_path,
+        time(hour=9, minute=30),
+        kind="task-scheduler",
+    )
+
     def fake_run(command, *, input_text=None, check=True):
         del input_text, check
         commands.append(command)
+        if command[0:2] == ("schtasks", "/Query"):
+            xml = (
+                "<Task><Triggers><CalendarTrigger>"
+                "<StartBoundary>2026-07-13T09:30:00</StartBoundary>"
+                "</CalendarTrigger></Triggers><Actions><Exec>"
+                f"<Command>{spec.command[0]}</Command>"
+                f"<Arguments>{subprocess.list2cmdline(list(spec.command[1:]))}</Arguments>"
+                "</Exec></Actions></Task>"
+            )
+            return _completed(command, stdout=xml)
         return _completed(command)
 
     monkeypatch.setattr(scheduling, "_run_command", fake_run)
-    config_path = tmp_path / "config.toml"
-
     installed = install_daily_schedule(config_path, time(hour=9, minute=30))
     inspection = inspect_daily_schedule(config_path)
 
@@ -212,19 +232,8 @@ def test_schedule_inspection_handles_missing_invalid_and_foreign_metadata(
     assert invalid.installed is False
     assert "metadata is invalid" in invalid.detail
 
-    manifest.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "kind": "cron",
-                "key": scheduling._schedule_key(config_path.resolve()),
-                "config_path": str(config_path.resolve()),
-                "hour": 6,
-                "minute": 0,
-                "artifact": "unused",
-            },
-        ),
-    )
+    spec = build_schedule_spec(config_path, time(hour=6), kind="cron")
+    scheduling._write_manifest(spec, spec.key)
     monkeypatch.setattr(scheduling, "scheduler_kind", lambda: "launchd")
     foreign = inspect_daily_schedule(config_path)
     assert foreign.installed is False
@@ -270,3 +279,62 @@ def test_run_command_reports_missing_and_failed_executables(monkeypatch) -> None
     )
     with pytest.raises(ScheduleError, match="failed"):
         scheduling._run_command(("scheduler", "--install"))
+
+    monkeypatch.setattr(
+        scheduling.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(args[0], kwargs["timeout"]),
+        ),
+    )
+    with pytest.raises(ScheduleError, match="exceeded 15 seconds"):
+        scheduling._run_command(("scheduler", "--query"))
+
+
+def test_install_writes_manifest_before_touching_scheduler(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _redirect_platform_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(scheduling, "scheduler_kind", lambda: "cron")
+    installed = False
+
+    def fail_manifest(*_args, **_kwargs):
+        raise OSError("read only")
+
+    def install_backend(_spec):
+        nonlocal installed
+        installed = True
+        return "unexpected"
+
+    monkeypatch.setattr(scheduling, "_write_manifest", fail_manifest)
+    monkeypatch.setattr(scheduling, "_install_cron", install_backend)
+
+    with pytest.raises(OSError, match="read only"):
+        install_daily_schedule(tmp_path / "config.toml", time(hour=6))
+
+    assert installed is False
+
+
+def test_failed_backend_install_restores_previous_manifest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _redirect_platform_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(scheduling, "scheduler_kind", lambda: "cron")
+    config_path = tmp_path / "config.toml"
+    old_spec = build_schedule_spec(config_path, time(hour=5), kind="cron")
+    scheduling._write_manifest(old_spec, old_spec.key)
+    manifest_path = scheduling._manifest_path(config_path)
+    previous = manifest_path.read_bytes()
+
+    monkeypatch.setattr(
+        scheduling,
+        "_install_cron",
+        lambda _spec: (_ for _ in ()).throw(ScheduleError("install failed")),
+    )
+
+    with pytest.raises(ScheduleError, match="install failed"):
+        install_daily_schedule(config_path, time(hour=6))
+
+    assert manifest_path.read_bytes() == previous

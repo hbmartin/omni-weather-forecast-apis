@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +36,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
-from omni_weather_forecast_apis.utils import parse_datetime
+from omni_weather_forecast_apis.utils import parse_datetime, zoneinfo_from_name
 
 
 class NWSGridOverride(ProviderConfigModel):
@@ -61,6 +62,13 @@ _CAPABILITIES = PluginCapabilities(
     alerts=True,
     requires_api_key=False,
 )
+
+
+@dataclass(frozen=True)
+class _ForecastEndpoints:
+    forecast_url: str
+    hourly_url: str
+    timezone: str | None
 
 
 def _nws_headers(user_agent: str) -> dict[str, str]:
@@ -187,6 +195,56 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
     def __init__(self, config: NWSConfig) -> None:
         super().__init__(ProviderId.NWS, config, _CAPABILITIES)
 
+    async def _resolve_endpoints(
+        self,
+        params: PluginFetchParams,
+        client: httpx2.AsyncClient,
+        headers: Mapping[str, str],
+    ) -> _ForecastEndpoints | PluginFetchError:
+        request_timezone = zoneinfo_from_name(params.timezone)
+        if (override := self.config.grid_override) is not None:
+            forecast_url = (
+                f"{_BASE_URL}/gridpoints/"
+                f"{override.office}/{override.grid_x},{override.grid_y}/forecast"
+            )
+            return _ForecastEndpoints(
+                forecast_url=forecast_url,
+                hourly_url=f"{forecast_url}/hourly",
+                timezone=(
+                    request_timezone.key if request_timezone is not None else None
+                ),
+            )
+
+        points_raw = await self._get_json_dict(
+            client,
+            f"{_BASE_URL}/points/{params.latitude},{params.longitude}",
+            headers=headers,
+            payload_name="NWS points",
+        )
+        if isinstance(points_raw, PluginFetchError):
+            return points_raw
+        properties = points_raw.get("properties")
+        if not isinstance(properties, Mapping):
+            return self._error(
+                ErrorCode.PARSE,
+                "NWS points payload missing properties",
+                raw=points_raw,
+            )
+        forecast_url = properties.get("forecast")
+        hourly_url = properties.get("forecastHourly")
+        if not isinstance(forecast_url, str) or not isinstance(hourly_url, str):
+            return self._error(
+                ErrorCode.NOT_AVAILABLE,
+                "NWS forecast URLs could not be resolved",
+            )
+        provider_timezone = zoneinfo_from_name(properties.get("timeZone"))
+        location_timezone = provider_timezone or request_timezone
+        return _ForecastEndpoints(
+            forecast_url=forecast_url,
+            hourly_url=hourly_url,
+            timezone=(location_timezone.key if location_timezone is not None else None),
+        )
+
     async def fetch_forecast(
         self,
         params: PluginFetchParams,
@@ -195,38 +253,9 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
         """Fetch and normalize NWS forecast data."""
 
         headers = _nws_headers(self.config.user_agent)
-        if self.config.grid_override is None:
-            points_url = f"{_BASE_URL}/points/{params.latitude},{params.longitude}"
-            points_raw = await self._get_json_dict(
-                client,
-                points_url,
-                headers=headers,
-                payload_name="NWS points",
-            )
-            if isinstance(points_raw, PluginFetchError):
-                return points_raw
-            properties = points_raw.get("properties")
-            if not isinstance(properties, Mapping):
-                return self._error(
-                    ErrorCode.PARSE,
-                    "NWS points payload missing properties",
-                    raw=points_raw,
-                )
-            forecast_url = properties.get("forecast")
-            hourly_url = properties.get("forecastHourly")
-        else:
-            override = self.config.grid_override
-            forecast_url = (
-                f"{_BASE_URL}/gridpoints/"
-                f"{override.office}/{override.grid_x},{override.grid_y}/forecast"
-            )
-            hourly_url = f"{forecast_url}/hourly"
-
-        if not isinstance(forecast_url, str) or not isinstance(hourly_url, str):
-            return self._error(
-                ErrorCode.NOT_AVAILABLE,
-                "NWS forecast URLs could not be resolved",
-            )
+        endpoints = await self._resolve_endpoints(params, client, headers)
+        if isinstance(endpoints, PluginFetchError):
+            return endpoints
 
         raw_payload: dict[str, Any] = {}
         hourly: list[Any] = []
@@ -234,7 +263,7 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
 
         hourly_raw = await self._get_json_dict(
             client,
-            hourly_url,
+            endpoints.hourly_url,
             headers=headers,
             payload_name="NWS hourly",
         )
@@ -251,7 +280,7 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
 
         daily_raw = await self._get_json_dict(
             client,
-            forecast_url,
+            endpoints.forecast_url,
             headers=headers,
             payload_name="NWS daily",
         )
@@ -301,6 +330,7 @@ class _NWSInstance(BasePluginInstance[NWSConfig]):
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=endpoints.timezone,
                     hourly=hourly,
                     daily=daily,
                     alerts=alerts,

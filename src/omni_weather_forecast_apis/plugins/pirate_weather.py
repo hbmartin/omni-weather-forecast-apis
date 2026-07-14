@@ -84,6 +84,12 @@ def _liquid_precip_mm(row: dict[str, Any]) -> float | None:
     return None
 
 
+def _rain_mm(row: dict[str, Any]) -> float | None:
+    """Return rain-specific accumulation only when the provider labels rain."""
+
+    return _liquid_precip_mm(row) if row.get("precipType") == "rain" else None
+
+
 def _daylight_duration(entry: dict[str, Any]) -> float | None:
     sunrise = parse_datetime(entry.get("sunriseTime"))
     sunset = parse_datetime(entry.get("sunsetTime"))
@@ -239,7 +245,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     precipitation_probability=probability_from_fraction(
                         row.get("precipProbability"),
                     ),
-                    rain=liquid_mm,
+                    rain=_rain_mm(row),
                     snowfall_depth=safe_convert(
                         as_float(row.get("snowAccumulation")),
                         mm_from_cm,
@@ -295,7 +301,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     precipitation_probability_max=probability_from_fraction(
                         row.get("precipProbability"),
                     ),
-                    rain_sum=_liquid_precip_mm(row),
+                    rain_sum=_rain_mm(row),
                     snowfall_depth_sum=safe_convert(
                         as_float(row.get("snowAccumulation")),
                         mm_from_cm,

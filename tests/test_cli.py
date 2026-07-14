@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -189,6 +190,27 @@ def test_sqlite_enables_raw_archive_with_run_scoped_path(
     assert archive_path.endswith(".jsonl.gz")
 
 
+def test_default_raw_archive_path_is_unique_for_same_start_time(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    started_at = datetime(2024, 1, 2, 3, 4, 5, 678901, tzinfo=UTC)
+    suffixes = iter(("a" * 32, "b" * 32))
+    monkeypatch.setattr(cli, "utc_now", lambda: started_at)
+    monkeypatch.setattr(
+        cli,
+        "uuid4",
+        lambda: SimpleNamespace(hex=next(suffixes)),
+    )
+
+    first = cli._default_raw_archive_path(tmp_path / "forecasts.sqlite")
+    second = cli._default_raw_archive_path(tmp_path / "forecasts.sqlite")
+
+    assert first.name == "20240102T030405.678901Z-aaaaaaaaaaaa.jsonl.gz"
+    assert second.name == "20240102T030405.678901Z-bbbbbbbbbbbb.jsonl.gz"
+    assert first != second
+
+
 def test_no_raw_archive_flag_disables_archiving(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "forecasts.sqlite"
     config = _run_cli_capturing_config(
@@ -240,12 +262,14 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         longitude,
         *,
         needs_lookup,
+        client,
     ):
         resolution_call.update(
             database=database,
             latitude=latitude,
             longitude=longitude,
             needs_lookup=needs_lookup,
+            client=client,
         )
         return TimezoneResolution("America/Los_Angeles")
 
@@ -273,6 +297,7 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         "latitude": 34.0,
         "longitude": -118.0,
         "needs_lookup": True,
+        "client": client,
     }
     assert isinstance(client.request, ForecastRequest)
     assert client.request.timezone == "America/Los_Angeles"
