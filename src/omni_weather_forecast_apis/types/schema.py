@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
+from omni_weather_forecast_apis.utils.timezones import validate_timezone_name
 
 
 def _normalize_utc_datetime(value: datetime) -> datetime:
@@ -23,6 +24,7 @@ def _utc_now() -> datetime:
 
 
 UTCDateTime = Annotated[datetime, AfterValidator(_normalize_utc_datetime)]
+IANATimezoneName = Annotated[str, AfterValidator(validate_timezone_name)]
 
 
 class ProviderId(str, Enum):
@@ -280,6 +282,10 @@ class SourceForecast(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     source: ModelSource = Field(description="Provider/model identity")
+    timezone: IANATimezoneName | None = Field(
+        None,
+        description="IANA timezone used to normalize this source",
+    )
     minutely: list[MinutelyDataPoint] = Field(default_factory=list)
     hourly: list[WeatherDataPoint] = Field(default_factory=list)
     daily: list[DailyDataPoint] = Field(default_factory=list)
@@ -347,6 +353,7 @@ class ForecastRequest(BaseModel):
         default_factory=lambda: [Granularity.HOURLY, Granularity.DAILY],
     )
     language: str = Field(default="en", min_length=1)
+    timezone: IANATimezoneName | None = None
     include_raw: bool = False
     timeout_ms: float | None = Field(default=None, gt=0)
     providers: list[ProviderId] | None = None
@@ -366,6 +373,7 @@ class ForecastResponseRequest(BaseModel):
     longitude: float
     granularity: list[Granularity]
     language: str
+    timezone: IANATimezoneName | None = None
 
 
 class ForecastResponse(BaseModel):

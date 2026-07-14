@@ -85,7 +85,8 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             provider_result_id INTEGER NOT NULL REFERENCES provider_results(id) ON DELETE CASCADE,
             provider TEXT NOT NULL,
-            model TEXT NOT NULL
+            model TEXT NOT NULL,
+            timezone TEXT
         );
 
         CREATE TABLE IF NOT EXISTS minutely_points (
@@ -190,6 +191,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
     _ensure_provider_logs_columns(connection)
     _ensure_provider_results_columns(connection)
     _ensure_forecast_runs_columns(connection)
+    _ensure_source_forecasts_columns(connection)
     _ensure_hourly_points_columns(connection)
     _ensure_daily_points_columns(connection)
     _create_indexes_and_views(connection)
@@ -222,7 +224,7 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
     view_columns = {
         row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
     }
-    if {"run_id", "snowfall_depth"} <= view_columns:
+    if {"run_id", "snowfall_depth", "timezone"} <= view_columns:
         return
 
     connection.executescript(
@@ -239,6 +241,7 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
             pr.fetched_at_unix,
             sf.provider,
             sf.model,
+            sf.timezone,
             fr.latitude,
             fr.longitude,
             hp.temperature,
@@ -307,6 +310,16 @@ def _ensure_forecast_runs_columns(connection: sqlite3.Connection) -> None:
     if "app_version" not in columns:
         connection.execute(
             "ALTER TABLE forecast_runs ADD COLUMN app_version TEXT",
+        )
+
+
+def _ensure_source_forecasts_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(source_forecasts)")
+    }
+    if "timezone" not in columns:
+        connection.execute(
+            "ALTER TABLE source_forecasts ADD COLUMN timezone TEXT",
         )
 
 
@@ -439,13 +452,15 @@ def _insert_forecasts(
     for forecast in result.forecasts:
         cursor = connection.execute(
             """
-            INSERT INTO source_forecasts (provider_result_id, provider, model)
-            VALUES (?, ?, ?)
+            INSERT INTO source_forecasts (
+                provider_result_id, provider, model, timezone
+            ) VALUES (?, ?, ?, ?)
             """,
             (
                 provider_result_id,
                 forecast.source.provider.value,
                 forecast.source.model,
+                forecast.timezone,
             ),
         )
         source_forecast_id = _lastrowid(cursor)

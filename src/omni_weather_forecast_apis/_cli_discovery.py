@@ -17,6 +17,7 @@ from omni_weather_forecast_apis._cli_catalog import (
     PROVIDER_CATALOG,
     supports_any,
 )
+from omni_weather_forecast_apis._cli_scheduling import inspect_daily_schedule
 from omni_weather_forecast_apis.client import create_omni_weather
 from omni_weather_forecast_apis.plugins import get_plugin_registry
 from omni_weather_forecast_apis.types import (
@@ -405,6 +406,12 @@ def _check_top_level(state: _DoctorState, raw: Mapping[str, Any]) -> None:
     state.checks.append(DoctorCheck("pass", "Configuration schema", "valid"))
 
 
+def _check_daily_schedule(checks: list[DoctorCheck], path: Path) -> None:
+    inspection = inspect_daily_schedule(path)
+    status: CheckStatus = "pass" if inspection.installed else "warning"
+    checks.append(DoctorCheck(status, "Daily schedule", inspection.detail))
+
+
 def _static_checks(
     path: Path,
     provider_filter: frozenset[ProviderId],
@@ -414,6 +421,7 @@ def _static_checks(
     _check_config_path(state.checks, path)
     if not path.is_file():
         return state
+    _check_daily_schedule(state.checks, path)
     try:
         with path.open("rb") as file_pointer:
             raw = tomllib.load(file_pointer)

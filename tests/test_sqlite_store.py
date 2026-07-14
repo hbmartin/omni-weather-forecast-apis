@@ -42,6 +42,7 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
                             provider=ProviderId.OPEN_METEO,
                             model="best_match",
                         ),
+                        timezone="America/Los_Angeles",
                         hourly=[
                             WeatherDataPoint(
                                 timestamp=datetime(2026, 3, 12, 12, tzinfo=UTC),
@@ -92,6 +93,9 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
         hp_row = connection.execute(
             "SELECT horizon_hours FROM hourly_points LIMIT 1",
         ).fetchone()
+        source_row = connection.execute(
+            "SELECT timezone FROM source_forecasts LIMIT 1",
+        ).fetchone()
     finally:
         connection.close()
 
@@ -102,6 +106,7 @@ def test_save_forecast_response_persists_rows(tmp_path) -> None:
     assert pr_row[1] == "2026-03-12T12:00:00+00:00"
     assert hp_row is not None
     assert hp_row[0] == (point_ts - fetched_ts) / 3600.0
+    assert source_row == ("America/Los_Angeles",)
 
 
 def test_save_forecast_response_records_archive_path_and_version(tmp_path) -> None:
@@ -359,13 +364,17 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
         view_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
         }
+        source_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(source_forecasts)")
+        }
         connection.execute("SELECT * FROM stacking_features LIMIT 0")
     finally:
         connection.close()
 
     assert {"fetched_at_unix", "run_cycle"} <= provider_columns
     assert {"horizon_hours", "snowfall_depth"} <= hourly_columns
-    assert {"run_id", "snowfall_depth"} <= view_columns
+    assert {"run_id", "snowfall_depth", "timezone"} <= view_columns
+    assert "timezone" in source_columns
     assert "legacy_column" not in view_columns
     assert {
         "idx_provider_results_run_cycle",
@@ -411,6 +420,7 @@ def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
                             provider=ProviderId.OPEN_METEO,
                             model="icon_seamless",
                         ),
+                        timezone="Europe/Berlin",
                         hourly=[
                             WeatherDataPoint(
                                 timestamp=datetime(2026, 3, 12, 20, tzinfo=UTC),
@@ -437,7 +447,7 @@ def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
     try:
         row = connection.execute(
             "SELECT run_id, valid_time_unix, horizon_hours, run_cycle, provider, "
-            "model, latitude, longitude, temperature FROM stacking_features",
+            "model, timezone, latitude, longitude, temperature FROM stacking_features",
         ).fetchone()
     finally:
         connection.close()
@@ -452,9 +462,10 @@ def test_stacking_features_view_returns_joined_data(tmp_path) -> None:
     assert row[3] == "2026-03-12T12:00:00+00:00"
     assert row[4] == "open_meteo"
     assert row[5] == "icon_seamless"
-    assert row[6] == 52.5
-    assert row[7] == 13.4
-    assert row[8] == 7.5
+    assert row[6] == "Europe/Berlin"
+    assert row[7] == 52.5
+    assert row[8] == 13.4
+    assert row[9] == 7.5
 
 
 def test_run_cycle_buckets_to_six_hour_boundaries(tmp_path) -> None:

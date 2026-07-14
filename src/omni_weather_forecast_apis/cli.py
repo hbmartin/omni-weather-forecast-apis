@@ -19,6 +19,10 @@ from omni_weather_forecast_apis._cli_paths import (
     init_target_path,
 )
 from omni_weather_forecast_apis._cli_setup import InitDefaults, run_init
+from omni_weather_forecast_apis._cli_timezone_cache import (
+    reconcile_cli_timezone,
+    resolve_cli_timezone,
+)
 from omni_weather_forecast_apis.client import create_omni_weather
 from omni_weather_forecast_apis.quota import SqliteQuotaTracker
 from omni_weather_forecast_apis.sqlite_store import (
@@ -191,6 +195,9 @@ def main(argv: list[str] | None = None) -> int:
     parsed = build_parser().parse_args(argv)
     try:
         return asyncio.run(_dispatch(parsed))
+    except KeyboardInterrupt:
+        print("\nAborted.", file=sys.stderr)
+        return 130
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -295,6 +302,34 @@ def _default_raw_archive_path(sqlite_path: Path) -> Path:
 
     stamp = utc_now().strftime("%Y%m%dT%H%M%SZ")
     return sqlite_path.parent / "raw" / f"{stamp}.jsonl.gz"
+
+
+def _selected_provider_ids(
+    config: OmniWeatherConfig,
+    providers: list[ProviderId] | None,
+) -> set[ProviderId]:
+    enabled = {
+        registration.plugin_id
+        for registration in config.providers
+        if registration.enabled
+    }
+    return enabled if providers is None else enabled & set(providers)
+
+
+def _cli_needs_timezone_lookup(
+    provider_ids: set[ProviderId],
+    granularities: list[Granularity],
+) -> bool:
+    requested = set(granularities)
+    return (
+        ProviderId.WEATHER_UNLOCKED in provider_ids
+        and bool(requested & {Granularity.HOURLY, Granularity.DAILY})
+    ) or (ProviderId.TOMORROW_IO in provider_ids and Granularity.DAILY in requested)
+
+
+def _print_timezone_warnings(warnings: tuple[str, ...]) -> None:
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
 
 
 def _setup_debug_logging(log_path: Path) -> LogHook:
@@ -423,11 +458,25 @@ async def _async_main(parsed: argparse.Namespace) -> int:
     providers = cast(list[ProviderId], parsed.provider) or None
     language = _resolve_optional(cast(str | None, parsed.language), config.language)
     include_raw = cast(bool, parsed.include_raw) or config.include_raw
+    timezone: str | None = None
+    if sqlite_path is not None:
+        timezone_resolution = await resolve_cli_timezone(
+            sqlite_path,
+            latitude,
+            longitude,
+            needs_lookup=_cli_needs_timezone_lookup(
+                _selected_provider_ids(config, providers),
+                granularity,
+            ),
+        )
+        timezone = timezone_resolution.timezone
+        _print_timezone_warnings(timezone_resolution.warnings)
     request = ForecastRequest(
         latitude=latitude,
         longitude=longitude,
         granularity=granularity,
         language=language,
+        timezone=timezone,
         include_raw=include_raw,
         providers=providers,
         timeout_ms=_resolve_optional(
@@ -485,6 +534,14 @@ async def _async_main(parsed: argparse.Namespace) -> int:
             ),
         )
         save_provider_logs(sqlite_path, log_events, run_id=run_id)
+        _print_timezone_warnings(
+            reconcile_cli_timezone(
+                sqlite_path,
+                latitude,
+                longitude,
+                response,
+            ),
+        )
 
     match cast(str, parsed.output_format):
         case "json":
@@ -515,12 +572,13 @@ def _iter_point_rows(response: ForecastResponse) -> Iterator[dict[str, Any]]:
                         "provider": result.provider.value,
                         "model": forecast.source.model,
                         "granularity": granularity,
+                        "timezone": forecast.timezone,
                         **point.model_dump(mode="json"),
                     }
 
 
 def _csv_field_names() -> list[str]:
-    names = ["provider", "model", "granularity"]
+    names = ["provider", "model", "granularity", "timezone"]
     for model_cls in (WeatherDataPoint, DailyDataPoint, MinutelyDataPoint):
         for field_name in model_cls.model_fields:
             if field_name not in names:
@@ -575,6 +633,7 @@ def _print_ndjson(response: ForecastResponse) -> None:
                                     "type": "alert",
                                     "provider": result.provider.value,
                                     "model": forecast.source.model,
+                                    "timezone": forecast.timezone,
                                     **alert.model_dump(mode="json"),
                                 },
                                 separators=(",", ":"),

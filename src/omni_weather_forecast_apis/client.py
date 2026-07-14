@@ -225,6 +225,7 @@ class OmniWeatherClient:
                 longitude=request.longitude,
                 granularity=request.granularity,
                 language=request.language,
+                timezone=request.timezone,
             ),
             results=results,
             summary=ForecastResponseSummary(
@@ -362,6 +363,7 @@ class OmniWeatherClient:
             longitude=request.longitude,
             granularity=supported_granularity,
             language=request.language,
+            timezone=request.timezone,
             include_raw=request.include_raw,
         )
         timeout_ms = _resolve_timeout_ms(

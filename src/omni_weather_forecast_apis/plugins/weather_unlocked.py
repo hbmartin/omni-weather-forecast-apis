@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any, Final
+from zoneinfo import ZoneInfo
 
 import httpx2
 from pydantic import Field
@@ -29,6 +30,7 @@ from omni_weather_forecast_apis.types import (
     ProviderId,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import localize_wall_time, rounded_coordinate
 
 
 class WeatherUnlockedConfig(ProviderConfigModel):
@@ -38,10 +40,6 @@ class WeatherUnlockedConfig(ProviderConfigModel):
 
 
 WEATHER_UNLOCKED_BASE_URL: Final = "https://api.weatherunlocked.com/api/forecast"
-# Weather Unlocked reports times in the location's local time with no offset
-# in the payload; the offset is looked up once per coordinate pair from the
-# keyless Open-Meteo API and cached on the instance.
-_TIMEZONE_LOOKUP_URL: Final = "https://api.open-meteo.com/v1/forecast"
 
 
 def _normalize_date(date_value: Any) -> str:
@@ -100,10 +98,6 @@ def _time_components(time_value: Any) -> tuple[int, int] | None:
     return hour, minute
 
 
-def _rounded_coordinate(value: float) -> str:
-    return f"{value:.4f}"
-
-
 def _normalize_datetime(date_value: Any, time_value: Any) -> str:
     normalized_date = _normalize_date(date_value)
     if (components := _time_components(time_value)) is None:
@@ -124,13 +118,6 @@ def _combine_clock(date_value: Any, clock_value: Any) -> str | None:
         return None
     hour, minute = components
     return f"{normalized_date}T{hour:02d}:{minute:02d}:00"
-
-
-def _localize(naive_iso: str, utc_offset_seconds: float) -> datetime:
-    """Attach the location's UTC offset to a naive local-time ISO string."""
-
-    local_tz = timezone(timedelta(seconds=utc_offset_seconds))
-    return datetime.fromisoformat(naive_iso).replace(tzinfo=local_tz)
 
 
 def _wind_speed(
@@ -162,7 +149,6 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     """Configured Weather Unlocked provider."""
 
     def __init__(self, config: WeatherUnlockedConfig) -> None:
-        self._utc_offsets: dict[tuple[str, str], float] = {}
         super().__init__(
             provider_id=ProviderId.WEATHER_UNLOCKED,
             config=config,
@@ -187,8 +173,8 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
             client,
             (
                 f"{WEATHER_UNLOCKED_BASE_URL}/"
-                f"{_rounded_coordinate(params.latitude)},"
-                f"{_rounded_coordinate(params.longitude)}"
+                f"{rounded_coordinate(params.latitude)},"
+                f"{rounded_coordinate(params.longitude)}"
             ),
             params={
                 "app_id": self.config.app_id,
@@ -200,16 +186,17 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
         if isinstance(payload, PluginFetchError):
             return payload
 
-        utc_offset = await self._utc_offset_seconds(params, client)
-        if isinstance(utc_offset, PluginFetchError):
-            return utc_offset
+        location_timezone = await self._resolve_location_timezone(params, client)
+        if isinstance(location_timezone, PluginFetchError):
+            return location_timezone
 
         try:
             forecasts = [
                 build_source_forecast(
                     ProviderId.WEATHER_UNLOCKED,
-                    hourly=self._parse_hourly(payload, utc_offset),
-                    daily=self._parse_daily(payload, utc_offset),
+                    timezone=location_timezone.key,
+                    hourly=self._parse_hourly(payload, location_timezone),
+                    daily=self._parse_daily(payload, location_timezone),
                 ),
             ]
         except (KeyError, TypeError, ValueError) as exc:
@@ -218,41 +205,6 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                 f"Failed to parse Weather Unlocked payload: {exc}",
             )
         return self._success(forecasts, raw=payload if params.include_raw else None)
-
-    async def _utc_offset_seconds(
-        self,
-        params: PluginFetchParams,
-        client: httpx2.AsyncClient,
-    ) -> float | PluginFetchError:
-        """Resolve the location's UTC offset; fail rather than store bad times."""
-
-        key = (
-            _rounded_coordinate(params.latitude),
-            _rounded_coordinate(params.longitude),
-        )
-        if (cached := self._utc_offsets.get(key)) is not None:
-            return cached
-        payload = await self._get_json_dict(
-            client,
-            _TIMEZONE_LOOKUP_URL,
-            params={
-                "latitude": key[0],
-                "longitude": key[1],
-                "timezone": "auto",
-                "forecast_days": 1,
-            },
-            payload_name="Weather Unlocked timezone lookup",
-        )
-        if isinstance(payload, PluginFetchError):
-            return payload
-        offset = as_float(payload.get("utc_offset_seconds"))
-        if offset is None:
-            return self._error(
-                ErrorCode.PARSE,
-                "Timezone lookup response lacks utc_offset_seconds.",
-            )
-        self._utc_offsets[key] = offset
-        return offset
 
     def _days(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         raw_days = payload.get("Days") or payload.get("days")
@@ -263,7 +215,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     def _parse_hourly(
         self,
         payload: dict[str, Any],
-        utc_offset_seconds: float,
+        location_timezone: ZoneInfo,
     ) -> list[Any]:
         points: list[Any] = []
         for day in self._days(payload):
@@ -276,15 +228,16 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                 if not isinstance(timeframe, dict):
                     continue
                 try:
-                    timestamp = _localize(
-                        _normalize_datetime(
-                            normalized_date,
-                            first_present(timeframe, "time", "time_hm"),
-                        ),
-                        utc_offset_seconds,
+                    naive_timestamp = _normalize_datetime(
+                        normalized_date,
+                        first_present(timeframe, "time", "time_hm"),
                     )
                 except ValueError:
                     continue
+                timestamp = localize_wall_time(
+                    naive_timestamp,
+                    location_timezone,
+                )
                 condition_text = first_present(
                     timeframe,
                     "wx_desc",
@@ -357,7 +310,7 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
     def _parse_daily(
         self,
         payload: dict[str, Any],
-        utc_offset_seconds: float,
+        location_timezone: ZoneInfo,
     ) -> list[Any]:
         points: list[Any] = []
         for day in self._days(payload):
@@ -409,12 +362,12 @@ class WeatherUnlockedInstance(BasePluginInstance[WeatherUnlockedConfig]):
                     ),
                     summary=condition_text if isinstance(condition_text, str) else None,
                     sunrise=(
-                        _localize(sunrise_local, utc_offset_seconds)
+                        localize_wall_time(sunrise_local, location_timezone)
                         if sunrise_local is not None
                         else None
                     ),
                     sunset=(
-                        _localize(sunset_local, utc_offset_seconds)
+                        localize_wall_time(sunset_local, location_timezone)
                         if sunset_local is not None
                         else None
                     ),

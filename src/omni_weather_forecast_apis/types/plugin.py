@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from omni_weather_forecast_apis.types.schema import (
     ErrorCode,
     Granularity,
+    IANATimezoneName,
     ProviderId,
     SourceForecast,
 )
@@ -43,6 +44,7 @@ class PluginFetchParams(BaseModel):
     longitude: float
     granularity: list[Granularity]
     language: str = "en"
+    timezone: IANATimezoneName | None = None
     include_raw: bool = False
 
 

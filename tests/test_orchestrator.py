@@ -78,6 +78,25 @@ class SlowInstance:
         return PluginFetchSuccess(forecasts=[])
 
 
+class CapturingTimezoneInstance:
+    provider_id = ProviderId.OPEN_METEO
+
+    def __init__(self) -> None:
+        self.params: PluginFetchParams | None = None
+
+    def get_capabilities(self) -> PluginCapabilities:
+        return PluginCapabilities(granularity_hourly=True)
+
+    async def fetch_forecast(
+        self,
+        params: PluginFetchParams,
+        client: httpx2.AsyncClient,
+    ) -> PluginFetchResult:
+        del client
+        self.params = params
+        return PluginFetchSuccess(forecasts=[])
+
+
 def test_forecast_returns_partial_results() -> None:
     registry = {
         ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),
@@ -123,6 +142,38 @@ def test_forecast_returns_partial_results() -> None:
     assert succeeded == 1
     assert failed == 1
     assert timezone_name == "UTC"
+
+
+def test_forecast_propagates_request_timezone_to_plugin() -> None:
+    instance = CapturingTimezoneInstance()
+    client = OmniWeatherClient(
+        OmniWeatherConfig(
+            providers=[
+                ProviderRegistration(
+                    plugin_id=ProviderId.OPEN_METEO,
+                    config={},
+                ),
+            ],
+        ),
+        plugins=[DummyPlugin(ProviderId.OPEN_METEO, instance)],
+    )
+
+    async def scenario() -> str | None:
+        await client.initialize()
+        response = await client.forecast(
+            ForecastRequest(
+                latitude=34.0,
+                longitude=-118.0,
+                granularity=[Granularity.HOURLY],
+                timezone="America/Los_Angeles",
+            ),
+        )
+        await client.close()
+        return response.request.timezone
+
+    assert asyncio.run(scenario()) == "America/Los_Angeles"
+    assert instance.params is not None
+    assert instance.params.timezone == "America/Los_Angeles"
 
 
 def test_emit_log_feeds_stdlib_logger(caplog: pytest.LogCaptureFixture) -> None:

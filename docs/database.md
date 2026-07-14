@@ -24,9 +24,10 @@ The SQLite layer has four main goals:
    verification workloads.
 
 The database is not the HTTP response cache. The conditional-request cache is
-process-local and in memory. The database also does not store observations or
-computed consensus forecasts; those are intended to live in downstream
-systems.
+process-local and in memory. The CLI's persistent location-timezone cache is a
+separate companion file: `forecasts.sqlite` uses
+`forecasts.timezones.sqlite`. The database also does not store observations or
+computed consensus forecasts; those are intended to live in downstream systems.
 
 ## Creation and write lifecycle
 
@@ -182,6 +183,7 @@ model its own parent row before inserting time-series data.
 | `provider_result_id` | `INTEGER NOT NULL`, foreign key | Parent `provider_results.id`; deleted with its provider result |
 | `provider` | `TEXT NOT NULL` | Source attribution slug |
 | `model` | `TEXT NOT NULL` | Provider model or source name |
+| `timezone` | `TEXT` | IANA timezone used for this source's civil-time normalization |
 
 The provider slug is repeated here deliberately: analytics can identify a
 model directly from `source_forecasts` without treating the model name as
@@ -404,7 +406,7 @@ The view exposes provenance and features in a single row:
 - `run_id`
 - `valid_time`, `valid_time_unix`, `horizon_hours`
 - `run_cycle`, `fetched_at`, `fetched_at_unix`
-- `provider`, `model`, `latitude`, `longitude`
+- `provider`, `model`, `timezone`, `latitude`, `longitude`
 - all normalized hourly numeric fields
 - normalized `condition` and `is_day`
 
@@ -543,7 +545,9 @@ The built-in upgrade path currently recognizes these additions:
 | Table | Additive columns |
 |-------|------------------|
 | `provider_results` | `fetched_at_unix`, `run_cycle` |
-| `hourly_points` | `horizon_hours` |
+| `source_forecasts` | `timezone` |
+| `hourly_points` | `horizon_hours`, `snowfall_depth` |
+| `daily_points` | `snowfall_depth_sum` |
 | `provider_logs` | `extra_json` |
 
 Future destructive or semantic changes require an explicit migration plan;
@@ -568,4 +572,3 @@ upgrading across releases that change the persistence schema.
   response hook to stream the normalized response to a database designed for
   that workload. The bundled SQLite store favors a local CLI and analysis
   workflow.
-

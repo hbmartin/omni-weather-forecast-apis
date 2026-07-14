@@ -55,9 +55,7 @@ _CAPABILITIES = PluginCapabilities(
 def _max_chance(*values: Any) -> float | None:
     """Largest present chance value; keeps a valid 0 instead of dropping it."""
 
-    present = [
-        numeric for value in values if (numeric := as_float(value)) is not None
-    ]
+    present = [numeric for value in values if (numeric := as_float(value)) is not None]
     return max(present) if present else None
 
 

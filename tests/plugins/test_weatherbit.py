@@ -226,6 +226,9 @@ class TestWeatherbitInstance:
         assert hour.pressure_surface == 1002.1
         assert hour.precipitation == 0.4
         assert hour.precipitation_probability == pytest.approx(0.4)
+        assert hour.rain is None
+        assert hour.snow is None
+        assert hour.snowfall_depth == 0.0
         assert hour.cloud_cover == 65.0
         assert hour.visibility == 16.0
         assert hour.uv_index == 2.3
@@ -245,6 +248,9 @@ class TestWeatherbitInstance:
         assert day.wind_direction_dominant == 200.0
         assert day.precipitation_sum == 1.2
         assert day.precipitation_probability_max == pytest.approx(0.55)
+        assert day.rain_sum is None
+        assert day.snowfall_sum is None
+        assert day.snowfall_depth_sum == 0.0
         assert day.cloud_cover_mean == 40.0
         assert day.humidity_mean == 70.0
         assert day.pressure_sea_mean == 1014.0
@@ -306,7 +312,8 @@ class TestWeatherbitInstance:
         assert hour.wind_gust == pytest.approx(8.9408)
         # inches converted to mm via mm_from_inches
         assert hour.precipitation == pytest.approx(12.7)
-        assert hour.snow == pytest.approx(5.08)
+        assert hour.snow is None
+        assert hour.snowfall_depth == pytest.approx(5.08)
         # Regression: imperial snow depth (inches) and visibility (miles)
         # used to pass through unconverted.
         assert hour.snow_depth == pytest.approx(101.6)

@@ -85,12 +85,14 @@ async def test_fetch_handles_timeline_aliases_and_daily_accumulations() -> None:
                     Granularity.HOURLY,
                     Granularity.DAILY,
                 ],
+                timezone="America/Los_Angeles",
             ),
             client,
         )
 
     assert isinstance(result, PluginFetchSuccess)
     forecast = result.forecasts[0]
+    assert forecast.timezone == "America/Los_Angeles"
     assert len(forecast.minutely) == 1
     assert len(forecast.hourly) == 1
     assert len(forecast.daily) == 1
@@ -154,12 +156,14 @@ async def test_fetch_parses_modern_forecast_shape_with_time_keys() -> None:
                     Granularity.HOURLY,
                     Granularity.DAILY,
                 ],
+                timezone="Asia/Tokyo",
             ),
             client,
         )
 
     assert isinstance(result, PluginFetchSuccess)
     forecast = result.forecasts[0]
+    assert forecast.timezone == "Asia/Tokyo"
     assert len(forecast.minutely) == 1
     assert len(forecast.hourly) == 1
     assert forecast.hourly[0].temperature == 28.5

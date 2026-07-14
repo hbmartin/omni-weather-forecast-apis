@@ -27,12 +27,16 @@ The wizard writes all interaction to stderr and prompts in this order:
    application ID and application key.
 5. A required SQLite path, defaulting to the platform data directory.
 6. One or more compatible granularities, defaulting to hourly and daily.
+7. Optional automatic daily collection at a chosen local time, using cron on
+   Linux, launchd on macOS, or Windows Task Scheduler.
 
 Generated TOML and every provider setting are validated before an exact preview
 is displayed. The preview contains collected credentials. Nothing is created
 or overwritten until the final confirmation. Writes are atomic; new
 directories and the config receive private POSIX permissions. Explicit `init`
-then offers a test forecast, defaulting to yes.
+then offers a platform-native daily schedule, defaulting to no, followed by a
+test forecast, defaulting to yes. Re-running `init` for the same config replaces
+that config's managed schedule rather than adding a duplicate.
 
 With no explicit `--config`, forecasts use the platform-native
 `omni-weather/config.toml`, then the legacy
@@ -47,6 +51,23 @@ instructions. An explicitly supplied missing file is always an error.
 uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 ```
 
+Each invocation performs exactly one forecast collection. For recurring
+collection, see [Scheduling](scheduling.md).
+
+`--provider` and `--granularity` are repeatable, and narrow the run without
+editing the config:
+
+```bash
+uv run omni-weather \
+  --config ./config.toml \
+  --lat 34.2484 \
+  --lon -117.1931 \
+  --sqlite ./forecasts.sqlite \
+  --provider open_meteo \
+  --provider nws \
+  --granularity hourly
+```
+
 ## Flags
 
 | Flag | Description |
@@ -59,12 +80,20 @@ uv run omni-weather --config ./config.toml --lat 40.7128 --lon -74.0060
 | `--granularity {minutely,hourly,daily}` | Granularity to request (repeatable) |
 | `--language CODE` | Provider language preference |
 | `--include-raw` | Persist raw provider payloads alongside normalized results |
+| `--no-raw-archive` | Skip the [raw HTTP payload archive](configuration.md#raw-payload-archive) (`raw/<UTC timestamp>.jsonl.gz` next to the SQLite database), which is written by default |
 | `--timeout-ms N` | Override the default request timeout |
 | `--debug` | Verbose logging to stderr and a log file next to the SQLite database, or `./omni-weather.log` when `--sqlite` is omitted |
 
 The forecast exit code is `0` when every provider succeeded, `1` when at least
 one provider failed, and `2` for invalid arguments or configuration/load
 errors. Partial provider failures are visible to schedulers and shell scripts.
+
+When SQLite output is configured, the CLI caches coordinate-to-IANA-timezone
+mappings in a companion file beside the forecast database. For example,
+`forecasts.sqlite` uses `forecasts.timezones.sqlite`. Coordinates are keyed at
+four decimal places and entries do not expire. Missing, locked, corrupt, or
+unwritable cache state produces a warning and collection continues uncached;
+the cache is an optimization, not a prerequisite for other providers.
 
 ## Provider discovery
 
@@ -85,8 +114,10 @@ omni-weather doctor [--config PATH] [--provider ID]... [--live]
 Static doctor checks aggregate config presence, TOML and Pydantic validation,
 required coordinates, typed provider settings, recursive environment
 references, config/SQLite path type and writability, POSIX config permissions,
-duplicate registrations, and provider/granularity compatibility. Environment
-variable names and presence are shown; values are never printed.
+duplicate registrations, provider/granularity compatibility, and the
+platform-native daily schedule. A missing or inactive schedule is a warning,
+not a failure. Environment variable names and presence are shown; values are
+never printed.
 
 Repeatable `--provider` filters narrow provider-specific static and live checks;
 top-level config and path checks always run. Static mode never contacts a
@@ -97,7 +128,8 @@ can consume provider quota, trigger rate limits, or incur provider charges.
 Doctor exits `0` when required checks pass, including when there are warnings
 only, and `1` for any static or live failure. Exit `2` is reserved for invalid
 invocation or unexpected operational errors. Cancelling explicit `init` exits
-`0`; cancelling automatic setup exits `2`.
+`0`; cancelling automatic setup exits `2`. Ctrl+C exits `130` with a concise
+`Aborted.` message rather than a traceback.
 
 ## Output formats
 
@@ -114,9 +146,9 @@ uv run omni-weather --config config.toml --lat 40.7 --lon -74.0 --format json \
 
 `--format csv` and `--format ndjson` emit one row/line per forecast data
 point, flattened for data tooling (pandas, DuckDB, `jq`). Every row starts
-with `provider`, `model`, and `granularity` (`minutely` / `hourly` /
-`daily`), followed by the normalized point fields; fields that don't apply
-to a row's granularity are empty.
+with `provider`, `model`, `granularity` (`minutely` / `hourly` / `daily`), and
+the source `timezone`, followed by the normalized point fields; fields that
+don't apply to a row's granularity are empty.
 
 - **csv** — a single wide table with a fixed column order derived from the
   normalized schema. Weather alerts are omitted (a note is printed to
@@ -146,6 +178,10 @@ normalized database with these tables:
 | `alerts` | Weather alerts and warnings |
 | `provider_logs` | Per-provider lifecycle log entries per run |
 | `provider_quota_usage` | Requests per provider per UTC day (daily quota enforcement) |
+
+`source_forecasts.timezone` records the IANA timezone actually used for a
+source's civil-time normalization. The companion timezone cache is intentionally
+separate from this normalized forecast database.
 
 The `stacking_features` view joins hourly points with their provider, model,
 run cycle, and forecast horizon — a ready-made feature matrix for

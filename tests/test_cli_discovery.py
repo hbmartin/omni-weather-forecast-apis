@@ -12,6 +12,7 @@ from rich.console import Console
 from omni_weather_forecast_apis import _cli_discovery as discovery
 from omni_weather_forecast_apis._cli_catalog import PROVIDER_CATALOG
 from omni_weather_forecast_apis._cli_discovery import print_providers, run_doctor
+from omni_weather_forecast_apis._cli_scheduling import ScheduleInspection
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     ProviderError,
@@ -101,6 +102,45 @@ def test_doctor_accepts_valid_config_without_contacting_providers(
     assert "Provider open_meteo" in output
     assert "settings valid" in output
     assert "FAIL" not in output
+
+
+def test_doctor_highlights_missing_daily_schedule(monkeypatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(config_path)
+    monkeypatch.setattr(
+        discovery,
+        "inspect_daily_schedule",
+        lambda _path: ScheduleInspection(
+            installed=False,
+            detail="not configured; rerun init",
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 0
+    assert "WARN" in output
+    assert "Daily schedule" in output
+    assert "not configured; rerun init" in output
+
+
+def test_doctor_reports_installed_daily_schedule(monkeypatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(config_path)
+    monkeypatch.setattr(
+        discovery,
+        "inspect_daily_schedule",
+        lambda _path: ScheduleInspection(
+            installed=True,
+            detail="launchd daily at 06:00 local time",
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 0
+    assert "Daily schedule" in output
+    assert "launchd daily at 06:00 local time" in output
 
 
 def test_doctor_reports_missing_and_malformed_config(tmp_path: Path) -> None:
