@@ -6,6 +6,7 @@ import pytest
 from omni_weather_forecast_apis.plugins.meteosource import (
     MeteosourceConfig,
     _MeteosourceInstance,
+    condition_from_icon_num,
 )
 from omni_weather_forecast_apis.types import (
     Granularity,
@@ -13,6 +14,10 @@ from omni_weather_forecast_apis.types import (
     PluginFetchSuccess,
     WeatherCondition,
 )
+
+
+def test_icon_15_maps_to_light_snow() -> None:
+    assert condition_from_icon_num(15) is WeatherCondition.LIGHT_SNOW
 
 
 @pytest.mark.asyncio

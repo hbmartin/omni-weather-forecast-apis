@@ -11,6 +11,7 @@ import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TypeVar, cast
+from uuid import uuid4
 
 from omni_weather_forecast_apis._cli_discovery import print_providers, run_doctor
 from omni_weather_forecast_apis._cli_paths import (
@@ -300,8 +301,9 @@ def _resolve_optional(cli_value: T | None, config_value: T) -> T:
 def _default_raw_archive_path(sqlite_path: Path) -> Path:
     """One archive file per CLI invocation, named by UTC start time."""
 
-    stamp = utc_now().strftime("%Y%m%dT%H%M%SZ")
-    return sqlite_path.parent / "raw" / f"{stamp}.jsonl.gz"
+    stamp = utc_now().strftime("%Y%m%dT%H%M%S.%fZ")
+    unique_suffix = uuid4().hex[:12]
+    return sqlite_path.parent / "raw" / f"{stamp}-{unique_suffix}.jsonl.gz"
 
 
 def _selected_provider_ids(

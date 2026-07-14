@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
+import threading
 from datetime import datetime
 
 import httpx2
@@ -16,6 +18,39 @@ from omni_weather_forecast_apis.http_recorder import RawArchiveTransport
 def _read_lines(path) -> list[dict]:
     with gzip.open(path, "rt", encoding="utf-8") as handle:
         return [json.loads(line) for line in handle]
+
+
+class _FailingStream(httpx2.AsyncByteStream):
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def __aiter__(self):
+        raise httpx2.ReadError("stream interrupted")
+        yield b""  # pragma: no cover
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_read_failure_closes_original_response(tmp_path) -> None:
+    stream = _FailingStream()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, request=request, stream=stream)
+
+    transport = RawArchiveTransport(
+        httpx2.MockTransport(handler),
+        tmp_path / "run.jsonl.gz",
+    )
+
+    with pytest.raises(httpx2.ReadError, match="stream interrupted"):
+        await transport.handle_async_request(
+            httpx2.Request("GET", "https://example.com")
+        )
+
+    assert stream.closed is True
+    await transport.aclose()
 
 
 @pytest.mark.asyncio
@@ -149,6 +184,43 @@ async def test_zero_traffic_creates_no_file_and_aclose_chains(tmp_path) -> None:
     assert spy.closed is True
     assert not archive.exists()
     assert not archive.parent.exists()
+
+
+@pytest.mark.asyncio
+async def test_aclose_waits_for_active_write_and_prevents_reopen(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    archive = tmp_path / "raw" / "run.jsonl.gz"
+    transport = RawArchiveTransport(
+        httpx2.MockTransport(lambda _request: httpx2.Response(200, json={})),
+        archive,
+    )
+    write_started = threading.Event()
+    release_write = threading.Event()
+    original_append = transport._append
+
+    def slow_append(member: bytes) -> None:
+        write_started.set()
+        if not release_write.wait(timeout=5):
+            raise TimeoutError("test did not release archive write")
+        original_append(member)
+
+    monkeypatch.setattr(transport, "_append", slow_append)
+    request = httpx2.Request("GET", "https://api.example.com/")
+    record_task = asyncio.create_task(transport._record(request, 200, b"{}"))
+    assert await asyncio.to_thread(write_started.wait, 2)
+
+    close_task = asyncio.create_task(transport.aclose())
+    await asyncio.sleep(0)
+    assert close_task.done() is False
+
+    release_write.set()
+    await asyncio.gather(record_task, close_task)
+    await transport._record(request, 200, b'{"late":true}')
+
+    assert len(_read_lines(archive)) == 1
+    assert transport._file is None
 
 
 @pytest.mark.asyncio

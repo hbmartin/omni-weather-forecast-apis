@@ -80,7 +80,7 @@ uv run omni-weather \
 | `--granularity {minutely,hourly,daily}` | Granularity to request (repeatable) |
 | `--language CODE` | Provider language preference |
 | `--include-raw` | Persist raw provider payloads alongside normalized results |
-| `--no-raw-archive` | Skip the [raw HTTP payload archive](configuration.md#raw-payload-archive) (`raw/<UTC timestamp>.jsonl.gz` next to the SQLite database), which is written by default |
+| `--no-raw-archive` | Skip the [raw HTTP payload archive](configuration.md#raw-payload-archive) (`raw/<UTC timestamp>-<unique suffix>.jsonl.gz` next to the SQLite database), which is written by default |
 | `--timeout-ms N` | Override the default request timeout |
 | `--debug` | Verbose logging to stderr and a log file next to the SQLite database, or `./omni-weather.log` when `--sqlite` is omitted |
 

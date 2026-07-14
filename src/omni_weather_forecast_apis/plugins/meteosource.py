@@ -72,7 +72,7 @@ _ICON_NUM_MAP: dict[int, WeatherCondition] = {
     12: WeatherCondition.RAIN,
     13: WeatherCondition.RAIN,
     14: WeatherCondition.THUNDERSTORM,
-    15: WeatherCondition.THUNDERSTORM,
+    15: WeatherCondition.LIGHT_SNOW,
     16: WeatherCondition.LIGHT_SNOW,
     17: WeatherCondition.SNOW,
     18: WeatherCondition.SNOW,
@@ -95,6 +95,12 @@ _ICON_NUM_MAP: dict[int, WeatherCondition] = {
     35: WeatherCondition.SLEET,
     36: WeatherCondition.FREEZING_RAIN,
 }
+
+
+def condition_from_icon_num(icon_num: int | None) -> WeatherCondition | None:
+    """Return the documented condition for a Meteosource icon number."""
+
+    return _ICON_NUM_MAP.get(icon_num) if icon_num is not None else None
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -153,7 +159,7 @@ def _condition(
     code = int(icon_num) if icon_num is not None else None
     return (
         fallback_condition(
-            _ICON_NUM_MAP.get(code) if code is not None else None,
+            condition_from_icon_num(code),
             summary if isinstance(summary, str) else None,
         ),
         summary if isinstance(summary, str) else None,
@@ -485,4 +491,4 @@ class _MeteosourcePlugin(BasePlugin[MeteosourceConfig]):
 
 meteosource_plugin = _MeteosourcePlugin()
 
-__all__ = ["meteosource_plugin"]
+__all__ = ["condition_from_icon_num", "meteosource_plugin"]

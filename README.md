@@ -23,6 +23,7 @@ Requires **Python 3.13 or newer**.
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
 - **CLI** — loads a TOML config, queries providers, prints a table or JSON, and optionally persists normalized output to SQLite
+- **Replayable raw archives** — SQLite runs store network responses in a unique gzipped JSONL file per invocation
 - **Extensible** — response hooks and a documented SQLite feature view for downstream ensemble/verification projects
 
 ## Supported Providers

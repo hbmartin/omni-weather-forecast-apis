@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -187,6 +188,27 @@ def test_sqlite_enables_raw_archive_with_run_scoped_path(
     assert archive_path is not None
     assert archive_path.startswith(str(tmp_path / "raw"))
     assert archive_path.endswith(".jsonl.gz")
+
+
+def test_default_raw_archive_path_is_unique_for_same_start_time(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    started_at = datetime(2024, 1, 2, 3, 4, 5, 678901, tzinfo=UTC)
+    suffixes = iter(("a" * 32, "b" * 32))
+    monkeypatch.setattr(cli, "utc_now", lambda: started_at)
+    monkeypatch.setattr(
+        cli,
+        "uuid4",
+        lambda: SimpleNamespace(hex=next(suffixes)),
+    )
+
+    first = cli._default_raw_archive_path(tmp_path / "forecasts.sqlite")
+    second = cli._default_raw_archive_path(tmp_path / "forecasts.sqlite")
+
+    assert first.name == "20240102T030405.678901Z-aaaaaaaaaaaa.jsonl.gz"
+    assert second.name == "20240102T030405.678901Z-bbbbbbbbbbbb.jsonl.gz"
+    assert first != second
 
 
 def test_no_raw_archive_flag_disables_archiving(monkeypatch, tmp_path) -> None:

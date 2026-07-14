@@ -26,7 +26,7 @@ hourly timestamps by the location's UTC offset.
 
 Every action is recorded in a ``db_repairs`` table.
 
-Usage: uv run python scripts/repair_db.py <database.sqlite> [--dry-run]
+Usage: uv run scripts/repair_db.py <database.sqlite> [--dry-run]
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omni_weather_forecast_apis.mapping import WMO_CODE_MAP, condition_from_text
-from omni_weather_forecast_apis.plugins.meteosource import _ICON_NUM_MAP
+from omni_weather_forecast_apis.plugins.meteosource import condition_from_icon_num
 from omni_weather_forecast_apis.sqlite_store import _create_schema
 from omni_weather_forecast_apis.types import WeatherCondition
 
@@ -174,7 +174,7 @@ class Repairer:
     ) -> str | None:
         code = _as_int(code_text)
         if provider == "meteosource":
-            if code is not None and (mapped := _ICON_NUM_MAP.get(code)) is not None:
+            if (mapped := condition_from_icon_num(code)) is not None:
                 return mapped.value
             return _new_condition_from_text(text)
         if provider == "pirate_weather":
@@ -228,7 +228,7 @@ class Repairer:
             return _new_condition_from_text(summary)
         if provider == "meteosource" and stored in _OLD_METEOSOURCE_REVERSE:
             inferred_code = _OLD_METEOSOURCE_REVERSE[stored]
-            mapped = _ICON_NUM_MAP.get(inferred_code)
+            mapped = condition_from_icon_num(inferred_code)
             if mapped is not None:
                 return mapped.value
             return _new_condition_from_text(summary)
@@ -369,7 +369,13 @@ class Repairer:
         )
 
 
-def main() -> int:
+def _backup_path(database: Path) -> Path:
+    return database.with_name(
+        f"{database.stem}.pre-repair-{datetime.now(tz=UTC):%Y%m%d}.sqlite",
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("database", type=Path)
     parser.add_argument(
@@ -377,22 +383,23 @@ def main() -> int:
         action="store_true",
         help="Report would-be changes and roll everything back",
     )
-    arguments = parser.parse_args()
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = _build_parser().parse_args(argv)
     database: Path = arguments.database
 
     if not database.exists():
         print(f"error: {database} does not exist", file=sys.stderr)
         return 2
 
-    if not arguments.dry_run:
-        backup = database.with_name(
-            f"{database.stem}.pre-repair-{datetime.now(tz=UTC):%Y%m%d}.sqlite",
-        )
-        if backup.exists():
-            print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
-            return 2
-        shutil.copy2(database, backup)
-        print(f"backup written to {backup}")
+    backup = _backup_path(database)
+    if backup.exists():
+        print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
+        return 2
+    shutil.copy2(database, backup)
+    print(f"backup written to {backup}")
 
     connection = sqlite3.connect(database)
     try:
