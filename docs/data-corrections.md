@@ -1,6 +1,6 @@
 # Data corrections (2026-07-13)
 
-A correctness audit found sixteen defects, several of which corrupted
+A correctness audit found multiple defects, several of which corrupted
 normalized forecast data on default configurations. This page records what
 changed semantically, how existing databases were repaired, and which
 caveats remain. Rows written before the fix are identifiable by
@@ -14,26 +14,56 @@ caveats remain. Rows written before the fix are identifiable by
 | 1 | Meteosource icon map used a fictional 1–8 table | icon 5 (Mostly cloudy) → `drizzle`, 6 (Cloudy) → `rain`, 7 (Overcast) → `snow`, 8 → `thunderstorm` | Full official 1–36 table; icon 1 ("Not available") falls back to summary text |
 | 2 | Pirate Weather SI accumulations stored unconverted | `precipAccumulation`/`snowAccumulation` are **cm**; stored as mm (10× low); `precipIntensity` (mm/h rate) leaked into the amount field | Liquid from `liquidAccumulation` (cm→mm, rain-typed `precipAccumulation` fallback); snow depth cm→mm into `snowfall_depth` |
 | 3 | Text keyword ordering mapped wintry showers to RAIN | "Snow Showers", "Sleet showers", "Wintry Showers" → `rain`; "Mostly/Partly Sunny" → `clear`; "Partially cloudy"/"Cloudy" → `unknown` | Wintry phrases win before the generic "showers"; sunny/cloudy variants map to their own buckets |
-| 4 | Weather Unlocked local times stored as UTC | Every hourly timestamp and sunrise/sunset shifted by the location's UTC offset | Offset resolved per coordinates from the keyless Open-Meteo `timezone=auto` lookup; fetch fails loudly if the lookup is unusable |
+| 4 | Weather Unlocked local times stored as UTC | Every hourly timestamp and sunrise/sunset was treated as an absolute UTC instant | An IANA location timezone converts wall times with date-specific DST rules; ambiguous/nonexistent wall times fail that provider |
 | 5 | Open-Meteo DNI held horizontal direct radiation | `solar_radiation_dni` = `direct_radiation` (horizontal plane) | Requests and stores `direct_normal_irradiance` |
 | 6 | Probability heuristic collapsed 1% into 100% | Any raw value ≤ 1 was treated as a 0–1 fraction, so a raw `1` (1%) became 1.0 | Every plugin declares its provider's documented scale (percent vs fraction) explicitly |
-| 7 | Daily dates east of Greenwich off by one day | Pirate Weather / OpenWeather daily epochs converted to the **UTC** calendar date | Local calendar date computed from the payload's UTC offset |
+| 7 | Daily dates east of Greenwich off by one day | Pirate Weather / OpenWeather daily epochs converted to the **UTC** calendar date | Local calendar date computed with the provider's IANA timezone, never a fixed offset |
 | 8 | OpenWeather alert tag stored as URL | `alerts[].tags[0]` (a category label) landed in `WeatherAlert.url` | `url` is `None` (OpenWeather provides no alert link) |
 | 9 | Weatherbit `units="S"`/`"I"` latent unit bugs | Kelvin temperatures passed through as °C; imperial `vis` (miles) and `snow_depth` (inches) unconverted | Kelvin→°C, miles→km, inches→mm conversions per configured units |
 | 10 | WeatherAPI fabricated daily values | `apparent_temperature_max/min` were copies of the air temps; `avgvis_km` (an average) stored as `visibility_min`; a valid 0% rain chance fell through to the snow chance | Feels-like and visibility_min left `NULL`; probability is the max of the chances present |
 | 11 | Snow semantics mixed depth and liquid equivalent | Open-Meteo/Pirate depth values sat in the liquid-equivalent `snow`/`snowfall_sum` fields (~7–10× the liquid value) | Two fields: `snow` (liquid-equivalent mm) and new `snowfall_depth` (depth mm); each provider maps only what it actually reports. Open-Meteo now also requests `snowfall_water_equivalent` for real liquid values |
 | 12 | Unguarded timestamp keys | A malformed OpenWeather/Weatherbit row raised out of the plugin | Rows missing their timestamp key are skipped |
-| 13 | Tomorrow.io stored zero rows | The parser only accepted the legacy Timelines `startTime` key; the modern `/v4/weather/forecast` response keys entries with `time`, so every entry was silently skipped (discovered by reading the new raw payload archive) | Both keys accepted; daily dates use the local calendar date embedded in the timestamp |
+| 13 | Tomorrow.io stored zero rows | The parser only accepted the legacy Timelines `startTime` key; the modern `/v4/weather/forecast` response keys entries with `time`, so every entry was silently skipped (discovered by reading the new raw payload archive) | Both keys accepted |
+| 14 | Tomorrow.io daily dates treated UTC timestamps as local dates | Taking the date portion of a UTC timestamp can select the preceding/following location day | Absolute timestamp converted through the location's IANA timezone before taking its civil date |
+| 15 | Weatherbit snowfall depth stored as liquid-equivalent snow | `snow` populated normalized `snow` / `snowfall_sum`, even though Weatherbit documents physical accumulated snowfall | Weatherbit `snow` populates `snowfall_depth` / `snowfall_depth_sum`; liquid-equivalent snow remains unset |
+| 16 | Weatherbit generic precipitation copied into rain | `precip` populated both total precipitation and rain, including snow/mixed intervals | `precip` populates only generic precipitation; rain remains unset without a rain-specific field |
 
 ## Schema additions
 
 - `hourly_points.snowfall_depth` and `daily_points.snowfall_depth_sum`
   (new snowfall depth, mm) — also exposed in `stacking_features`.
+- `source_forecasts.timezone` — IANA timezone used for civil-time
+  normalization; also exposed in `stacking_features`.
 - `forecast_runs.raw_archive_path` — links each run to its raw payload
   archive (see below).
 - `forecast_runs.app_version` — package version stamp, giving pre-/post-fix
   provenance.
-- `db_repairs` — audit log written by `scripts/repair_db.py`.
+- `db_repairs` — audit log written by `scripts/repair_db.py` and the follow-up
+  `scripts/repair_db_v2.py`.
+
+## Follow-up v2 repair
+
+For a database on which `scripts/repair_db.py` v1 has already run, apply the
+narrow follow-up repair with:
+
+```bash
+uv run scripts/repair_db_v2.py path/to/forecasts.sqlite --dry-run
+uv run scripts/repair_db_v2.py path/to/forecasts.sqlite
+```
+
+Version 2.0 moves legacy Weatherbit snow values into the depth columns, clears
+nonzero Weatherbit rain values copied from generic precipitation, and clears
+nonzero legacy Pirate Weather daily `precipitation_sum` values. Exact zeros are
+preserved. It leaves Pirate Weather `rain_sum` and all historical timestamp/date
+rows untouched because the required source semantics or historical IANA rules
+cannot be reconstructed safely from normalized rows alone.
+
+A real run first creates
+`<stem>.pre-repair-v2-YYYYMMDD.sqlite`, records each action and row count in
+`db_repairs`, and commits all actions in one transaction. `--dry-run` rolls the
+data changes back and creates no backup. If a Weatherbit source value conflicts
+with an unequal non-null corrected destination, the transaction aborts; equal
+duplicates collapse safely.
 
 ## Raw payload archive
 

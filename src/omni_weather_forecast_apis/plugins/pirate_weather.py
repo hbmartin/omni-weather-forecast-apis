@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Final, Literal
+from zoneinfo import ZoneInfo
 
 import httpx2
 from pydantic import Field
@@ -27,6 +28,7 @@ from omni_weather_forecast_apis.plugins._base import (
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
+    Granularity,
     PluginCapabilities,
     PluginFetchError,
     PluginFetchParams,
@@ -73,7 +75,9 @@ def _liquid_precip_mm(row: dict[str, Any]) -> float | None:
     rain — when snowing it reports snow depth, so it must not be used then.
     """
 
-    if (liquid := safe_convert(as_float(row.get("liquidAccumulation")), mm_from_cm)) is not None:
+    if (
+        liquid := safe_convert(as_float(row.get("liquidAccumulation")), mm_from_cm)
+    ) is not None:
         return liquid
     if row.get("precipType") == "rain":
         return safe_convert(as_float(row.get("precipAccumulation")), mm_from_cm)
@@ -142,15 +146,32 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
         if isinstance(payload, PluginFetchError):
             return payload
 
+        location_timezone: ZoneInfo | None = None
+        if Granularity.DAILY in params.granularity:
+            resolved_timezone = await self._resolve_location_timezone(
+                params,
+                client,
+                provider_timezone=payload.get("timezone"),
+            )
+            if isinstance(resolved_timezone, PluginFetchError):
+                return resolved_timezone
+            location_timezone = resolved_timezone
+
         try:
             forecasts = [
                 build_source_forecast(
                     ProviderId.PIRATE_WEATHER,
+                    timezone=(
+                        location_timezone.key
+                        if location_timezone is not None
+                        else params.timezone
+                    ),
                     minutely=self._parse_minutely(payload.get("minutely")),
                     hourly=self._parse_hourly(payload.get("hourly")),
-                    daily=self._parse_daily(
-                        payload.get("daily"),
-                        as_float(payload.get("offset")),
+                    daily=(
+                        self._parse_daily(payload.get("daily"), location_timezone)
+                        if location_timezone is not None
+                        else []
                     ),
                     alerts=self._parse_alerts(payload.get("alerts")),
                 ),
@@ -238,7 +259,11 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             )
         return points
 
-    def _parse_daily(self, section: Any, offset_hours: float | None) -> list[Any]:
+    def _parse_daily(
+        self,
+        section: Any,
+        location_timezone: ZoneInfo,
+    ) -> list[Any]:
         data = section.get("data") if isinstance(section, dict) else None
         if not isinstance(data, list):
             return []
@@ -250,7 +275,7 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
             condition, condition_original, _ = _condition_for_entry(row)
             local_date = local_date_from_epoch(
                 row["time"],
-                offset_hours * 3600.0 if offset_hours is not None else None,
+                location_timezone,
             )
             points.append(
                 build_daily_point(

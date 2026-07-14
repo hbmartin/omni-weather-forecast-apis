@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Final, Generic, TypeVar
+from zoneinfo import ZoneInfo
 
 import httpx2
 from pydantic import BaseModel
@@ -31,9 +32,16 @@ from omni_weather_forecast_apis.types import (
     WeatherCondition,
     WeatherDataPoint,
 )
-from omni_weather_forecast_apis.utils import parse_date, parse_datetime, unix_timestamp
+from omni_weather_forecast_apis.utils import (
+    parse_date,
+    parse_datetime,
+    rounded_coordinate,
+    unix_timestamp,
+    zoneinfo_from_name,
+)
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
+_TIMEZONE_LOOKUP_URL: Final = "https://api.open-meteo.com/v1/forecast"
 
 
 def as_float(value: Any) -> float | None:
@@ -129,19 +137,14 @@ def normalize_severity(value: str | None) -> AlertSeverity | None:
 
 def local_date_from_epoch(
     value: Any,
-    utc_offset_seconds: float | None,
+    location_timezone: ZoneInfo,
 ) -> date | None:
-    """Local calendar date for an epoch using the provider's UTC offset.
-
-    Daily forecast rows are keyed by the location's local date; taking the
-    UTC date of a local-midnight epoch shifts the day east of Greenwich.
-    """
+    """Local calendar date for an epoch using the location's timezone rules."""
 
     numeric = as_float(value)
     if numeric is None:
         return None
-    shifted = numeric + (utc_offset_seconds or 0.0)
-    return datetime.fromtimestamp(shifted, tz=UTC).date()
+    return datetime.fromtimestamp(numeric, tz=UTC).astimezone(location_timezone).date()
 
 
 def _coerce_datetime_input(value: object) -> str | int | float | datetime | None:
@@ -358,6 +361,7 @@ def build_source_forecast(
     provider: ProviderId,
     *,
     model: str | None = None,
+    timezone: str | None = None,
     minutely: list[MinutelyDataPoint] | None = None,
     hourly: list[WeatherDataPoint] | None = None,
     daily: list[DailyDataPoint] | None = None,
@@ -367,6 +371,7 @@ def build_source_forecast(
 
     return SourceForecast(
         source=provider_source(provider, model=model),
+        timezone=timezone,
         minutely=minutely or [],
         hourly=hourly or [],
         daily=daily or [],
@@ -496,6 +501,42 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
                 raw=raw,
             )
         return raw
+
+    async def _resolve_location_timezone(
+        self,
+        params: PluginFetchParams,
+        client: httpx2.AsyncClient,
+        *,
+        provider_timezone: object = None,
+    ) -> ZoneInfo | PluginFetchError:
+        """Resolve provider metadata, caller input, then an Open-Meteo lookup."""
+
+        for candidate in (provider_timezone, params.timezone):
+            if (location_timezone := zoneinfo_from_name(candidate)) is not None:
+                return location_timezone
+
+        latitude = rounded_coordinate(params.latitude)
+        longitude = rounded_coordinate(params.longitude)
+        payload = await self._get_json_dict(
+            client,
+            _TIMEZONE_LOOKUP_URL,
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "timezone": "auto",
+                "forecast_days": 1,
+            },
+            payload_name=f"{self.provider_id.value} timezone lookup",
+        )
+        if isinstance(payload, PluginFetchError):
+            return payload
+        if (location_timezone := zoneinfo_from_name(payload.get("timezone"))) is None:
+            return self._error(
+                ErrorCode.PARSE,
+                "Timezone lookup response lacks a valid IANA timezone.",
+                raw=payload,
+            )
+        return location_timezone
 
     def _success(
         self,

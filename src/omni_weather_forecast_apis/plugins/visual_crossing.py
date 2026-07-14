@@ -98,7 +98,9 @@ def _parse_hour(
         wind_direction=as_float(entry.get("winddir")),
         pressure_sea=as_float(entry.get("pressure")),
         precipitation=as_float(entry.get("precip")),
-        precipitation_probability=probability_from_percent_value(entry.get("precipprob")),
+        precipitation_probability=probability_from_percent_value(
+            entry.get("precipprob")
+        ),
         cloud_cover=as_float(entry.get("cloudcover")),
         visibility=as_float(entry.get("visibility")),
         uv_index=as_float(entry.get("uvindex")),
@@ -132,7 +134,9 @@ def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
         ),
         wind_direction_dominant=as_float(entry.get("winddir")),
         precipitation_sum=as_float(entry.get("precip")),
-        precipitation_probability_max=probability_from_percent_value(entry.get("precipprob")),
+        precipitation_probability_max=probability_from_percent_value(
+            entry.get("precipprob")
+        ),
         cloud_cover_mean=as_float(entry.get("cloudcover")),
         uv_index_max=as_float(entry.get("uvindex")),
         visibility_min=as_float(entry.get("visibility")),

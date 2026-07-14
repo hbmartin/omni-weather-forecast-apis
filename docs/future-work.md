@@ -9,9 +9,9 @@ correctness sweep (see [Data corrections](data-corrections.md)).
   subclass of `httpx2.HTTPError` but not of
   `ConnectError`/`NetworkError`/`ProtocolError`, so `_get_json`
   (`plugins/_base.py`) classifies it as `ErrorCode.UNKNOWN`, which is not
-  in the client's retryable set — contradicting the README's "timeouts are
-  retried". Fix: catch `httpx2.TimeoutException` first and map it to
-  `ErrorCode.TIMEOUT`.
+  in the client's retryable set — contradicting the documented [retry
+  policy](configuration.md), which promises that timeouts are retried. Fix:
+  catch `httpx2.TimeoutException` first and map it to `ErrorCode.TIMEOUT`.
 - **Plugin-raised httpx timeouts are labeled NETWORK.** In
   `client.py::_attempt_fetch` the `except httpx2.HTTPError` branch catches
   `TimeoutException` before the generic handler that would classify it as

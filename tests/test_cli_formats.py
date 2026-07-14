@@ -42,6 +42,7 @@ def _sample_response(*, with_alert: bool = True) -> ForecastResponse:
     forecast = build_source_forecast(
         ProviderId.OPEN_METEO,
         model="best_match",
+        timezone="America/Los_Angeles",
         minutely=[
             build_minutely_point(
                 "2026-07-12T18:00:00+00:00",
@@ -114,7 +115,7 @@ def test_build_parser_accepts_csv_and_ndjson_formats() -> None:
 def test_csv_field_names_start_with_row_identity() -> None:
     names = _csv_field_names()
 
-    assert names[:3] == ["provider", "model", "granularity"]
+    assert names[:4] == ["provider", "model", "granularity", "timezone"]
     assert "temperature" in names
     assert "temperature_max" in names
     assert "precipitation_intensity" in names
@@ -130,6 +131,7 @@ def test_csv_output_has_one_row_per_point(capsys: pytest.CaptureFixture[str]) ->
     assert [row["granularity"] for row in rows] == ["minutely", "hourly", "daily"]
     assert all(row["provider"] == "open_meteo" for row in rows)
     assert all(row["model"] == "best_match" for row in rows)
+    assert all(row["timezone"] == "America/Los_Angeles" for row in rows)
 
     hourly_row = rows[1]
     assert hourly_row["temperature"] == "21.5"
@@ -199,6 +201,7 @@ def test_ndjson_lines_are_typed_json_objects(
     (alert,) = by_type["alert"]
     assert alert["event"] == "Heat Advisory"
     assert alert["provider"] == "open_meteo"
+    assert alert["timezone"] == "America/Los_Angeles"
     (error,) = by_type["provider_error"]
     assert error["provider"] == "openweather"
     assert error["code"] == "auth_failed"

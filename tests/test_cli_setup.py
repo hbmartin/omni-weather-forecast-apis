@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import stat
 import tomllib
+from dataclasses import replace
+from datetime import time
 from pathlib import Path
 
 from rich.syntax import Syntax
 
 from omni_weather_forecast_apis import _cli_setup as setup
+from omni_weather_forecast_apis._cli_catalog import PROVIDER_BY_ID
+from omni_weather_forecast_apis._cli_scheduling import (
+    ScheduleError,
+    ScheduleInspection,
+)
 from omni_weather_forecast_apis._cli_setup import InitDefaults, run_init
 from omni_weather_forecast_apis.types import Granularity, ProviderId
 
@@ -49,7 +56,7 @@ def test_wizard_defaults_to_open_meteo_and_writes_exact_preview(
     sqlite_path = tmp_path / "data" / "forecasts.sqlite"
     prompts = FakePrompts(
         ["34.2", "-117.2", None, str(sqlite_path), None],
-        [True, False],
+        [True, False, False],
     )
 
     result = run_init(config_path, automatic=False, prompts=prompts)
@@ -79,7 +86,7 @@ def test_wizard_uses_one_identity_for_met_norway_and_nws(tmp_path: Path) -> None
             str(tmp_path / "forecast.sqlite"),
             "hourly",
         ],
-        [True, False],
+        [True, False, False],
     )
 
     result = run_init(config_path, automatic=False, prompts=prompts)
@@ -119,7 +126,7 @@ def test_wizard_collects_every_keyed_credential_shape(tmp_path: Path) -> None:
             str(tmp_path / "forecast.sqlite"),
             "hourly,daily",
         ],
-        [True, False],
+        [True, False, False],
     )
 
     result = run_init(tmp_path / "config.toml", automatic=False, prompts=prompts)
@@ -157,7 +164,7 @@ def test_wizard_reprompts_for_invalid_required_values(tmp_path: Path) -> None:
             "daily",
             "hourly",
         ],
-        [True, False],
+        [True, False, False],
     )
 
     result = run_init(tmp_path / "config.toml", automatic=False, prompts=prompts)
@@ -208,7 +215,7 @@ def test_confirmed_overwrite_reprompts_empty_choices_and_defaults_test_to_yes(
             "",
             "hourly",
         ],
-        [True, True],
+        [True, False, True],
     )
 
     result = run_init(config_path, automatic=False, prompts=prompts)
@@ -231,7 +238,7 @@ def test_automatic_wizard_carries_forecast_overrides(tmp_path: Path) -> None:
         granularities=(Granularity.MINUTELY,),
         providers=(ProviderId.OPEN_METEO,),
     )
-    prompts = FakePrompts([None, None, None, None, None], [True])
+    prompts = FakePrompts([None, None, None, None, None], [True, False])
 
     result = run_init(
         tmp_path / "config.toml",
@@ -246,6 +253,85 @@ def test_automatic_wizard_carries_forecast_overrides(tmp_path: Path) -> None:
     assert result.config.longitude == -13.5
     assert result.config.sqlite == str(sqlite_path.resolve())
     assert result.config.granularity == [Granularity.MINUTELY]
+
+
+def test_identity_prompts_follow_catalog_authentication(monkeypatch) -> None:
+    provider = replace(
+        PROVIDER_BY_ID[ProviderId.OPEN_METEO],
+        authentication="identity",
+    )
+    monkeypatch.setattr(setup, "PROVIDER_CATALOG", (provider,))
+    monkeypatch.setattr(setup, "PROVIDER_BY_ID", {ProviderId.OPEN_METEO: provider})
+    prompts = FakePrompts(["WeatherLab", "ops@example.org"], [])
+
+    configs = setup._prompt_provider_configs(prompts, (ProviderId.OPEN_METEO,))
+
+    assert configs == {
+        ProviderId.OPEN_METEO: {
+            "user_agent": "WeatherLab/1.0 ops@example.org",
+        },
+    }
+
+
+def test_wizard_offers_platform_schedule_and_reprompts_for_time(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    sqlite_path = tmp_path / "forecast.sqlite"
+    prompts = FakePrompts(
+        [
+            "34.2",
+            "-117.2",
+            "1",
+            str(sqlite_path),
+            "hourly",
+            "25:00",
+            "07:30",
+        ],
+        [True, True, False],
+    )
+    seen = {}
+
+    def fake_install(path, run_at):
+        seen.update(path=path, run_at=run_at)
+        return ScheduleInspection(installed=True, detail="test schedule")
+
+    monkeypatch.setattr(setup, "scheduler_name", lambda: "test scheduler")
+    monkeypatch.setattr(setup, "install_daily_schedule", fake_install)
+
+    result = run_init(config_path, automatic=False, prompts=prompts)
+
+    assert result is not None
+    assert result.run_forecast is False
+    assert seen == {"path": config_path, "run_at": time(hour=7, minute=30)}
+    output = "\n".join(str(item) for item in prompts.printed)
+    assert "valid local time" in output
+    assert "Installed test schedule" in output
+
+
+def test_wizard_reports_schedule_install_failure(monkeypatch, tmp_path: Path) -> None:
+    prompts = FakePrompts(
+        ["0", "0", "1", str(tmp_path / "forecast.sqlite"), "hourly", "06:00"],
+        [True, True, False],
+    )
+
+    def fail_install(path, run_at):
+        del path, run_at
+        raise ScheduleError("scheduler unavailable")
+
+    monkeypatch.setattr(setup, "install_daily_schedule", fail_install)
+
+    result = run_init(
+        tmp_path / "config.toml",
+        automatic=False,
+        prompts=prompts,
+    )
+
+    assert result is not None
+    output = "\n".join(str(item) for item in prompts.printed)
+    assert "Could not install the daily schedule" in output
+    assert "omni-weather doctor" in output
 
 
 def test_atomic_write_cleans_temporary_file_on_replace_error(

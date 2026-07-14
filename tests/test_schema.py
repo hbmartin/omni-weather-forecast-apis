@@ -27,6 +27,19 @@ def test_request_defaults_match_spec() -> None:
     assert request.granularity == [Granularity.HOURLY, Granularity.DAILY]
     assert request.language == "en"
     assert request.include_raw is False
+    assert request.timezone is None
+
+
+def test_request_accepts_only_loadable_iana_timezone_names() -> None:
+    request = ForecastRequest(
+        latitude=34.0,
+        longitude=-118.0,
+        timezone="America/Los_Angeles",
+    )
+    assert request.timezone == "America/Los_Angeles"
+
+    with pytest.raises(ValidationError, match="loadable IANA name"):
+        ForecastRequest(latitude=34.0, longitude=-118.0, timezone="UTC-08:00")
 
 
 def test_config_defaults_match_request_defaults() -> None:

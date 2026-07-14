@@ -228,3 +228,15 @@ def test_subcommand_dispatch_and_unexpected_errors(monkeypatch, tmp_path: Path) 
 
     monkeypatch.setattr(cli, "print_providers", fail_providers)
     assert main(["providers"]) == 2
+
+
+def test_keyboard_interrupt_exits_cleanly(monkeypatch, capsys) -> None:
+    async def interrupted(_parsed):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_dispatch", interrupted)
+
+    assert main(["providers"]) == 130
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "\nAborted.\n"

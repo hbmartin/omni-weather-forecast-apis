@@ -10,11 +10,14 @@ then the legacy
 terminal starts `omni-weather init`; non-interactive use exits `2` with setup
 instructions. An explicitly supplied missing file never launches the wizard.
 
-The platform default is normally `~/.config/omni-weather/config.toml` on Linux,
-`~/Library/Application Support/omni-weather/config.toml` on macOS, and
-`%LOCALAPPDATA%\omni-weather\config.toml` on Windows. XDG and other platform
-overrides are honored. The wizard's default database uses the corresponding
-platform data directory and the filename `forecasts.sqlite`.
+The platform defaults, with XDG and other platform overrides still honored,
+are:
+
+| Platform | Configuration | SQLite data |
+|----------|---------------|-------------|
+| Linux | `~/.config/omni-weather/config.toml` | `~/.local/share/omni-weather/forecasts.sqlite` |
+| macOS | `~/Library/Application Support/omni-weather/config.toml` | `~/Library/Application Support/omni-weather/forecasts.sqlite` |
+| Windows | `%LOCALAPPDATA%\omni-weather\config.toml` | `%LOCALAPPDATA%\omni-weather\forecasts.sqlite` |
 
 ```toml
 latitude = 40.7128
@@ -43,6 +46,7 @@ max_keepalive_connections = 10
 connect_timeout_ms = 5000
 cache_enabled = true
 cache_max_entries = 256
+raw_archive_enabled = true
 
 [[providers]]
 plugin_id = "open_meteo"
@@ -100,6 +104,7 @@ A per-provider `retry` table on a registration overrides the global policy.
 | `connect_timeout_ms` | `5000` | TCP/TLS connect timeout |
 | `cache_enabled` | `true` | Conditional-request response cache |
 | `cache_max_entries` | `256` | In-memory cache size |
+| `raw_archive_enabled` | `true` | Archive raw HTTP payloads next to the SQLite database |
 
 Setting only one of `max_connections` / `max_keepalive_connections` adjusts
 the other's default to keep `keepalive <= connections`; setting both to
@@ -113,6 +118,22 @@ reused for requests sending the same values for the named headers, and
 `Vary: *` responses are never cached. MET Norway's terms of service require
 this behavior and the NWS strongly encourages it. Requests carrying
 `Authorization` or `Cookie` headers bypass the shared cache.
+
+### Raw payload archive
+
+When persisting to SQLite, every network response is additionally archived as
+gzipped JSONL — one line per response, carrying the timestamp, method, URL,
+status, and body — into a `raw/` directory next to the database. Each
+invocation writes one file, linked from `forecast_runs.raw_archive_path` (see
+[Database Design](database.md#forecast_runs)). The archive makes historical
+runs reparseable if a parser bug is ever found, which is how the corrections
+in [Data corrections](data-corrections.md) were applied to already-collected
+data.
+
+URLs are stored verbatim, **including API keys in query strings**, so keep
+archives out of version control — this repository ignores `raw/`. Files
+accumulate until deleted manually. Disable with `raw_archive_enabled = false`
+here, or `--no-raw-archive` for a single run.
 
 ## Provider registrations — `[[providers]]`
 

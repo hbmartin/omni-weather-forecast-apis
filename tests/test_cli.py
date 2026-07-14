@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from omni_weather_forecast_apis import cli
+from omni_weather_forecast_apis._cli_timezone_cache import TimezoneResolution
 from omni_weather_forecast_apis.cli import (
     _resolve_optional,
     _resolve_required,
@@ -15,9 +16,11 @@ from omni_weather_forecast_apis.cli import (
 )
 from omni_weather_forecast_apis.types import (
     ErrorCode,
+    ForecastRequest,
     ForecastResponse,
     ForecastResponseRequest,
     ForecastResponseSummary,
+    Granularity,
     ProviderId,
     ProviderLogEvent,
 )
@@ -122,6 +125,7 @@ def test_debug_logging_falls_back_to_stdlib_without_loguru(
 
 class _ArchiveStubClient:
     def __init__(self) -> None:
+        self.request: object | None = None
         self._response = ForecastResponse(
             request=ForecastResponseRequest(
                 latitude=34.0,
@@ -142,7 +146,7 @@ class _ArchiveStubClient:
         return None
 
     async def forecast(self, request: object) -> object:
-        del request
+        self.request = request
         return self._response
 
 
@@ -159,8 +163,7 @@ def _run_cli_capturing_config(monkeypatch, tmp_path, argv, config_body=None):
     monkeypatch.setattr(cli, "create_omni_weather", fake_create)
     config_path = tmp_path / "config.toml"
     config_path.write_text(
-        config_body
-        or '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n',
+        config_body or '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n',
     )
     exit_code = cli.main(
         ["--config", str(config_path), "--lat", "34.0", "--lon", "-118.0", *argv],
@@ -216,3 +219,61 @@ def test_raw_archive_config_kill_switch(monkeypatch, tmp_path) -> None:
     )
 
     assert config.http.raw_archive_path is None
+
+
+def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) -> None:
+    database_path = tmp_path / "forecasts.sqlite"
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[[providers]]\nplugin_id = "tomorrow_io"\nconfig = { api_key = "test" }\n',
+        encoding="utf-8",
+    )
+    client = _ArchiveStubClient()
+    resolution_call: dict[str, object] = {}
+
+    async def fake_create(*_args, **_kwargs):
+        return client
+
+    async def fake_resolve(
+        database,
+        latitude,
+        longitude,
+        *,
+        needs_lookup,
+    ):
+        resolution_call.update(
+            database=database,
+            latitude=latitude,
+            longitude=longitude,
+            needs_lookup=needs_lookup,
+        )
+        return TimezoneResolution("America/Los_Angeles")
+
+    monkeypatch.setattr(cli, "create_omni_weather", fake_create)
+    monkeypatch.setattr(cli, "resolve_cli_timezone", fake_resolve)
+
+    exit_code = cli.main(
+        [
+            "--config",
+            str(config_path),
+            "--lat",
+            "34.0",
+            "--lon",
+            "-118.0",
+            "--sqlite",
+            str(database_path),
+            "--granularity",
+            "daily",
+        ],
+    )
+
+    assert exit_code == 0
+    assert resolution_call == {
+        "database": database_path,
+        "latitude": 34.0,
+        "longitude": -118.0,
+        "needs_lookup": True,
+    }
+    assert isinstance(client.request, ForecastRequest)
+    assert client.request.timezone == "America/Los_Angeles"
+    assert client.request.granularity == [Granularity.DAILY]

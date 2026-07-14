@@ -38,6 +38,8 @@ and condition codes into a common representation.
 - [Providers](providers.md) — supported providers and their config keys
 - [CLI](cli.md) — flags, output formats, and SQLite persistence
 - [Scheduling](scheduling.md) — recurring collection with cron on Linux or launchd on macOS
+- [Normalized Schema](schema.md) — field and unit tables for every data point, plus typed error codes
+- [Observability](observability.md) — metrics and log hooks, and the OpenTelemetry bridge
 - [Database Design](database.md) — relationships, table and column reference, indexes, migrations, and query patterns
 - [Extending](extending.md) — plugins, response hooks, and building ensemble/verification tools on top
 - [API Reference](api-reference.md) — generated from the source

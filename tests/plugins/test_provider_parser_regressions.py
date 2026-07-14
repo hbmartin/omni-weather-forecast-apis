@@ -203,6 +203,7 @@ async def test_tomorrow_io_parses_forecast_timelines_and_daily_totals() -> None:
                     Granularity.HOURLY,
                     Granularity.DAILY,
                 ],
+                timezone="America/Los_Angeles",
             ),
             client,
         )

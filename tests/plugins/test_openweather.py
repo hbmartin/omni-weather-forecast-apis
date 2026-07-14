@@ -54,6 +54,7 @@ class TestOpenWeatherInstance:
     @pytest.mark.asyncio
     async def test_fetch_success(self, instance: PluginInstance) -> None:
         mock_response = {
+            "timezone": "America/Los_Angeles",
             "hourly": [
                 {
                     "dt": 1704067200,
@@ -100,14 +101,14 @@ class TestOpenWeatherInstance:
         assert result.forecasts[0].daily[0].temperature_max == 25.0
 
     @pytest.mark.asyncio
-    async def test_daily_dates_use_timezone_offset_and_alerts_have_no_url(
+    async def test_daily_dates_use_iana_timezone_and_alerts_have_no_url(
         self,
         instance: PluginInstance,
     ) -> None:
         # Daily dt 2023-12-31 22:00 UTC is 2024-01-01 00:00 at UTC+2; the
         # local calendar date must win over the UTC date.
         mock_response = {
-            "timezone_offset": 7200,
+            "timezone": "Europe/Athens",
             "daily": [
                 {
                     "dt": 1704060000,
@@ -134,11 +135,13 @@ class TestOpenWeatherInstance:
                 latitude=52.0,
                 longitude=21.0,
                 granularity=[Granularity.DAILY],
+                timezone="Pacific/Honolulu",
             )
             result = await instance.fetch_forecast(params, client)
 
         assert isinstance(result, PluginFetchSuccess)
         forecast = result.forecasts[0]
+        assert forecast.timezone == "Europe/Athens"
         assert forecast.daily[0].date == date(2024, 1, 1)
         # One Call alert tags are category labels, never links.
         assert forecast.alerts[0].url is None

@@ -6,6 +6,7 @@ import stat
 import tempfile
 import tomllib
 from dataclasses import dataclass
+from datetime import time
 from pathlib import Path
 from typing import Protocol
 
@@ -20,6 +21,11 @@ from omni_weather_forecast_apis._cli_catalog import (
     supports_any,
 )
 from omni_weather_forecast_apis._cli_paths import default_sqlite_path, normalized_path
+from omni_weather_forecast_apis._cli_scheduling import (
+    ScheduleError,
+    install_daily_schedule,
+    scheduler_name,
+)
 from omni_weather_forecast_apis.plugins import get_plugin_registry
 from omni_weather_forecast_apis.types import (
     Granularity,
@@ -200,7 +206,11 @@ def _prompt_provider_configs(
     providers: tuple[ProviderId, ...],
 ) -> dict[ProviderId, dict[str, str]]:
     configs: dict[ProviderId, dict[str, str]] = {}
-    identity_ids = {ProviderId.MET_NORWAY, ProviderId.NWS}
+    identity_ids = {
+        item.provider_id
+        for item in PROVIDER_CATALOG
+        if item.authentication == "identity"
+    }
     shared_identity = (
         _prompt_identity(prompts) if identity_ids.intersection(providers) else None
     )
@@ -353,6 +363,41 @@ def _atomic_write(path: Path, text: str, sqlite_path: Path) -> None:
         raise
 
 
+def _parse_daily_time(raw: str) -> time | None:
+    pieces = raw.strip().split(":")
+    if len(pieces) != 2 or not all(piece.isdigit() for piece in pieces):
+        return None
+    try:
+        return time(hour=int(pieces[0]), minute=int(pieces[1]))
+    except ValueError:
+        return None
+
+
+def _prompt_daily_time(prompts: PromptIO) -> time:
+    while True:
+        raw = prompts.ask("Daily run time (24-hour local time)", default="06:00")
+        if (run_at := _parse_daily_time(raw)) is not None:
+            return run_at
+        prompts.print("[red]Enter a valid local time in HH:MM format.[/red]")
+
+
+def _offer_daily_schedule(prompts: PromptIO, config_path: Path) -> None:
+    scheduler = scheduler_name()
+    if not prompts.confirm(
+        f"Set up automatic daily collection using {scheduler}?",
+        default=False,
+    ):
+        return
+    run_at = _prompt_daily_time(prompts)
+    try:
+        inspection = install_daily_schedule(config_path, run_at)
+    except (OSError, ScheduleError) as exc:
+        prompts.print(f"[red]Could not install the daily schedule: {exc}[/red]")
+        prompts.print("Run omni-weather doctor after correcting the scheduler issue.")
+        return
+    prompts.print(f"[green]Installed {inspection.detail}[/green]")
+
+
 def run_init(
     path: Path,
     *,
@@ -409,6 +454,7 @@ def run_init(
         return None
     _atomic_write(target_path, toml_text, sqlite_path)
     prompt_io.print(f"[green]Saved configuration to {target_path}[/green]")
+    _offer_daily_schedule(prompt_io, target_path)
     run_forecast = automatic or prompt_io.confirm(
         "Run a test forecast now?",
         default=True,

@@ -5,9 +5,30 @@ and exits. Use an operating-system scheduler to collect forecasts regularly.
 Reusing the same SQLite path is expected: every invocation creates a new row in
 `forecast_runs` and stores its provider results under that run.
 
-The examples below run once per hour. Replace every `/absolute/path/...` value
-with the appropriate path on the host; schedulers should not rely on relative
-paths or shell aliases.
+## Automatic daily setup
+
+After writing a configuration, `omni-weather init` offers to install automatic
+daily collection at a chosen local time (default `06:00`). It uses the current
+Python environment and the scheduler native to the host:
+
+| Platform | Managed scheduler |
+|----------|-------------------|
+| Linux | Current user's crontab |
+| macOS | Per-user launchd LaunchAgent |
+| Windows | Current user's Task Scheduler job |
+
+Jobs have stable identifiers derived from the absolute config path, so separate
+configs can have separate schedules. Re-running `init` for a config replaces
+its managed job. Scheduler output is written to the platform's user log
+directory where the backend supports redirection.
+
+Run `omni-weather doctor --config /absolute/path/to/config.toml` to verify the
+job. A missing, inactive, stale, or cross-platform schedule is shown as a
+warning and does not change an otherwise successful doctor exit code.
+
+The manual examples below run once per hour and are useful for custom cadences.
+Replace every `/absolute/path/...` value with the appropriate path on the host;
+schedulers should not rely on relative paths or shell aliases.
 
 ## Before scheduling
 

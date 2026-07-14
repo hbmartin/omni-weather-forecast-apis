@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
+from zoneinfo import ZoneInfo
 
 from omni_weather_forecast_apis.mapping import OPENWEATHER_CONDITION_MAP, km_from_meters
 from omni_weather_forecast_apis.mapping.units import (
@@ -171,14 +172,14 @@ def _parse_daily_entry(
     entry: Mapping[str, Any],
     *,
     units: str,
-    utc_offset_seconds: float | None,
+    location_timezone: ZoneInfo,
 ) -> DailyDataPoint:
     description, _code, mapped_condition = _parse_weather_block(entry)
     temperature = entry.get("temp")
     feels_like = entry.get("feels_like")
     rain_amount = as_float(entry.get("rain"))
     snow_amount = as_float(entry.get("snow"))
-    local_date = local_date_from_epoch(entry["dt"], utc_offset_seconds)
+    local_date = local_date_from_epoch(entry["dt"], location_timezone)
     return build_daily_point(
         local_date if local_date is not None else entry["dt"],
         temperature_max=_normalize_temperature(
@@ -270,7 +271,16 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
         if isinstance(raw, PluginFetchError):
             return raw
 
-        utc_offset_seconds = as_float(raw.get("timezone_offset"))
+        location_timezone: ZoneInfo | None = None
+        if Granularity.DAILY in params.granularity:
+            resolved_timezone = await self._resolve_location_timezone(
+                params,
+                client,
+                provider_timezone=raw.get("timezone"),
+            )
+            if isinstance(resolved_timezone, PluginFetchError):
+                return resolved_timezone
+            location_timezone = resolved_timezone
         minutely: list[MinutelyDataPoint] = [
             build_minutely_point(
                 entry["dt"],
@@ -285,15 +295,19 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
             for entry in raw.get("hourly", [])
             if isinstance(entry, Mapping) and "dt" in entry
         ]
-        daily = [
-            _parse_daily_entry(
-                entry,
-                units=self.config.units,
-                utc_offset_seconds=utc_offset_seconds,
-            )
-            for entry in raw.get("daily", [])
-            if isinstance(entry, Mapping) and "dt" in entry
-        ]
+        daily = (
+            [
+                _parse_daily_entry(
+                    entry,
+                    units=self.config.units,
+                    location_timezone=location_timezone,
+                )
+                for entry in raw.get("daily", [])
+                if isinstance(entry, Mapping) and "dt" in entry
+            ]
+            if location_timezone is not None
+            else []
+        )
         alerts = [
             build_alert(
                 sender_name=str(
@@ -314,6 +328,11 @@ class _OpenWeatherInstance(BasePluginInstance[OpenWeatherConfig]):
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=(
+                        location_timezone.key
+                        if location_timezone is not None
+                        else params.timezone
+                    ),
                     minutely=minutely,
                     hourly=hourly,
                     daily=daily,

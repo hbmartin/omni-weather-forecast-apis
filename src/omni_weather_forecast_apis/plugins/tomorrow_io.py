@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from omni_weather_forecast_apis.plugins._base import (
     BasePlugin,
@@ -30,7 +31,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
-from omni_weather_forecast_apis.utils import parse_date
+from omni_weather_forecast_apis.utils import parse_datetime
 
 if TYPE_CHECKING:
     import httpx2
@@ -150,18 +151,11 @@ def _entry_time(entry: Mapping[str, Any]) -> Any | None:
     return first_present(entry, "time", "startTime")
 
 
-def _daily_date(value: object) -> object:
-    if not isinstance(value, str):
+def _daily_date(value: object, location_timezone: ZoneInfo) -> object:
+    if not isinstance(value, (str, int, float, datetime)):
         return value
-    try:
-        # Daily rows are keyed by the location's local calendar date; take
-        # the date embedded in the string without converting to UTC first.
-        return datetime.fromisoformat(value).date()
-    except ValueError:
-        pass
-    if (parsed := parse_date(value)) is not None:
-        return parsed
-    return value
+    parsed = parse_datetime(value)
+    return parsed.astimezone(location_timezone).date() if parsed is not None else value
 
 
 def _daily_precipitation_sum(values: Mapping[str, Any]) -> float | None:
@@ -238,13 +232,16 @@ def _parse_hourly(entry: Mapping[str, Any]) -> WeatherDataPoint:
     )
 
 
-def _parse_daily(entry: Mapping[str, Any]) -> DailyDataPoint:
+def _parse_daily(
+    entry: Mapping[str, Any],
+    location_timezone: ZoneInfo,
+) -> DailyDataPoint:
     values = entry.get("values")
     if not isinstance(values, Mapping):
         values = {}
     condition, _ = _condition_from_values(values)
     return build_daily_point(
-        _daily_date(_entry_time(entry)),
+        _daily_date(_entry_time(entry), location_timezone),
         temperature_max=as_float(values.get("temperatureMax")),
         temperature_min=as_float(values.get("temperatureMin")),
         apparent_temperature_max=as_float(values.get("temperatureApparentMax")),
@@ -313,6 +310,13 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
         if isinstance(raw, PluginFetchError):
             return raw
 
+        location_timezone: ZoneInfo | None = None
+        if Granularity.DAILY in params.granularity:
+            resolved_timezone = await self._resolve_location_timezone(params, client)
+            if isinstance(resolved_timezone, PluginFetchError):
+                return resolved_timezone
+            location_timezone = resolved_timezone
+
         minutely: list[MinutelyDataPoint] = []
         for item in _timeline_list(raw, "1m"):
             if _entry_time(item) is None:
@@ -332,17 +336,23 @@ class _TomorrowIOInstance(BasePluginInstance[TomorrowIOConfig]):
                 continue
 
         daily: list[DailyDataPoint] = []
-        for item in _timeline_list(raw, "1d"):
-            if _entry_time(item) is None:
-                continue
-            try:
-                daily.append(_parse_daily(item))
-            except (KeyError, TypeError, ValueError):
-                continue
+        if location_timezone is not None:
+            for item in _timeline_list(raw, "1d"):
+                if _entry_time(item) is None:
+                    continue
+                try:
+                    daily.append(_parse_daily(item, location_timezone))
+                except (KeyError, TypeError, ValueError):
+                    continue
         return self._success(
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=(
+                        location_timezone.key
+                        if location_timezone is not None
+                        else params.timezone
+                    ),
                     minutely=minutely,
                     hourly=hourly,
                     daily=daily,

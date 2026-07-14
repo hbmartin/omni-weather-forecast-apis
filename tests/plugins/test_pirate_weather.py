@@ -93,7 +93,7 @@ async def test_daily_dates_use_payload_offset() -> None:
     # 2024-01-01 00:00 local midnight at UTC+2 == 2023-12-31 22:00 UTC; the
     # UTC calendar date would be off by one day.
     payload = {
-        "offset": 2,
+        "timezone": "Europe/Athens",
         "daily": {
             "data": [
                 {
@@ -115,12 +115,15 @@ async def test_daily_dates_use_payload_offset() -> None:
                 latitude=52.0,
                 longitude=21.0,
                 granularity=[Granularity.DAILY],
+                timezone="Pacific/Honolulu",
             ),
             client,
         )
 
     assert isinstance(result, PluginFetchSuccess)
-    day = result.forecasts[0].daily[0]
+    forecast = result.forecasts[0]
+    assert forecast.timezone == "Europe/Athens"
+    day = forecast.daily[0]
     assert day.date == date(2024, 1, 1)
     assert day.precipitation_sum == 1.3
     assert day.snowfall_depth_sum == 10.0
