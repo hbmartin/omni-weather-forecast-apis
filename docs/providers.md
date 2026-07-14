@@ -86,14 +86,17 @@ history behind these rules):
   liquid amount. `precipIntensity` (a mm/h rate) is used only for the
   minutely `precipitation_intensity` field.
 - **Weather Unlocked returns local times with no offset**, so the plugin
-  resolves the location's UTC offset once per coordinate pair via the
-  keyless Open-Meteo `timezone=auto` endpoint and fails the fetch if the
-  lookup is unusable. Forecast hours crossing a DST transition can be off
-  by one hour (see [Future work](future-work.md)).
+  resolves an IANA location timezone from the request or the keyless
+  Open-Meteo `timezone=auto` endpoint. It applies date-specific DST rules to
+  every wall time and fails the provider on ambiguous or nonexistent local
+  times rather than guessing an instant.
 - **Daily dates are local calendar dates.** Pirate Weather and OpenWeather
-  daily epochs are converted using the UTC offset carried in their
-  payloads, so a Berlin forecast for "January 1" is dated January 1 even
-  though its local midnight is December 31 in UTC.
+  daily epochs are converted with an IANA location timezone, so a Berlin
+  forecast for "January 1" is dated January 1 even though its local midnight
+  is December 31 in UTC.
+- **Generic precipitation is not automatically rain.** Weatherbit leaves
+  `rain` unset because it exposes only a generic amount. WeatherAPI populates
+  `rain` only when its rain/snow indicators identify rain without snow.
 - **WeatherAPI daily rows have no feels-like or minimum visibility** —
   `apparent_temperature_max/min` and `visibility_min` are `None` rather
   than approximations (the API only offers air temps and a daily average

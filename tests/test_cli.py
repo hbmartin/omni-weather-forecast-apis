@@ -262,12 +262,14 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         longitude,
         *,
         needs_lookup,
+        client,
     ):
         resolution_call.update(
             database=database,
             latitude=latitude,
             longitude=longitude,
             needs_lookup=needs_lookup,
+            client=client,
         )
         return TimezoneResolution("America/Los_Angeles")
 
@@ -295,6 +297,7 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         "latitude": 34.0,
         "longitude": -118.0,
         "needs_lookup": True,
+        "client": client,
     }
     assert isinstance(client.request, ForecastRequest)
     assert client.request.timezone == "America/Los_Angeles"

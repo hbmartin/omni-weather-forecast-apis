@@ -84,11 +84,17 @@ def _print_runs(connection: sqlite3.Connection) -> None:
     if missing := sorted(required - columns):
         print(f"  unavailable: forecast_runs missing columns {', '.join(missing)}")
         return
-    extra = (
-        ", raw_archive_path, app_version"
-        if {"raw_archive_path", "app_version"} <= columns
-        else ""
+    optional_columns = tuple(
+        column
+        for column in (
+            "raw_archive_path",
+            "app_version",
+            "request_timezone",
+            "normalization_revision",
+        )
+        if column in columns
     )
+    extra = "".join(f", {column}" for column in optional_columns)
     for row in connection.execute(
         f"SELECT id, completed_at, total_results, succeeded, failed{extra} "
         "FROM forecast_runs ORDER BY id",
@@ -97,9 +103,30 @@ def _print_runs(connection: sqlite3.Connection) -> None:
             f"  run {row[0]}: {row[1]} results={row[2]} ok={row[3]} fail={row[4]}",
             end="",
         )
-        if extra:
-            print(f" archive={row[5] or '-'} version={row[6] or '-'}", end="")
+        optional_values = dict(zip(optional_columns, row[5:], strict=True))
+        if "raw_archive_path" in optional_values:
+            print(f" archive={optional_values['raw_archive_path'] or '-'}", end="")
+        if "app_version" in optional_values:
+            print(f" version={optional_values['app_version'] or '-'}", end="")
+        if "request_timezone" in optional_values:
+            print(f" timezone={optional_values['request_timezone'] or '-'}", end="")
+        if "normalization_revision" in optional_values:
+            print(
+                f" normalization={optional_values['normalization_revision']}",
+                end="",
+            )
         print()
+
+
+def _print_schema_version(connection: sqlite3.Connection) -> None:
+    print("== Schema ==")
+    if not _table_exists(connection, "schema_metadata"):
+        print("  version: legacy/unversioned")
+        return
+    row = connection.execute(
+        "SELECT schema_version FROM schema_metadata WHERE id = 1",
+    ).fetchone()
+    print(f"  version: {row[0] if row is not None else 'unknown'}")
 
 
 def _print_provider_results(connection: sqlite3.Connection) -> None:
@@ -392,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
 
     connection = sqlite3.connect(arguments.database)
     try:
+        _print_schema_version(connection)
         _print_runs(connection)
         _print_provider_results(connection)
         _print_row_counts(connection)

@@ -189,7 +189,8 @@ discriminated by `status` — pattern-match on them to read forecasts and typed
 error codes. Pass the location's IANA `timezone` when requesting daily data or
 provider-local wall times. If it is omitted, plugins that need it perform an
 uncached Open-Meteo lookup; the CLI supplies and persistently caches this value
-automatically when SQLite output is enabled. See [Getting
+automatically when SQLite output is enabled. CLI cache entries retain six
+coordinate decimals and are refreshed after 30 days. See [Getting
 Started](https://hbmartin.github.io/omni-weather-forecast-apis/getting-started/)
 and the [Normalized
 Schema](https://hbmartin.github.io/omni-weather-forecast-apis/schema/).

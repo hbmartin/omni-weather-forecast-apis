@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import time
 from pathlib import Path
@@ -22,7 +23,8 @@ type SchedulerKind = Literal["cron", "launchd", "task-scheduler"]
 
 _APP_NAME = "omni-weather"
 _MODULE_NAME = "omni_weather_forecast_apis"
-_MANIFEST_VERSION = 1
+_MANIFEST_VERSION = 2
+_COMMAND_TIMEOUT_SECONDS = 15.0
 
 
 class ScheduleError(RuntimeError):
@@ -174,8 +176,13 @@ def _run_command(
             text=True,
             capture_output=True,
             check=False,
+            timeout=_COMMAND_TIMEOUT_SECONDS,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise ScheduleError(
+                f"{command[0]} exceeded {_COMMAND_TIMEOUT_SECONDS:g} seconds",
+            ) from exc
         raise ScheduleError(f"could not run {command[0]}: {exc}") from exc
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "command failed"
@@ -269,6 +276,7 @@ def _install_task_scheduler(spec: ScheduleSpec) -> str:
 
 
 def _write_manifest(spec: ScheduleSpec, artifact: str) -> None:
+    command_hash = hashlib.sha256("\0".join(spec.command).encode()).hexdigest()
     payload = json.dumps(
         {
             "version": _MANIFEST_VERSION,
@@ -278,6 +286,8 @@ def _write_manifest(spec: ScheduleSpec, artifact: str) -> None:
             "hour": spec.run_at.hour,
             "minute": spec.run_at.minute,
             "artifact": artifact,
+            "command": list(spec.command),
+            "command_hash": command_hash,
         },
         indent=2,
         sort_keys=True,
@@ -297,12 +307,31 @@ def install_daily_schedule(config_path: Path, run_at: time) -> ScheduleInspectio
     spec.log_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     match spec.kind:
         case "launchd":
-            artifact = _install_launchd(spec)
+            artifact = str(_launchd_path(spec))
         case "task-scheduler":
-            artifact = _install_task_scheduler(spec)
+            artifact = _task_name(spec)
         case "cron":
-            artifact = _install_cron(spec)
+            artifact = spec.key
+
+    manifest_path = _manifest_path(spec.config_path)
+    previous_manifest = manifest_path.read_bytes() if manifest_path.is_file() else None
     _write_manifest(spec, artifact)
+    try:
+        match spec.kind:
+            case "launchd":
+                installed_artifact = _install_launchd(spec)
+            case "task-scheduler":
+                installed_artifact = _install_task_scheduler(spec)
+            case "cron":
+                installed_artifact = _install_cron(spec)
+        if installed_artifact != artifact:
+            raise ScheduleError("scheduler returned an unexpected artifact identifier")
+    except (OSError, ScheduleError):
+        if previous_manifest is None:
+            manifest_path.unlink(missing_ok=True)
+        else:
+            _atomic_write(manifest_path, previous_manifest)
+        raise
     return ScheduleInspection(installed=True, detail=_schedule_detail(spec))
 
 
@@ -327,6 +356,8 @@ def _spec_from_manifest(
     stored_value = payload.get("config_path")
     hour = payload.get("hour")
     minute = payload.get("minute")
+    command = payload.get("command")
+    command_hash = payload.get("command_hash")
     if (
         not isinstance(version, int)
         or isinstance(version, bool)
@@ -336,6 +367,9 @@ def _spec_from_manifest(
         or isinstance(hour, bool)
         or not isinstance(minute, int)
         or isinstance(minute, bool)
+        or not isinstance(command, list)
+        or not all(isinstance(item, str) for item in command)
+        or not isinstance(command_hash, str)
     ):
         return None
     match kind_value:
@@ -354,11 +388,32 @@ def _spec_from_manifest(
         or key != _schedule_key(stored_path)
     ):
         return None
-    return build_schedule_spec(stored_path, run_at, kind=kind)
+    spec = build_schedule_spec(stored_path, run_at, kind=kind)
+    expected_hash = hashlib.sha256("\0".join(spec.command).encode()).hexdigest()
+    if tuple(command) != spec.command or command_hash != expected_hash:
+        return None
+    return spec
 
 
 def _launchd_is_installed(spec: ScheduleSpec) -> bool:
-    if not _launchd_path(spec).is_file():
+    plist_path = _launchd_path(spec)
+    if not plist_path.is_file():
+        return False
+    try:
+        payload = plistlib.loads(plist_path.read_bytes())
+    except (OSError, plistlib.InvalidFileException):
+        return False
+    expected = {
+        "Label": _launchd_label(spec),
+        "ProgramArguments": list(spec.command),
+        "StartCalendarInterval": {
+            "Hour": spec.run_at.hour,
+            "Minute": spec.run_at.minute,
+        },
+        "StandardOutPath": str(spec.log_path),
+        "StandardErrorPath": str(spec.log_path.with_suffix(".error.log")),
+    }
+    if any(payload.get(key) != value for key, value in expected.items()):
         return False
     domain = f"gui/{os.getuid()}"
     result = _run_command(
@@ -370,16 +425,32 @@ def _launchd_is_installed(spec: ScheduleSpec) -> bool:
 
 def _cron_is_installed(spec: ScheduleSpec) -> bool:
     result = _run_command(("crontab", "-l"), check=False)
-    begin, end = _cron_markers(spec)
-    return result.returncode == 0 and begin in result.stdout and end in result.stdout
+    expected_block = _managed_crontab("", spec).strip()
+    return result.returncode == 0 and expected_block in result.stdout
 
 
 def _task_is_installed(spec: ScheduleSpec) -> bool:
     result = _run_command(
-        ("schtasks", "/Query", "/TN", _task_name(spec)),
+        ("schtasks", "/Query", "/TN", _task_name(spec), "/XML"),
         check=False,
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        return False
+    try:
+        root = ET.fromstring(result.stdout)  # noqa: S314 - local scheduler output.
+    except ET.ParseError:
+        return False
+    values = {
+        element.tag.rsplit("}", maxsplit=1)[-1]: element.text or ""
+        for element in root.iter()
+    }
+    start_time = values.get("StartBoundary", "").partition("T")[2][:5]
+    expected_arguments = subprocess.list2cmdline(list(spec.command[1:]))
+    return (
+        start_time == f"{spec.run_at.hour:02d}:{spec.run_at.minute:02d}"
+        and values.get("Command") == spec.command[0]
+        and values.get("Arguments") == expected_arguments
+    )
 
 
 def _backend_is_installed(spec: ScheduleSpec) -> bool:
@@ -427,7 +498,8 @@ def inspect_daily_schedule(config_path: Path) -> ScheduleInspection:
         return ScheduleInspection(
             installed=False,
             detail=(
-                f"{scheduler_name(spec.kind)} job is missing or inactive; rerun init"
+                f"{scheduler_name(spec.kind)} job is missing, inactive, or stale; "
+                "rerun init"
             ),
         )
     return ScheduleInspection(installed=True, detail=_schedule_detail(spec))

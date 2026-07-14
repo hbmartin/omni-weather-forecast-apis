@@ -72,7 +72,7 @@ async def test_fetch_preserves_zero_precip_and_skips_alerts_without_start() -> N
     # A zero liquid amount is preserved, and the mm/h intensity rate never
     # leaks into the accumulation field.
     assert snow_hour.precipitation == 0.0
-    assert snow_hour.rain == 0.0
+    assert snow_hour.rain is None
     # SI accumulations arrive in centimetres; the schema stores millimetres.
     assert snow_hour.snowfall_depth == 5.0
     assert snow_hour.snow is None
@@ -81,6 +81,7 @@ async def test_fetch_preserves_zero_precip_and_skips_alerts_without_start() -> N
     # Without liquidAccumulation, rain-typed precipAccumulation (cm) is the
     # liquid amount; 0.2 cm -> 2.0 mm.
     assert rain_hour.precipitation == 2.0
+    assert rain_hour.rain == 2.0
     assert rain_hour.snowfall_depth is None
 
     assert len(forecast.alerts) == 1

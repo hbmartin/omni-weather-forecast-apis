@@ -25,19 +25,21 @@ providers.
 
 | Field | Type | Unit |
 |-------|------|------|
+| `timestamp`, `timestamp_unix` | datetime (UTC), int | ISO/Unix seconds |
 | `temperature`, `apparent_temperature`, `dew_point` | float \| None | °C |
 | `humidity` | float \| None | % (0-100) |
 | `wind_speed`, `wind_gust` | float \| None | m/s |
 | `wind_direction` | float \| None | degrees |
 | `pressure_sea`, `pressure_surface` | float \| None | hPa |
 | `precipitation`, `rain`, `snow` (liquid equivalent), `snow_depth` | float \| None | mm |
-| `snowfall_depth` (new snow depth; providers report either this or `snow`, not both) | float \| None | mm |
+| `snowfall_depth` (new snow depth; may coexist with liquid-equivalent `snow` when a provider reports both) | float \| None | mm |
 | `precipitation_probability` | float \| None | 0-1 |
 | `cloud_cover`, `cloud_cover_low`, `cloud_cover_mid`, `cloud_cover_high` | float \| None | % |
 | `visibility` | float \| None | km |
 | `uv_index` | float \| None | 0-11+ |
 | `solar_radiation_ghi`, `solar_radiation_dni`, `solar_radiation_dhi` | float \| None | W/m² |
 | `condition` | WeatherCondition \| None | enum |
+| `condition_original`, `condition_code_original` | str/int \| None | provider-native |
 | `is_day` | bool \| None | |
 
 ## `DailyDataPoint`
@@ -48,14 +50,18 @@ providers.
 | `temperature_max`, `temperature_min` | float \| None | °C |
 | `apparent_temperature_max`, `apparent_temperature_min` | float \| None | °C |
 | `wind_speed_max`, `wind_gust_max` | float \| None | m/s |
+| `wind_direction_dominant` | float \| None | degrees |
 | `precipitation_sum`, `rain_sum`, `snowfall_sum` (liquid equivalent), `snowfall_depth_sum` (depth) | float \| None | mm |
 | `precipitation_probability_max` | float \| None | 0-1 |
 | `cloud_cover_mean` | float \| None | % |
 | `humidity_mean` | float \| None | % |
+| `visibility_min` | float \| None | km |
+| `pressure_sea_mean` | float \| None | hPa |
 | `uv_index_max` | float \| None | 0-11+ |
 | `sunrise`, `sunset`, `moonrise`, `moonset` | datetime \| None | UTC |
 | `moon_phase` | float \| None | 0-1 |
 | `daylight_duration` | float \| None | seconds |
+| `solar_radiation_sum` | float \| None | MJ/m² |
 | `condition` | WeatherCondition \| None | enum |
 | `summary` | str \| None | |
 
@@ -79,6 +85,7 @@ request or suppress successful results from other providers.
 
 | Field | Type | Unit |
 |-------|------|------|
+| `timestamp`, `timestamp_unix` | datetime (UTC), int | ISO/Unix seconds |
 | `precipitation_intensity` | float \| None | mm/h |
 | `precipitation_probability` | float \| None | 0-1 |
 

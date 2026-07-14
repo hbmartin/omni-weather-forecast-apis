@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from omni_weather_forecast_apis.plugins.weatherapi import (
     WeatherAPIConfig,
+    _parse_forecast_day,
+    _parse_hour,
     weatherapi_plugin,
 )
 from omni_weather_forecast_apis.types import (
@@ -206,6 +208,7 @@ class TestWeatherAPIInstance:
         assert len(result.forecasts) == 1
         forecast = result.forecasts[0]
         assert forecast.source.provider == ProviderId.WEATHERAPI
+        assert forecast.timezone == "America/Los_Angeles"
 
         assert len(forecast.hourly) == 3
         hour = forecast.hourly[0]
@@ -269,6 +272,31 @@ class TestWeatherAPIInstance:
         assert alert.end == datetime(2024, 1, 2, 20, 0, tzinfo=UTC)
         assert alert.description == "Heavy rain may cause flooding."
         assert alert.severity == AlertSeverity.MODERATE
+
+    def test_generic_precipitation_is_not_mislabeled_as_rain(self) -> None:
+        hour = _parse_hour(
+            {
+                "time_epoch": 1704067200,
+                "precip_mm": 2.0,
+                "chance_of_rain": 0,
+                "chance_of_snow": 80,
+            },
+        )
+        day = _parse_forecast_day(
+            {
+                "date": "2024-01-01",
+                "day": {
+                    "totalprecip_mm": 4.0,
+                    "daily_chance_of_rain": 0,
+                    "daily_chance_of_snow": 90,
+                },
+            },
+        )
+
+        assert hour.precipitation == 2.0
+        assert hour.rain is None
+        assert day.precipitation_sum == 4.0
+        assert day.rain_sum is None
 
     @pytest.mark.asyncio
     async def test_fetch_request_params(self):

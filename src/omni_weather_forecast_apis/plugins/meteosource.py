@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from omni_weather_forecast_apis.plugins._base import (
     BasePlugin,
@@ -31,6 +33,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import localize_wall_time, zoneinfo_from_name
 
 if TYPE_CHECKING:
     import httpx2
@@ -167,11 +170,46 @@ def _condition(
     )
 
 
-def _parse_minutely(entry: Mapping[str, Any]) -> MinutelyDataPoint:
+def _timestamp_in_timezone(
+    value: object,
+    location_timezone: ZoneInfo,
+) -> str | int | float | datetime | None:
+    if not isinstance(value, str):
+        return value if isinstance(value, (int, float, datetime)) else None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if parsed.tzinfo is not None:
+        return parsed
+    return localize_wall_time(value, location_timezone)
+
+
+def _alert_timestamp_in_timezone(
+    value: object,
+    location_timezone: ZoneInfo,
+) -> str | float | None:
+    localized = _timestamp_in_timezone(value, location_timezone)
+    if isinstance(localized, datetime):
+        return localized.isoformat()
+    if isinstance(localized, bool):
+        return None
+    if isinstance(localized, int):
+        return float(localized)
+    return localized
+
+
+def _parse_minutely(
+    entry: Mapping[str, Any],
+    location_timezone: ZoneInfo,
+) -> MinutelyDataPoint:
     precipitation = _as_mapping(entry.get("precipitation"))
     probability = _as_mapping(entry.get("probability"))
     return build_minutely_point(
-        first_present(entry, "date", "datetime", "time"),
+        _timestamp_in_timezone(
+            first_present(entry, "date", "datetime", "time"),
+            location_timezone,
+        ),
         precipitation_intensity=as_float(
             _first_of(
                 first_present(precipitation, "total", "precip"),
@@ -187,7 +225,10 @@ def _parse_minutely(entry: Mapping[str, Any]) -> MinutelyDataPoint:
     )
 
 
-def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
+def _parse_hour(
+    entry: Mapping[str, Any],
+    location_timezone: ZoneInfo,
+) -> WeatherDataPoint:
     wind = _as_mapping(entry.get("wind"))
     precipitation = _as_mapping(entry.get("precipitation"))
     probability = _as_mapping(entry.get("probability"))
@@ -195,7 +236,10 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
     condition, summary, code = _condition(entry)
     is_day_raw = first_present(entry, "is_day", "day")
     return build_hourly_point(
-        first_present(entry, "date", "datetime", "time"),
+        _timestamp_in_timezone(
+            first_present(entry, "date", "datetime", "time"),
+            location_timezone,
+        ),
         temperature=as_float(first_present(entry, "temperature", "temp")),
         apparent_temperature=as_float(
             first_present(entry, "feels_like", "apparent_temperature"),
@@ -260,7 +304,10 @@ def _parse_hour(entry: Mapping[str, Any]) -> WeatherDataPoint:
     )
 
 
-def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
+def _parse_day(
+    entry: Mapping[str, Any],
+    location_timezone: ZoneInfo,
+) -> DailyDataPoint:
     all_day = _as_mapping(entry.get("all_day"))
     wind = _as_mapping(all_day.get("wind") or entry.get("wind"))
     precipitation = _as_mapping(
@@ -382,10 +429,22 @@ def _parse_day(entry: Mapping[str, Any]) -> DailyDataPoint:
         ),
         condition=condition,
         summary=summary,
-        sunrise=_first_of(sun.get("rise"), entry.get("sunrise")),
-        sunset=_first_of(sun.get("set"), entry.get("sunset")),
-        moonrise=_first_of(moon.get("rise"), entry.get("moonrise")),
-        moonset=_first_of(moon.get("set"), entry.get("moonset")),
+        sunrise=_timestamp_in_timezone(
+            _first_of(sun.get("rise"), entry.get("sunrise")),
+            location_timezone,
+        ),
+        sunset=_timestamp_in_timezone(
+            _first_of(sun.get("set"), entry.get("sunset")),
+            location_timezone,
+        ),
+        moonrise=_timestamp_in_timezone(
+            _first_of(moon.get("rise"), entry.get("moonrise")),
+            location_timezone,
+        ),
+        moonset=_timestamp_in_timezone(
+            _first_of(moon.get("set"), entry.get("moonset")),
+            location_timezone,
+        ),
         moon_phase=as_float(_first_of(moon.get("phase"), entry.get("moon_phase"))),
     )
 
@@ -403,6 +462,12 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
     ) -> PluginFetchResult:
         """Fetch and normalize Meteosource forecast data."""
 
+        location_timezone = zoneinfo_from_name(params.timezone or "UTC")
+        if location_timezone is None:
+            return self._error(
+                ErrorCode.PARSE,
+                "Meteosource request has an invalid IANA timezone.",
+            )
         raw = await self._get_json_dict(
             client,
             _POINT_URL,
@@ -410,7 +475,7 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
                 "lat": params.latitude,
                 "lon": params.longitude,
                 "sections": ",".join(self.config.sections),
-                "timezone": "UTC",
+                "timezone": location_timezone.key,
                 "language": params.language,
                 "units": "metric",
                 "key": self.config.api_key,
@@ -423,36 +488,43 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
             minutely: list[MinutelyDataPoint] = []
             for entry in _section_rows(raw, "minutely"):
                 try:
-                    minutely.append(_parse_minutely(entry))
+                    minutely.append(_parse_minutely(entry, location_timezone))
                 except (KeyError, TypeError, ValueError):
                     continue
 
             hourly: list[WeatherDataPoint] = []
             for entry in _section_rows(raw, "hourly"):
                 try:
-                    hourly.append(_parse_hour(entry))
+                    hourly.append(_parse_hour(entry, location_timezone))
                 except (KeyError, TypeError, ValueError):
                     continue
 
             daily: list[DailyDataPoint] = []
             for entry in _section_rows(raw, "daily"):
                 try:
-                    daily.append(_parse_day(entry))
+                    daily.append(_parse_day(entry, location_timezone))
                 except (KeyError, TypeError, ValueError):
                     continue
 
             alerts = []
             for entry in _section_rows(raw, "alerts"):
                 start = first_present(entry, "start", "starts")
-                if start is None:
+                localized_start = _alert_timestamp_in_timezone(
+                    start,
+                    location_timezone,
+                )
+                if localized_start is None:
                     continue
                 try:
                     alerts.append(
                         build_alert(
                             sender_name=str(entry.get("source") or "Meteosource"),
                             event=str(entry.get("event") or "Alert"),
-                            start=start,
-                            end=entry.get("end"),
+                            start=localized_start,
+                            end=_alert_timestamp_in_timezone(
+                                entry.get("end"),
+                                location_timezone,
+                            ),
                             description=str(entry.get("description") or ""),
                             severity=entry.get("severity"),
                             url=entry.get("url"),
@@ -470,6 +542,7 @@ class _MeteosourceInstance(BasePluginInstance[MeteosourceConfig]):
             [
                 build_source_forecast(
                     self.provider_id,
+                    timezone=location_timezone.key,
                     minutely=minutely,
                     hourly=hourly,
                     daily=daily,

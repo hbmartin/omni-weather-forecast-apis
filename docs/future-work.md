@@ -31,16 +31,9 @@ correctness sweep (see [Data corrections](data-corrections.md)).
 - **OpenWeather hourly `is_day` is always `None`** — hourly One Call
   entries carry no sunrise/sunset; it could be derived from the daily
   block.
-- **Weather Unlocked DST transitions** — the UTC offset is resolved once
-  per fetch, so forecast hours on the far side of a DST change are off by
-  one hour until the fix applies the offset per-day.
 - **Weatherbit imperial pressure** — `slp`/`pres` are passed through
   unconverted for `units="I"`; verify against Weatherbit's docs whether
   imperial responses switch pressure to inHg.
-- **`rain` vs `precipitation` semantics** — several plugins (WeatherAPI,
-  Weatherbit) reuse the total precipitation amount for `rain`, so `rain`
-  can include melted snow. Consider deriving `rain` only when the
-  precipitation type is known.
 - **Weatherbit sea-level pressure plausibility** — one stored run shows
   `slp` up to 1074 hPa (implausible at sea level). Consider a
   provider-side plausibility filter or at least a data-quality flag in

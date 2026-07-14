@@ -26,7 +26,9 @@ The SQLite layer has four main goals:
 The database is not the HTTP response cache. The conditional-request cache is
 process-local and in memory. The CLI's persistent location-timezone cache is a
 separate companion file: `forecasts.sqlite` uses
-`forecasts.timezones.sqlite`. The database also does not store observations or
+`forecasts.timezones.sqlite`. Cache keys retain six decimal places, entries
+record their resolver source/version and resolution time, and entries older
+than 30 days are refreshed. The database also does not store observations or
 computed consensus forecasts; those are intended to live in downstream systems.
 
 ## Creation and write lifecycle
@@ -96,6 +98,7 @@ historical forecast data.
 
 | Object | Cardinality and purpose |
 |--------|-------------------------|
+| `schema_metadata` | Singleton structural schema-version row |
 | `forecast_runs` | One row per persisted aggregate response |
 | `provider_results` | One success or error outcome per result in a run |
 | `source_forecasts` | One model-specific normalized forecast inside a successful provider result |
@@ -136,7 +139,9 @@ This is the root table for a persisted aggregate response.
 | `succeeded` | `INTEGER NOT NULL` | Number of successful provider results |
 | `failed` | `INTEGER NOT NULL` | Number of failed provider results |
 | `raw_archive_path` | `TEXT` | Path to the gzipped JSONL raw payload archive for this run; `NULL` when archiving was disabled or no network traffic occurred |
-| `app_version` | `TEXT` | Package version that wrote the run; `NULL` for rows written before versions were stamped (pre correctness-sweep data — see [Data corrections](data-corrections.md)) |
+| `app_version` | `TEXT` | Package version that wrote the run; may be `NULL` for older rows, but `normalization_revision` is the authoritative semantic marker |
+| `request_timezone` | `TEXT` | IANA timezone on the resolved request; `NULL` when none was supplied or resolved |
+| `normalization_revision` | `INTEGER NOT NULL` | Semantic normalization revision; migrated legacy rows are revision `1`, and current rows are revision `2` |
 
 The summary counts are stored rather than recomputed so the database preserves
 the exact response summary emitted by the client.
@@ -406,9 +411,11 @@ The view exposes provenance and features in a single row:
 - `run_id`
 - `valid_time`, `valid_time_unix`, `horizon_hours`
 - `run_cycle`, `fetched_at`, `fetched_at_unix`
-- `provider`, `model`, `timezone`, `latitude`, `longitude`
+- `provider`, `model`, `latitude`, `longitude`
 - all normalized hourly numeric fields
 - normalized `condition` and `is_day`
+- source `timezone` (appended last to preserve the positional order of the
+  pre-timezone view columns)
 
 It filters to `provider_results.status = 'success'`. Error rows and
 provider-native `condition_original` / `condition_code_original` fields are
@@ -530,20 +537,24 @@ ORDER BY day DESC, provider;
 
 ## Schema initialization and evolution
 
-The project does not currently use a schema-version table or an external
-migration framework. Initialization is idempotent and runs before forecast or
-log writes:
+The singleton `schema_metadata` table records the current structural schema
+version. Databases with a newer version are rejected instead of being modified
+by an older package. The project does not use an external migration framework;
+initialization is idempotent and runs before forecast or log writes:
 
 1. Base tables are created with `CREATE TABLE IF NOT EXISTS`.
 2. `PRAGMA table_info` detects older schemas.
 3. Missing additive columns are introduced with `ALTER TABLE ... ADD COLUMN`.
 4. Secondary indexes are created with `CREATE INDEX IF NOT EXISTS`.
-5. `stacking_features` is dropped and recreated from the current definition.
+5. `stacking_features` is recreated only when its column contract is stale.
+6. `schema_metadata.schema_version` is advanced after all upgrade steps
+   succeed.
 
 The built-in upgrade path currently recognizes these additions:
 
 | Table | Additive columns |
 |-------|------------------|
+| `forecast_runs` | `raw_archive_path`, `app_version`, `request_timezone`, `normalization_revision` |
 | `provider_results` | `fetched_at_unix`, `run_cycle` |
 | `source_forecasts` | `timezone` |
 | `hourly_points` | `horizon_hours`, `snowfall_depth` |

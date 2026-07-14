@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime
 from typing import Any, Final
+from zoneinfo import ZoneInfo
 
 import httpx2
 from pydantic import Field
@@ -29,6 +31,7 @@ from omni_weather_forecast_apis.types import (
     ProviderId,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import localize_wall_time, zoneinfo_from_name
 
 
 class OpenMeteoConfig(ProviderConfigModel):
@@ -206,6 +209,23 @@ def _millimeters_from_centimeters(value: Any) -> float | None:
     return numeric * 10
 
 
+def _timestamp_in_timezone(
+    value: object,
+    location_timezone: ZoneInfo,
+) -> str | int | float | datetime | None:
+    """Interpret Open-Meteo's offset-free ISO timestamp in its response zone."""
+
+    if not isinstance(value, str):
+        return value if isinstance(value, (int, float, datetime)) else None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if parsed.tzinfo is not None:
+        return parsed
+    return localize_wall_time(value, location_timezone)
+
+
 class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
     """Configured Open-Meteo provider."""
 
@@ -240,8 +260,19 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         if isinstance(payload, PluginFetchError):
             return payload
 
+        requested_timezone = params.timezone or "UTC"
+        location_timezone = zoneinfo_from_name(payload.get("timezone"))
+        if location_timezone is None:
+            location_timezone = zoneinfo_from_name(requested_timezone)
+        if location_timezone is None:
+            return self._error(
+                ErrorCode.PARSE,
+                "Open-Meteo response lacks a valid IANA timezone.",
+                raw=payload,
+            )
+
         try:
-            forecasts = self._parse_payloads(payload)
+            forecasts = self._parse_payloads(payload, location_timezone)
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(
                 ErrorCode.PARSE,
@@ -253,7 +284,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         request_params: dict[str, str | float] = {
             "latitude": params.latitude,
             "longitude": params.longitude,
-            "timezone": "UTC",
+            "timezone": params.timezone or "UTC",
             "wind_speed_unit": "ms",
         }
         if self.config.api_key is not None:
@@ -304,7 +335,11 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             return raw
         return _scope_model_section(raw, model)
 
-    def _parse_payloads(self, payload: dict[str, Any]) -> list[Any]:
+    def _parse_payloads(
+        self,
+        payload: dict[str, Any],
+        location_timezone: ZoneInfo,
+    ) -> list[Any]:
         models = self.config.models or ["best_match"]
         multi_model = len(models) > 1
         forecasts: list[Any] = []
@@ -313,6 +348,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                 build_source_forecast(
                     ProviderId.OPEN_METEO,
                     model=model,
+                    timezone=location_timezone.key,
                     minutely=self._parse_minutely(
                         self._get_section(
                             payload,
@@ -320,6 +356,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                             model,
                             multi_model=multi_model,
                         ),
+                        location_timezone,
                     ),
                     hourly=self._parse_hourly(
                         self._get_section(
@@ -328,6 +365,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                             model,
                             multi_model=multi_model,
                         ),
+                        location_timezone,
                     ),
                     daily=self._parse_daily(
                         self._get_section(
@@ -336,12 +374,17 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                             model,
                             multi_model=multi_model,
                         ),
+                        location_timezone,
                     ),
                 ),
             )
         return forecasts
 
-    def _parse_minutely(self, section: Any) -> list[Any]:
+    def _parse_minutely(
+        self,
+        section: Any,
+        location_timezone: ZoneInfo,
+    ) -> list[Any]:
         if not isinstance(section, dict):
             return []
 
@@ -349,7 +392,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
         for row in _parallel_rows(section):
             points.append(
                 build_minutely_point(
-                    row["time"],
+                    _timestamp_in_timezone(row["time"], location_timezone),
                     precipitation_intensity=_hourly_rate_from_quarter_hour_sum(
                         row.get("precipitation"),
                     ),
@@ -360,7 +403,11 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             )
         return points
 
-    def _parse_hourly(self, section: Any) -> list[Any]:
+    def _parse_hourly(
+        self,
+        section: Any,
+        location_timezone: ZoneInfo,
+    ) -> list[Any]:
         if not isinstance(section, dict):
             return []
 
@@ -370,7 +417,7 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             visibility = as_float(row.get("visibility"))
             points.append(
                 build_hourly_point(
-                    row["time"],
+                    _timestamp_in_timezone(row["time"], location_timezone),
                     temperature=as_float(row.get("temperature_2m")),
                     apparent_temperature=as_float(row.get("apparent_temperature")),
                     dew_point=as_float(row.get("dew_point_2m")),
@@ -407,7 +454,11 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
             )
         return points
 
-    def _parse_daily(self, section: Any) -> list[Any]:
+    def _parse_daily(
+        self,
+        section: Any,
+        location_timezone: ZoneInfo,
+    ) -> list[Any]:
         if not isinstance(section, dict):
             return []
 
@@ -449,8 +500,14 @@ class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):
                     pressure_sea_mean=as_float(row.get("pressure_msl_mean")),
                     condition=condition,
                     summary=None,
-                    sunrise=row.get("sunrise"),
-                    sunset=row.get("sunset"),
+                    sunrise=_timestamp_in_timezone(
+                        row.get("sunrise"),
+                        location_timezone,
+                    ),
+                    sunset=_timestamp_in_timezone(
+                        row.get("sunset"),
+                        location_timezone,
+                    ),
                     daylight_duration=as_float(row.get("daylight_duration")),
                     solar_radiation_sum=as_float(row.get("shortwave_radiation_sum")),
                 ),

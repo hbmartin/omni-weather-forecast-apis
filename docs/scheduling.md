@@ -25,6 +25,11 @@ directory where the backend supports redirection.
 Run `omni-weather doctor --config /absolute/path/to/config.toml` to verify the
 job. A missing, inactive, stale, or cross-platform schedule is shown as a
 warning and does not change an otherwise successful doctor exit code.
+Verification compares the stored command, interpreter, config path, local run
+time, and scheduler-specific artifact with the active backend. Scheduler
+commands time out after 15 seconds. Installation writes its private metadata
+first and restores the previous metadata if the native scheduler update fails,
+so a metadata error cannot leave a newly installed but untracked job.
 
 The manual examples below run once per hour and are useful for custom cadences.
 Replace every `/absolute/path/...` value with the appropriate path on the host;

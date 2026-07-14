@@ -21,7 +21,8 @@ def record(event: MetricEvent) -> None:
     if event.kind is MetricKind.REQUEST_END:
         print(event.provider, event.latency_ms, event.error_code)
 
-client = await create_omni_weather(config, metrics_hooks=[record])
+async with await create_omni_weather(config, metrics_hooks=[record]) as client:
+    ...
 ```
 
 `MetricKind` has seven members:
@@ -55,10 +56,11 @@ pip install "omni-weather-forecast-apis[otel]"
 ```python
 from omni_weather_forecast_apis.otel import create_otel_metrics_hook
 
-client = await create_omni_weather(
+async with await create_omni_weather(
     config,
     metrics_hooks=[create_otel_metrics_hook()],
-)
+) as client:
+    ...
 ```
 
 The bridge records counters for requests, retries, cache outcomes, and quota

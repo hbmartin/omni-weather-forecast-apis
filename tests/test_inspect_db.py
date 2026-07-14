@@ -32,5 +32,6 @@ def test_main_handles_empty_database_as_failed_inspection(tmp_path, capsys) -> N
     assert inspect_db.main([str(database_path)]) == 1
 
     output = capsys.readouterr().out
+    assert "version: legacy/unversioned" in output
     assert "unavailable: missing forecast_runs table" in output
     assert "FAIL: hourly bounds skipped: missing hourly_points table" in output

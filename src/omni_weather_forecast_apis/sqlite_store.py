@@ -14,6 +14,9 @@ from omni_weather_forecast_apis.types import (
     ProviderSuccess,
 )
 
+_SCHEMA_VERSION = 2
+_NORMALIZATION_REVISION = 2
+
 
 def save_forecast_response(
     database_path: str | Path,
@@ -49,8 +52,24 @@ def save_forecast_response(
 
 
 def _create_schema(connection: sqlite3.Connection) -> None:
-    connection.executescript(
+    connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS schema_metadata (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_version INTEGER NOT NULL
+        )
+        """,
+    )
+    row = connection.execute(
+        "SELECT schema_version FROM schema_metadata WHERE id = 1",
+    ).fetchone()
+    if row is not None and row[0] > _SCHEMA_VERSION:
+        raise RuntimeError(
+            f"database schema version {row[0]} is newer than supported "
+            f"version {_SCHEMA_VERSION}",
+        )
+    connection.executescript(
+        f"""
         CREATE TABLE IF NOT EXISTS forecast_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             latitude REAL NOT NULL,
@@ -63,7 +82,9 @@ def _create_schema(connection: sqlite3.Connection) -> None:
             succeeded INTEGER NOT NULL,
             failed INTEGER NOT NULL,
             raw_archive_path TEXT,
-            app_version TEXT
+            app_version TEXT,
+            request_timezone TEXT,
+            normalization_revision INTEGER NOT NULL DEFAULT {_NORMALIZATION_REVISION}
         );
 
         CREATE TABLE IF NOT EXISTS provider_results (
@@ -195,6 +216,15 @@ def _create_schema(connection: sqlite3.Connection) -> None:
     _ensure_hourly_points_columns(connection)
     _ensure_daily_points_columns(connection)
     _create_indexes_and_views(connection)
+    connection.execute(
+        """
+        INSERT INTO schema_metadata (id, schema_version)
+        VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE
+        SET schema_version = excluded.schema_version
+        """,
+        (_SCHEMA_VERSION,),
+    )
 
 
 def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
@@ -221,10 +251,12 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
         """,
     )
 
-    view_columns = {
+    view_columns = [
         row[1] for row in connection.execute("PRAGMA table_info(stacking_features)")
-    }
-    if {"run_id", "snowfall_depth", "timezone"} <= view_columns:
+    ]
+    if {"run_id", "snowfall_depth", "timezone"} <= set(view_columns) and view_columns[
+        -1:
+    ] == ["timezone"]:
         return
 
     connection.executescript(
@@ -241,7 +273,6 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
             pr.fetched_at_unix,
             sf.provider,
             sf.model,
-            sf.timezone,
             fr.latitude,
             fr.longitude,
             hp.temperature,
@@ -269,7 +300,8 @@ def _create_indexes_and_views(connection: sqlite3.Connection) -> None:
             hp.solar_radiation_dni,
             hp.solar_radiation_dhi,
             hp.condition,
-            hp.is_day
+            hp.is_day,
+            sf.timezone
         FROM hourly_points hp
         JOIN source_forecasts sf ON hp.source_forecast_id = sf.id
         JOIN provider_results pr ON sf.provider_result_id = pr.id
@@ -310,6 +342,17 @@ def _ensure_forecast_runs_columns(connection: sqlite3.Connection) -> None:
     if "app_version" not in columns:
         connection.execute(
             "ALTER TABLE forecast_runs ADD COLUMN app_version TEXT",
+        )
+    if "request_timezone" not in columns:
+        connection.execute(
+            "ALTER TABLE forecast_runs ADD COLUMN request_timezone TEXT",
+        )
+    if "normalization_revision" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE forecast_runs
+            ADD COLUMN normalization_revision INTEGER NOT NULL DEFAULT 1
+            """,
         )
 
 
@@ -368,8 +411,10 @@ def _insert_run(
             succeeded,
             failed,
             raw_archive_path,
-            app_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            app_version,
+            request_timezone,
+            normalization_revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             response.request.latitude,
@@ -383,6 +428,8 @@ def _insert_run(
             response.summary.failed,
             str(raw_archive_path) if raw_archive_path is not None else None,
             _app_version(),
+            response.request.timezone,
+            _NORMALIZATION_REVISION,
         ),
     )
     return _lastrowid(cursor)

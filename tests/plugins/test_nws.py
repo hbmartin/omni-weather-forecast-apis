@@ -44,6 +44,7 @@ async def test_fetch_forecast_normalizes_all_nws_endpoints() -> None:
                     "properties": {
                         "forecast": "https://api.weather.gov/gridpoints/LOX/154,44/forecast",
                         "forecastHourly": "https://api.weather.gov/gridpoints/LOX/154,44/forecast/hourly",
+                        "timeZone": "America/Los_Angeles",
                     },
                 }
             case "/gridpoints/LOX/154,44/forecast/hourly":
@@ -124,6 +125,7 @@ async def test_fetch_forecast_normalizes_all_nws_endpoints() -> None:
     assert result.status == "success"
     assert result.raw is not None
     forecast = result.forecasts[0]
+    assert forecast.timezone == "America/Los_Angeles"
     assert len(forecast.hourly) == 1
     assert forecast.hourly[0].temperature == pytest.approx(20)
     assert forecast.hourly[0].precipitation_probability == pytest.approx(0.3)

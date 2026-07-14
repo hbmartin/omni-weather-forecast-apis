@@ -38,6 +38,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import zoneinfo_from_name
 
 
 class GoogleWeatherConfig(ProviderConfigModel):
@@ -246,10 +247,11 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
         hourly: list[WeatherDataPoint] = []
         daily: list[DailyDataPoint] = []
         raw: dict[str, Any] = {}
+        source_timezones: set[str] = set()
 
         try:
             if Granularity.HOURLY in params.granularity:
-                entries, error = await self._fetch_paged(
+                entries, error, source_timezone = await self._fetch_paged(
                     client,
                     endpoint="forecast/hours:lookup",
                     params=params,
@@ -260,6 +262,8 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
                 )
                 if error is not None:
                     return error
+                if source_timezone is not None:
+                    source_timezones.add(source_timezone)
                 hourly = [
                     point
                     for entry in entries
@@ -269,7 +273,7 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
                     raw["forecastHours"] = entries
 
             if Granularity.DAILY in params.granularity:
-                entries, error = await self._fetch_paged(
+                entries, error, source_timezone = await self._fetch_paged(
                     client,
                     endpoint="forecast/days:lookup",
                     params=params,
@@ -280,6 +284,8 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
                 )
                 if error is not None:
                     return error
+                if source_timezone is not None:
+                    source_timezones.add(source_timezone)
                 daily = [
                     point
                     for entry in entries
@@ -293,9 +299,17 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
                 f"Failed to parse Google Weather payload: {exc}",
             )
 
+        if len(source_timezones) > 1:
+            return self._error(
+                ErrorCode.PARSE,
+                "Google Weather pages returned conflicting IANA timezones.",
+            )
+        source_timezone = next(iter(source_timezones), params.timezone)
+
         forecasts = [
             build_source_forecast(
                 ProviderId.GOOGLE_WEATHER,
+                timezone=source_timezone,
                 hourly=hourly,
                 daily=daily,
             ),
@@ -312,9 +326,10 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
         count_param: str,
         count: int,
         page_size: int,
-    ) -> tuple[list[dict[str, Any]], PluginFetchError | None]:
+    ) -> tuple[list[dict[str, Any]], PluginFetchError | None, str | None]:
         entries: list[dict[str, Any]] = []
         page_token: str | None = None
+        source_timezone: str | None = None
         for _page in range(_MAX_PAGES):
             request_params: dict[str, Any] = {
                 "key": self.config.api_key,
@@ -334,7 +349,27 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
                 payload_name="Google Weather",
             )
             if isinstance(payload, PluginFetchError):
-                return [], payload
+                return [], payload, source_timezone
+            timezone_payload = payload.get("timeZone")
+            timezone_name = (
+                timezone_payload.get("id")
+                if isinstance(timezone_payload, dict)
+                else None
+            )
+            if (location_timezone := zoneinfo_from_name(timezone_name)) is not None:
+                if (
+                    source_timezone is not None
+                    and source_timezone != location_timezone.key
+                ):
+                    return (
+                        [],
+                        self._error(
+                            ErrorCode.PARSE,
+                            "Google Weather pagination changed IANA timezone.",
+                        ),
+                        source_timezone,
+                    )
+                source_timezone = location_timezone.key
             items = payload.get(item_key)
             if isinstance(items, list):
                 entries.extend(item for item in items if isinstance(item, dict))
@@ -346,7 +381,7 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             ):
                 break
             page_token = next_token
-        return entries[:count], None
+        return entries[:count], None, source_timezone
 
     def _parse_hour(self, entry: dict[str, Any]) -> WeatherDataPoint | None:
         start = _interval_start(entry)

@@ -144,11 +144,13 @@ uv run omni-weather --config config.toml --lat 40.7 --lon -74.0 --format json \
   | jq '.results[] | {provider, status}'
 ```
 
-`--format csv` and `--format ndjson` emit one row/line per forecast data
-point, flattened for data tooling (pandas, DuckDB, `jq`). Every row starts
-with `provider`, `model`, `granularity` (`minutely` / `hourly` / `daily`), and
-the source `timezone`, followed by the normalized point fields; fields that
-don't apply to a row's granularity are empty.
+`--format csv` and `--format ndjson` flatten forecast data for tooling such as
+pandas, DuckDB, and `jq`. Every CSV row and every NDJSON `forecast_point`
+object carries `provider`, `model`, `granularity` (`minutely` / `hourly` /
+`daily`), the source `timezone`, and the normalized point fields; fields that
+do not apply to a row's granularity are empty. NDJSON `alert` and
+`provider_error` objects use their own schemas and do not carry model,
+granularity, or source-timezone fields.
 
 - **csv** — a single wide table with a fixed column order derived from the
   normalized schema. Weather alerts are omitted (a note is printed to

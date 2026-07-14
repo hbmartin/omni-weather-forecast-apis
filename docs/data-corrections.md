@@ -4,8 +4,10 @@ A correctness audit found multiple defects, several of which corrupted
 normalized forecast data on default configurations. This page records what
 changed semantically, how existing databases were repaired, and which
 caveats remain. Rows written before the fix are identifiable by
-`forecast_runs.app_version IS NULL`; repaired databases carry a
-`db_repairs` audit table listing every action and row count.
+`forecast_runs.normalization_revision = 1`; rows written with the corrected
+normalizers use revision `2`. This marker is authoritative even when an older
+row already has an `app_version`. Repaired databases carry a `db_repairs`
+audit table listing every action and row count.
 
 ## Parser defects fixed
 
@@ -27,6 +29,9 @@ caveats remain. Rows written before the fix are identifiable by
 | 14 | Tomorrow.io daily dates treated UTC timestamps as local dates | Taking the date portion of a UTC timestamp can select the preceding/following location day | Absolute timestamp converted through the location's IANA timezone before taking its civil date |
 | 15 | Weatherbit snowfall depth stored as liquid-equivalent snow | `snow` populated normalized `snow` / `snowfall_sum`, even though Weatherbit documents physical accumulated snowfall | Weatherbit `snow` populates `snowfall_depth` / `snowfall_depth_sum`; liquid-equivalent snow remains unset |
 | 16 | Weatherbit generic precipitation copied into rain | `precip` populated both total precipitation and rain, including snow/mixed intervals | `precip` populates only generic precipitation; rain remains unset without a rain-specific field |
+| 17 | WeatherAPI generic precipitation copied into rain | `precip_mm`/`totalprecip_mm` always populated rain, including snow/mixed intervals | Generic precipitation remains in `precipitation`; rain is populated only when rain is indicated without snow |
+| 18 | Open-Meteo and Meteosource wall times were requested/interpreted as UTC | A caller-supplied IANA timezone was ignored, and offset-free timestamps could represent the wrong instant | The requested IANA timezone is sent upstream, offset-free timestamps are localized with DST-aware rules, and the source timezone is recorded |
+| 19 | Provider timezone provenance was incomplete | NWS, Google Weather, Visual Crossing, WeatherAPI, and Weatherbit could normalize data without retaining their provider-supplied IANA zone | Valid provider timezones are retained on `SourceForecast`, with the request zone as fallback where applicable |
 
 ## Schema additions
 
@@ -38,6 +43,12 @@ caveats remain. Rows written before the fix are identifiable by
   archive (see below).
 - `forecast_runs.app_version` — package version stamp, giving pre-/post-fix
   provenance.
+- `forecast_runs.request_timezone` — resolved IANA timezone sent with the
+  aggregate request.
+- `forecast_runs.normalization_revision` — durable semantic revision marker;
+  migrated historical rows default to `1`, while new corrected rows use `2`.
+- `schema_metadata.schema_version` — singleton structural schema version used
+  to reject databases created by newer, incompatible releases.
 - `db_repairs` — audit log written by `scripts/repair_db.py` and the follow-up
   `scripts/repair_db_v2.py`.
 
@@ -68,14 +79,17 @@ duplicates collapse safely.
 ## Raw payload archive
 
 `raw_json` was never populated for successful fetches, so the pre-fix data
-could only be repaired from its normalized columns. To make any future
-parser bug fully recoverable, every network response is now archived as
-gzipped JSONL (one line per response: `ts`, `method`, `url`, `status`,
-`body`) in a `raw/` directory next to the SQLite database — one file per
-CLI invocation, on by default when `--sqlite` is used. Disable with
+could only be repaired from its normalized columns. To preserve the HTTP
+inputs needed for future parser recovery, every network response is now
+archived as gzipped JSONL (one line per response: `ts`, `method`, `url`,
+`status`, `body`) in a `raw/` directory next to the SQLite database — one file
+per CLI invocation, on by default when `--sqlite` is used. Disable with
 `--no-raw-archive` or `[http] raw_archive_enabled = false`. URLs are stored
 verbatim (including API keys in query strings); the `raw/` directory is
 gitignored and there is no automatic retention — delete old files manually.
+Archives only cover traffic recorded after the feature is enabled, and replay
+still depends on each archived response being complete and parseable; they do
+not make older normalized-only runs reconstructable.
 
 ## Repair of crestline_forecasts.sqlite
 

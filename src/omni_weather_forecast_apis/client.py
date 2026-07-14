@@ -46,7 +46,11 @@ from omni_weather_forecast_apis.types import (
     RetryPolicy,
     WeatherPlugin,
 )
-from omni_weather_forecast_apis.utils import resolve_env_placeholders, utc_now
+from omni_weather_forecast_apis.utils import (
+    resolve_env_placeholders,
+    utc_now,
+    zoneinfo_from_name,
+)
 
 logger = logging.getLogger("omni_weather_forecast_apis")
 
@@ -83,6 +87,7 @@ _RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
     {ErrorCode.NETWORK, ErrorCode.TIMEOUT, ErrorCode.RATE_LIMITED},
 )
 _MAX_HONORED_RETRY_AFTER_SECONDS = 60.0
+_TIMEZONE_LOOKUP_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 class OmniWeatherClient:
@@ -190,6 +195,35 @@ class OmniWeatherClient:
         if self._http_client is not None:
             await self._http_client.aclose()
             self._http_client = None
+
+    async def lookup_location_timezone(
+        self,
+        latitude: float,
+        longitude: float,
+    ) -> str:
+        """Resolve an IANA zone through the client's configured HTTP transport."""
+
+        if self._http_client is None:
+            await self.initialize()
+        client = self._http_client
+        if client is None:
+            raise RuntimeError("HTTP client initialization failed unexpectedly.")
+        response = await client.get(
+            _TIMEZONE_LOOKUP_URL,
+            params={
+                "latitude": f"{latitude:.6f}",
+                "longitude": f"{longitude:.6f}",
+                "timezone": "auto",
+                "forecast_days": 1,
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("timezone response is not a JSON object")
+        if (location_timezone := zoneinfo_from_name(payload.get("timezone"))) is None:
+            raise ValueError("timezone response lacks a valid IANA timezone")
+        return location_timezone.key
 
     async def __aenter__(self) -> OmniWeatherClient:
         if self._http_client is None:

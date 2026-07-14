@@ -146,6 +146,7 @@ class TestWeatherbitInstance:
                 "not-a-mapping",
             ],
             "city_name": "Testville",
+            "timezone": "America/Los_Angeles",
         }
         daily_payload = {
             "data": [
@@ -211,6 +212,7 @@ class TestWeatherbitInstance:
         assert len(result.forecasts) == 1
         forecast = result.forecasts[0]
         assert forecast.source.provider == ProviderId.WEATHERBIT
+        assert forecast.timezone == "America/Los_Angeles"
 
         assert len(forecast.hourly) == 1
         hour = forecast.hourly[0]

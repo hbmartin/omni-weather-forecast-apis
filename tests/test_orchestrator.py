@@ -97,6 +97,26 @@ class CapturingTimezoneInstance:
         return PluginFetchSuccess(forecasts=[])
 
 
+@pytest.mark.asyncio
+async def test_location_timezone_lookup_uses_managed_http_client() -> None:
+    requests: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(200, json={"timezone": "America/Los_Angeles"})
+
+    client = OmniWeatherClient(OmniWeatherConfig(providers=[]))
+    client._http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    try:
+        timezone = await client.lookup_location_timezone(34.123456, -117.987654)
+    finally:
+        await client.close()
+
+    assert timezone == "America/Los_Angeles"
+    assert requests[0].url.params["latitude"] == "34.123456"
+    assert requests[0].url.params["longitude"] == "-117.987654"
+
+
 def test_forecast_returns_partial_results() -> None:
     registry = {
         ProviderId.OPEN_METEO: DummyPlugin(ProviderId.OPEN_METEO, SuccessInstance()),

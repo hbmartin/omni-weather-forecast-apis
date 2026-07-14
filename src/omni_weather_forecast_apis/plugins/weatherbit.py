@@ -34,6 +34,7 @@ from omni_weather_forecast_apis.types import (
     WeatherDataPoint,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
+from omni_weather_forecast_apis.utils import zoneinfo_from_name
 
 if TYPE_CHECKING:
     import httpx2
@@ -285,8 +286,25 @@ class _WeatherbitInstance(BasePluginInstance[WeatherbitConfig]):
                 if isinstance(entry, Mapping) and "valid_date" in entry
             ]
 
+        location_timezone = next(
+            (
+                timezone
+                for payload in raw_payload.values()
+                if (timezone := zoneinfo_from_name(payload.get("timezone"))) is not None
+            ),
+            zoneinfo_from_name(params.timezone),
+        )
         return self._success(
-            [build_source_forecast(self.provider_id, hourly=hourly, daily=daily)],
+            [
+                build_source_forecast(
+                    self.provider_id,
+                    timezone=(
+                        location_timezone.key if location_timezone is not None else None
+                    ),
+                    hourly=hourly,
+                    daily=daily,
+                ),
+            ],
             raw=raw_payload if params.include_raw else None,
         )
 
