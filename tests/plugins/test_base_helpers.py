@@ -8,11 +8,14 @@ from email.utils import format_datetime
 import pytest
 
 from omni_weather_forecast_apis.plugins._base import (
+    _forecast_has_content,
+    _has_no_usable_content,
     as_float,
     build_alert,
     build_daily_point,
     build_hourly_point,
     build_minutely_point,
+    build_source_forecast,
     cardinal_direction_to_degrees,
     fallback_condition,
     first_present,
@@ -22,7 +25,11 @@ from omni_weather_forecast_apis.plugins._base import (
     probability_from_fraction,
     probability_from_percent_value,
 )
-from omni_weather_forecast_apis.types import AlertSeverity, WeatherCondition
+from omni_weather_forecast_apis.types import (
+    AlertSeverity,
+    ProviderId,
+    WeatherCondition,
+)
 
 
 class TestAsFloat:
@@ -253,3 +260,33 @@ class TestBuilders:
         )
         assert alert.severity is AlertSeverity.SEVERE
         assert alert.end is None
+
+
+class TestUsableContent:
+    def _alert(self):
+        return build_alert(
+            sender_name="NWS",
+            event="Heat Advisory",
+            start="2026-07-12T18:00:00Z",
+            end=None,
+            description="hot",
+        )
+
+    def test_empty_forecasts_have_no_usable_content(self):
+        empty = build_source_forecast(ProviderId.NWS)
+        assert _forecast_has_content(empty) is False
+        assert _has_no_usable_content([]) is True
+        assert _has_no_usable_content([empty, empty]) is True
+
+    def test_alerts_only_forecast_is_usable(self):
+        alerts_only = build_source_forecast(ProviderId.NWS, alerts=[self._alert()])
+        assert _forecast_has_content(alerts_only) is True
+        assert _has_no_usable_content([alerts_only]) is False
+
+    def test_any_data_section_makes_a_forecast_usable(self):
+        hourly_only = build_source_forecast(
+            ProviderId.NWS,
+            hourly=[build_hourly_point("2026-07-12T18:00:00Z")],
+        )
+        empty = build_source_forecast(ProviderId.NWS)
+        assert _has_no_usable_content([empty, hourly_only]) is False

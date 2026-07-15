@@ -90,6 +90,17 @@ history behind these rules):
   Open-Meteo `timezone=auto` endpoint. It applies date-specific DST rules to
   every wall time and fails the provider on ambiguous or nonexistent local
   times rather than guessing an instant.
+- **Open-Meteo and Meteosource also emit offset-free local times**, but they
+  resolve DST discontinuities deterministically instead of failing the whole
+  run: an ambiguous fall-back hour maps to the earlier (pre-transition)
+  instant, and a nonexistent spring-forward hour is shifted to the real
+  post-gap instant. A single transition hour therefore no longer discards an
+  entire day of hourly, daily, and minutely points.
+- **A 200 response with no usable content is reported as `NO_DATA`.** When a
+  provider answers successfully but yields no hourly, daily, minutely, or
+  alert data, the result is a typed `NO_DATA` error (see
+  [schema](schema.md#responses-and-errors)) rather than a hollow success, so a
+  silently dead provider is recorded as an error instead of an empty column.
 - **Daily dates are local calendar dates.** Pirate Weather and OpenWeather
   daily epochs are converted with an IANA location timezone, so a Berlin
   forecast for "January 1" is dated January 1 even though its local midnight

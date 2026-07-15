@@ -107,6 +107,26 @@ def _probability(entry: Mapping[str, Any]) -> float | None:
     return probability_from_percent_value(probability.get("value"))
 
 
+def _humidity(entry: Mapping[str, Any]) -> float | None:
+    humidity = entry.get("relativeHumidity")
+    if not isinstance(humidity, Mapping):
+        return None
+    return as_float(humidity.get("value"))
+
+
+def _dew_point(entry: Mapping[str, Any]) -> float | None:
+    dewpoint = entry.get("dewpoint")
+    if not isinstance(dewpoint, Mapping):
+        return None
+    value = as_float(dewpoint.get("value"))
+    if value is None:
+        return None
+    unit = dewpoint.get("unitCode")
+    if isinstance(unit, str) and unit.endswith(("degF", "F")):
+        return celsius_from_fahrenheit(value)
+    return value
+
+
 def _local_start_date(period: Mapping[str, Any]) -> str | None:
     start_time = period.get("startTime")
     if not isinstance(start_time, str):
@@ -144,6 +164,8 @@ def _parse_hour(period: Mapping[str, Any]) -> WeatherDataPoint:
     return build_hourly_point(
         period["startTime"],
         temperature=_temperature(period),
+        dew_point=_dew_point(period),
+        humidity=_humidity(period),
         precipitation_probability=_probability(period),
         wind_speed=_wind_speed(period.get("windSpeed")),
         wind_direction=_wind_direction(period.get("windDirection")),

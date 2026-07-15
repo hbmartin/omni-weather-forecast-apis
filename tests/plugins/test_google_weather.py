@@ -252,7 +252,7 @@ async def test_fetch_daily_skips_malformed_display_date() -> None:
     malformed_day = _day_entry()
     malformed_day["displayDate"] = {"year": 2026, "month": 13, "day": 3}
     payload = {
-        "forecastDays": [malformed_day],
+        "forecastDays": [_day_entry(), malformed_day],
         "timeZone": {"id": "America/Los_Angeles"},
     }
     transport = httpx2.MockTransport(
@@ -265,8 +265,9 @@ async def test_fetch_daily_skips_malformed_display_date() -> None:
             client,
         )
 
+    # The malformed day is skipped; the valid day keeps the provider usable.
     assert isinstance(result, PluginFetchSuccess)
-    assert result.forecasts[0].daily == []
+    assert len(result.forecasts[0].daily) == 1
 
 
 @pytest.mark.asyncio

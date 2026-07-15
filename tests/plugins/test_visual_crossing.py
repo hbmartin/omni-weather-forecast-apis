@@ -351,9 +351,9 @@ class TestVisualCrossingInstance:
         transport = httpx2.MockTransport(handler)
         result = await _fetch(instance, transport, _forecast_params(language="de"))
 
-        assert isinstance(result, PluginFetchSuccess)
-        assert result.forecasts[0].hourly == []
-        assert result.forecasts[0].daily == []
+        # An empty payload yields NO_DATA, but the request params are still sent.
+        assert isinstance(result, PluginFetchError)
+        assert result.code is ErrorCode.NO_DATA
         assert captured["path"].endswith("/timeline/34.0,-117.0")
         assert captured["unitGroup"] == "metric"
         assert captured["include"] == "hours,days,alerts"
@@ -374,21 +374,24 @@ class TestVisualCrossingInstance:
 
         result = await _fetch(instance, httpx2.MockTransport(handler))
 
-        assert isinstance(result, PluginFetchSuccess)
+        assert isinstance(result, PluginFetchError)
+        assert result.code is ErrorCode.NO_DATA
         assert captured["include"] == "days"
 
     @pytest.mark.asyncio
-    async def test_fetch_empty_payload(self, instance: PluginInstance) -> None:
+    async def test_fetch_empty_payload_reports_no_data(
+        self,
+        instance: PluginInstance,
+    ) -> None:
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(200, json={}),
         )
         result = await _fetch(instance, transport)
 
-        assert isinstance(result, PluginFetchSuccess)
-        forecast = result.forecasts[0]
-        assert forecast.hourly == []
-        assert forecast.daily == []
-        assert forecast.alerts == []
+        # A 200 with no usable forecast content is a NO_DATA error, not a
+        # hollow success.
+        assert isinstance(result, PluginFetchError)
+        assert result.code is ErrorCode.NO_DATA
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance: PluginInstance) -> None:

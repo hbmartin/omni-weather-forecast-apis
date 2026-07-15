@@ -12,7 +12,9 @@ from omni_weather_forecast_apis.plugins.tomorrow_io import (
     _TomorrowIOInstance,
 )
 from omni_weather_forecast_apis.types import (
+    ErrorCode,
     Granularity,
+    PluginFetchError,
     PluginFetchParams,
     PluginFetchSuccess,
 )
@@ -131,7 +133,14 @@ async def test_meteosource_skips_bad_rows_without_failing_provider() -> None:
     transport = httpx2.MockTransport(
         lambda _request: httpx2.Response(
             200,
-            json={"hourly": {"data": [{"date": "not-a-timestamp"}]}},
+            json={
+                "hourly": {
+                    "data": [
+                        {"date": "2024-01-01T00:00:00Z", "temperature": 10.0},
+                        {"date": "not-a-timestamp"},
+                    ],
+                },
+            },
         ),
     )
 
@@ -145,8 +154,10 @@ async def test_meteosource_skips_bad_rows_without_failing_provider() -> None:
             client,
         )
 
+    # The unparseable row is skipped; the valid row keeps the provider usable.
     assert isinstance(result, PluginFetchSuccess)
-    assert result.forecasts[0].hourly == []
+    assert len(result.forecasts[0].hourly) == 1
+    assert result.forecasts[0].hourly[0].temperature == 10.0
 
 
 @pytest.mark.asyncio
@@ -241,5 +252,7 @@ async def test_tomorrow_io_ignores_null_intervals() -> None:
             client,
         )
 
-    assert isinstance(result, PluginFetchSuccess)
-    assert result.forecasts[0].hourly == []
+    # Null intervals are ignored gracefully, leaving no usable content; the
+    # provider now reports a typed NO_DATA error instead of a hollow success.
+    assert isinstance(result, PluginFetchError)
+    assert result.code is ErrorCode.NO_DATA

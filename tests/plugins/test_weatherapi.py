@@ -321,7 +321,9 @@ class TestWeatherAPIInstance:
             )
             result = await instance.fetch_forecast(params, client)
 
-        assert isinstance(result, PluginFetchSuccess)
+        # An empty payload yields NO_DATA, but the request params are still sent.
+        assert isinstance(result, PluginFetchError)
+        assert result.code is ErrorCode.NO_DATA
         assert captured["url"].host == "api.weatherapi.com"
         assert captured["url"].path == "/v1/forecast.json"
         assert captured["params"]["key"] == "secret-key"
@@ -332,7 +334,7 @@ class TestWeatherAPIInstance:
         assert captured["params"]["lang"] == "es"
 
     @pytest.mark.asyncio
-    async def test_fetch_empty_payload(self, instance):
+    async def test_fetch_empty_payload_reports_no_data(self, instance):
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(200, json={}),
         )
@@ -344,11 +346,10 @@ class TestWeatherAPIInstance:
             )
             result = await instance.fetch_forecast(params, client)
 
-        assert isinstance(result, PluginFetchSuccess)
-        assert len(result.forecasts) == 1
-        assert result.forecasts[0].hourly == []
-        assert result.forecasts[0].daily == []
-        assert result.forecasts[0].alerts == []
+        # A 200 with no usable forecast content is a NO_DATA error, not a
+        # hollow success.
+        assert isinstance(result, PluginFetchError)
+        assert result.code is ErrorCode.NO_DATA
 
     @pytest.mark.asyncio
     async def test_fetch_auth_error(self, instance):

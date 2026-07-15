@@ -12,6 +12,7 @@ from omni_weather_forecast_apis.utils.time_helpers import (
 )
 from omni_weather_forecast_apis.utils.timezones import (
     localize_wall_time,
+    resolve_wall_time,
     rounded_coordinate,
     validate_timezone_name,
     zoneinfo_from_name,
@@ -25,6 +26,7 @@ __all__ = [
     "parse_date",
     "parse_datetime",
     "resolve_env_placeholders",
+    "resolve_wall_time",
     "rounded_coordinate",
     "unix_timestamp",
     "utc_now",
