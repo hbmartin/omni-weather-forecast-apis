@@ -55,8 +55,34 @@ def localize_wall_time(naive_iso: str, location_timezone: ZoneInfo) -> datetime:
     return first if first_valid else second
 
 
+def resolve_wall_time(naive_iso: str, location_timezone: ZoneInfo) -> datetime:
+    """Resolve a local wall time to a real instant without ever raising on DST.
+
+    Unlike :func:`localize_wall_time`, DST discontinuities are tolerated so a
+    single bad hour never discards a whole payload:
+
+    * Ambiguous times (fall-back) resolve to the earlier ``fold=0``
+      (pre-transition) occurrence.
+    * Nonexistent times (spring-forward gap) resolve to a valid instant by
+      round-tripping the ``fold=0`` reading through UTC, which lands on the
+      real post-gap moment.
+    * Unambiguous, existent times behave like :func:`localize_wall_time`.
+    """
+
+    naive = datetime.fromisoformat(naive_iso)
+    if naive.tzinfo is not None:
+        raise ValueError("local wall time must not include an offset")
+
+    candidate = naive.replace(tzinfo=location_timezone, fold=0)
+    round_tripped = candidate.astimezone(UTC).astimezone(location_timezone)
+    if round_tripped.replace(tzinfo=None) == naive:
+        return candidate
+    return round_tripped
+
+
 __all__ = [
     "localize_wall_time",
+    "resolve_wall_time",
     "rounded_coordinate",
     "validate_timezone_name",
     "zoneinfo_from_name",

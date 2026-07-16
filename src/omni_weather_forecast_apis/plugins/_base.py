@@ -379,6 +379,23 @@ def build_source_forecast(
     )
 
 
+def _forecast_has_content(forecast: SourceForecast) -> bool:
+    """True when a source forecast carries any usable data or alerts."""
+
+    return bool(
+        forecast.minutely or forecast.hourly or forecast.daily or forecast.alerts,
+    )
+
+
+def _has_no_usable_content(forecasts: list[SourceForecast]) -> bool:
+    """True when no forecast carries minutely/hourly/daily/alert content.
+
+    A forecast that only carries alerts still counts as usable.
+    """
+
+    return not any(_forecast_has_content(forecast) for forecast in forecasts)
+
+
 class BasePlugin(ABC, Generic[ConfigT]):
     """Reusable plugin facade with config validation."""
 
@@ -543,7 +560,13 @@ class BasePluginInstance(ABC, Generic[ConfigT]):
         forecasts: list[SourceForecast],
         *,
         raw: Any | None = None,
-    ) -> PluginFetchSuccess:
+    ) -> PluginFetchResult:
+        if _has_no_usable_content(forecasts):
+            return self._error(
+                ErrorCode.NO_DATA,
+                "provider returned no usable forecast data",
+                raw=raw,
+            )
         return PluginFetchSuccess(forecasts=forecasts, raw=raw)
 
     def _error(

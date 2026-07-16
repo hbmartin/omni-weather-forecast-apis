@@ -101,6 +101,22 @@ def test_non_retryable_error_is_not_retried() -> None:
     assert instance.calls == 1
 
 
+def test_no_data_error_is_terminal_and_not_retried() -> None:
+    instance = FlakyInstance(failures=10, code=ErrorCode.NO_DATA)
+    client = _client_for(instance)
+
+    async def scenario() -> str:
+        await client.initialize()
+        response = await client.forecast(ForecastRequest(latitude=34, longitude=-118))
+        await client.close()
+        return response.results[0].error.code.value
+
+    error_code = asyncio.run(scenario())
+
+    assert error_code == ErrorCode.NO_DATA.value
+    assert instance.calls == 1
+
+
 def test_per_provider_retry_policy_overrides_global() -> None:
     instance = FlakyInstance(failures=10)
     client = OmniWeatherClient(

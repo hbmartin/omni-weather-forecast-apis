@@ -31,7 +31,7 @@ from omni_weather_forecast_apis.types import (
     ProviderId,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
-from omni_weather_forecast_apis.utils import localize_wall_time, zoneinfo_from_name
+from omni_weather_forecast_apis.utils import resolve_wall_time, zoneinfo_from_name
 
 
 class OpenMeteoConfig(ProviderConfigModel):
@@ -223,7 +223,7 @@ def _timestamp_in_timezone(
         return value
     if parsed.tzinfo is not None:
         return parsed
-    return localize_wall_time(value, location_timezone)
+    return resolve_wall_time(value, location_timezone)
 
 
 class OpenMeteoInstance(BasePluginInstance[OpenMeteoConfig]):

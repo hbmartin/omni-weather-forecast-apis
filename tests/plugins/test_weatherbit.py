@@ -380,7 +380,9 @@ class TestWeatherbitInstance:
                 client,
             )
 
-        assert isinstance(result, PluginFetchSuccess)
+        # The empty {"data": []} now maps to a NO_DATA error; the point of this
+        # test is that requesting daily never hits the hourly endpoint.
+        assert isinstance(result, PluginFetchError)
         assert calls[_HOURLY_PATH] == 0
         assert calls[_DAILY_PATH] == 1
 
@@ -402,7 +404,9 @@ class TestWeatherbitInstance:
                 client,
             )
 
-        assert isinstance(result, PluginFetchSuccess)
+        # The empty {"data": []} now maps to a NO_DATA error; the point of this
+        # test is that requesting hourly never hits the daily endpoint.
+        assert isinstance(result, PluginFetchError)
         assert calls[_HOURLY_PATH] == 1
         assert calls[_DAILY_PATH] == 0
 

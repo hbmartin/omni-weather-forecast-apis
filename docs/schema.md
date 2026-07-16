@@ -147,6 +147,7 @@ the optional IANA `timezone` used for civil-time normalization.
 | `NETWORK` | Connection failure, or the provider returned a 5xx status | ✅ |
 | `PARSE` | The response arrived but could not be normalized |  — |
 | `NOT_AVAILABLE` | The provider is unconfigured, disabled, failed to initialize, supports none of the requested granularities, or returned HTTP 404 | — |
+| `NO_DATA` | The response arrived successfully (HTTP 200) but carried no usable forecast content — every source had empty hourly, daily, minutely, and alert collections | — |
 | `UNKNOWN` | Anything else, including unmapped HTTP statuses | — |
 
 Only `NETWORK`, `TIMEOUT`, and `RATE_LIMITED` are treated as transient; see

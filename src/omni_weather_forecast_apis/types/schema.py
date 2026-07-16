@@ -300,6 +300,7 @@ class ErrorCode(str, Enum):
     NETWORK = "network"
     PARSE = "parse"
     NOT_AVAILABLE = "not_available"
+    NO_DATA = "no_data"
     UNKNOWN = "unknown"
 
 

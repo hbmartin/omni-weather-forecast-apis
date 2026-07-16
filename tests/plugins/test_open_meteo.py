@@ -140,6 +140,49 @@ class TestOpenMeteoInstance:
         assert forecast.daily[0].sunrise == datetime(2024, 1, 1, 15, tzinfo=UTC)
 
     @pytest.mark.asyncio
+    async def test_fetch_parses_full_dst_fall_back_day(
+        self,
+        instance: OpenMeteoInstance,
+    ) -> None:
+        """A fall-back day must parse fully, not be discarded on the bad hour.
+
+        Open-Meteo emits offset-free local timestamps. In America/Los_Angeles
+        the 01:00 hour of 2024-11-03 occurs twice; the old strict localizer
+        raised on that ambiguous hour and dropped every point in the run.
+        """
+        mock_response = {
+            "timezone": "America/Los_Angeles",
+            "hourly": {
+                "time": [
+                    "2024-11-03T00:00",
+                    "2024-11-03T01:00",
+                    "2024-11-03T02:00",
+                ],
+                "temperature_2m": [10.0, 9.5, 9.0],
+            },
+        }
+
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=mock_response),
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(
+                PluginFetchParams(
+                    latitude=34.0,
+                    longitude=-117.0,
+                    granularity=[Granularity.HOURLY],
+                    timezone="America/Los_Angeles",
+                ),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        forecast = result.forecasts[0]
+        assert len(forecast.hourly) == 3
+        # The ambiguous 01:00 resolves to the earlier (pre-transition) instant.
+        assert forecast.hourly[1].timestamp == datetime(2024, 11, 3, 8, tzinfo=UTC)
+
+    @pytest.mark.asyncio
     async def test_fetch_multi_model(self) -> None:
         """Multi-model responses suffix each variable key inside one section.
 
