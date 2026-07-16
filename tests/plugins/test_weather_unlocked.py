@@ -151,7 +151,22 @@ async def test_request_timezone_avoids_fallback_lookup() -> None:
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.host != "api.open-meteo.com"
-        return httpx2.Response(200, json={"Days": []})
+        return httpx2.Response(
+            200,
+            json={
+                "Days": [
+                    {
+                        "date": "2024-01-01",
+                        "wx_desc": "Cloudy",
+                        "sunrise_time": "",
+                        "sunset_time": "1830",
+                        "Timeframes": [
+                            {"time": "0600", "temp_c": 9.0, "wx_desc": "Cloudy"},
+                        ],
+                    },
+                ],
+            },
+        )
 
     async with httpx2.AsyncClient(
         transport=httpx2.MockTransport(handler),

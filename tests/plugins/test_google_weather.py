@@ -276,7 +276,13 @@ async def test_request_parameters_are_sent() -> None:
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         captured.append(request)
-        return httpx2.Response(200, json={"forecastHours": []})
+        return httpx2.Response(
+            200,
+            json={
+                "forecastHours": [_hour_entry("2026-07-03T15:00:00Z", 25.9)],
+                "timeZone": {"id": "America/Los_Angeles"},
+            },
+        )
 
     transport = httpx2.MockTransport(handler)
 
