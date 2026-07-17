@@ -32,6 +32,17 @@ logger = logging.getLogger("omni_weather_forecast_apis")
 _TRANSFER_HEADERS = ("Content-Encoding", "Content-Length", "Transfer-Encoding")
 
 
+async def _finish_task_despite_cancellation(task: asyncio.Task[None]) -> None:
+    """Wait until a task finishes without propagating caller cancellation to it."""
+
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+    task.result()
+
+
 def _decoded_headers(headers: httpx2.Headers) -> httpx2.Headers:
     """Drop framing/encoding headers: the rebuilt body is already decoded."""
 
@@ -110,7 +121,7 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
                 await asyncio.shield(append_task)
             except asyncio.CancelledError:
                 try:
-                    await append_task
+                    await _finish_task_despite_cancellation(append_task)
                 except (Exception,):  # noqa: B013
                     self._disable_recording_after_failure()
                 raise

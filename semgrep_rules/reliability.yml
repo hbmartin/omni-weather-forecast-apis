@@ -1,0 +1,36 @@
+rules:
+  - id: sqlite-rowid-detection-requires-table-list
+    languages: [python]
+    message: Use PRAGMA table_list metadata instead of parsing DDL for WITHOUT ROWID.
+    severity: ERROR
+    pattern: '"WITHOUT ROWID" not in ($DEFINITION or "").upper()'
+
+  - id: sqlite-backup-destination-requires-exclusive-reservation
+    languages: [python]
+    message: Atomically reserve the SQLite backup destination before connecting.
+    severity: ERROR
+    patterns:
+      - pattern: sqlite3.connect($BACKUP)
+      - metavariable-regex:
+          metavariable: $BACKUP
+          regex: .*backup.*
+      - pattern-inside: |
+          def _write_backup(...):
+            ...
+      - pattern-not-inside: |
+          def _write_backup(...):
+            ...
+            $BACKUP.touch(exist_ok=False)
+            ...
+
+  - id: asyncio-shielded-task-requires-shielded-cancellation-cleanup
+    languages: [python]
+    message: Drain the shielded task through repeated cancellation before leaving cleanup.
+    severity: ERROR
+    pattern: |
+      try:
+        await asyncio.shield($TASK)
+      except asyncio.CancelledError:
+        ...
+        await $TASK
+        ...

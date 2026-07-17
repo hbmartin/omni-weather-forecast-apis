@@ -165,14 +165,18 @@ def _backup_path(database: Path) -> Path:
 
 
 def _write_backup(database: Path, backup: Path) -> None:
+    reserved = False
     try:
+        backup.touch(exist_ok=False)
+        reserved = True
         with (
             closing(sqlite3.connect(database)) as source,
             closing(sqlite3.connect(backup)) as destination,
         ):
             source.backup(destination)
     except (OSError, sqlite3.Error):
-        backup.unlink(missing_ok=True)
+        if reserved:
+            backup.unlink(missing_ok=True)
         raise
 
 

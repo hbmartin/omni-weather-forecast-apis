@@ -119,6 +119,30 @@ def test_timestamp_check_skips_non_rowid_inputs(schema: str) -> None:
     ]
 
 
+def test_timestamp_check_uses_metadata_when_ddl_mentions_without_rowid() -> None:
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE hourly_points (
+                source_forecast_id INTEGER NOT NULL,
+                timestamp_unix INTEGER NOT NULL,
+                note TEXT CHECK (note <> 'WITHOUT ROWID')
+            );
+            INSERT INTO hourly_points VALUES (1, 200, NULL);
+            INSERT INTO hourly_points VALUES (1, 100, NULL);
+            """,
+        )
+
+        failures = inspect_db._timestamp_order_failures(connection)
+    finally:
+        connection.close()
+
+    assert failures == [
+        "hourly timestamps not strictly increasing for source 1: 1 rows",
+    ]
+
+
 def test_main_reports_missing_columns_without_crashing(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

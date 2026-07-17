@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx2
 import pytest
@@ -112,7 +113,7 @@ async def test_lookup_can_use_the_aggregation_clients_transport(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_managed_lookup_timeout_is_informational(tmp_path) -> None:
+async def test_managed_lookup_timeout_is_informational(tmp_path: Path) -> None:
     result = await resolve_cli_timezone(
         tmp_path / "forecasts.sqlite",
         34.0,

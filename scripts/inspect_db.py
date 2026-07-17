@@ -76,13 +76,14 @@ def _table_columns(connection: sqlite3.Connection, name: str) -> set[str]:
 
 def _is_rowid_table(connection: sqlite3.Connection, name: str) -> bool:
     row = connection.execute(
-        "SELECT type, sql FROM sqlite_master WHERE name = ?",
+        """
+        SELECT type, wr
+        FROM pragma_table_list
+        WHERE schema = 'main' AND name = ?
+        """,
         (name,),
     ).fetchone()
-    if row is None:
-        return False
-    object_type, definition = row
-    return object_type == "table" and "WITHOUT ROWID" not in (definition or "").upper()
+    return row == ("table", 0)
 
 
 def _print_runs(connection: sqlite3.Connection) -> None:
