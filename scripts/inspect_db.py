@@ -74,6 +74,17 @@ def _table_columns(connection: sqlite3.Connection, name: str) -> set[str]:
     }
 
 
+def _is_rowid_table(connection: sqlite3.Connection, name: str) -> bool:
+    row = connection.execute(
+        "SELECT type, sql FROM sqlite_master WHERE name = ?",
+        (name,),
+    ).fetchone()
+    if row is None:
+        return False
+    object_type, definition = row
+    return object_type == "table" and "WITHOUT ROWID" not in (definition or "").upper()
+
+
 def _print_runs(connection: sqlite3.Connection) -> None:
     print("== Runs ==")
     if not _table_exists(connection, "forecast_runs"):
@@ -122,6 +133,9 @@ def _print_schema_version(connection: sqlite3.Connection) -> None:
     print("== Schema ==")
     if not _table_exists(connection, "schema_metadata"):
         print("  version: legacy/unversioned")
+        return
+    if "schema_version" not in _table_columns(connection, "schema_metadata"):
+        print("  version: unknown (missing schema_version column)")
         return
     row = connection.execute(
         "SELECT schema_version FROM schema_metadata WHERE id = 1",
@@ -332,6 +346,8 @@ def _timestamp_order_failures(connection: sqlite3.Connection) -> list[str]:
         (("hourly_points", ("source_forecast_id", "timestamp_unix")),),
     ):
         return failures
+    if not _is_rowid_table(connection, "hourly_points"):
+        return [f"{check} skipped: hourly_points is not a rowid-backed table"]
     rows = connection.execute(
         """
         SELECT source_forecast_id, COUNT(*)

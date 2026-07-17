@@ -115,6 +115,7 @@ async def test_location_timezone_lookup_uses_managed_http_client() -> None:
     assert timezone == "America/Los_Angeles"
     assert requests[0].url.params["latitude"] == "34.123456"
     assert requests[0].url.params["longitude"] == "-117.987654"
+    assert requests[0].extensions["timeout"]["read"] == 10.0
 
 
 def test_forecast_returns_partial_results() -> None:

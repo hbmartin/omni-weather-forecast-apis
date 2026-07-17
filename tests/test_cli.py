@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -257,13 +258,13 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         return client
 
     async def fake_resolve(
-        database,
-        latitude,
-        longitude,
+        database: Path,
+        latitude: float,
+        longitude: float,
         *,
-        needs_lookup,
-        client,
-    ):
+        needs_lookup: bool,
+        client: _ArchiveStubClient,
+    ) -> TimezoneResolution:
         resolution_call.update(
             database=database,
             latitude=latitude,

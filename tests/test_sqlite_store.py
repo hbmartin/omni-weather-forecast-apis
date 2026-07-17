@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -395,7 +396,7 @@ def test_create_schema_migrates_columns_before_dependent_ddl(tmp_path) -> None:
     } <= indexes
 
 
-def test_create_schema_marks_legacy_runs_with_revision_one(tmp_path) -> None:
+def test_create_schema_marks_legacy_runs_with_revision_one(tmp_path: Path) -> None:
     connection = sqlite3.connect(tmp_path / "legacy.sqlite")
     try:
         connection.executescript(
@@ -430,7 +431,7 @@ def test_create_schema_marks_legacy_runs_with_revision_one(tmp_path) -> None:
     assert row == (None, 1)
 
 
-def test_create_schema_rejects_newer_database_version(tmp_path) -> None:
+def test_create_schema_rejects_newer_database_version(tmp_path: Path) -> None:
     connection = sqlite3.connect(tmp_path / "future.sqlite")
     try:
         connection.executescript(

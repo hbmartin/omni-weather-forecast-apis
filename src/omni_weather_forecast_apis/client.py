@@ -88,6 +88,7 @@ _RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
 )
 _MAX_HONORED_RETRY_AFTER_SECONDS = 60.0
 _TIMEZONE_LOOKUP_URL = "https://api.open-meteo.com/v1/forecast"
+_TIMEZONE_LOOKUP_TIMEOUT_SECONDS = 10.0
 
 
 class OmniWeatherClient:
@@ -210,6 +211,7 @@ class OmniWeatherClient:
             raise RuntimeError("HTTP client initialization failed unexpectedly.")
         response = await client.get(
             _TIMEZONE_LOOKUP_URL,
+            timeout=_TIMEZONE_LOOKUP_TIMEOUT_SECONDS,
             params={
                 "latitude": f"{latitude:.6f}",
                 "longitude": f"{longitude:.6f}",

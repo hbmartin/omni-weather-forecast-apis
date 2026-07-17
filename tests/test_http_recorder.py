@@ -224,6 +224,46 @@ async def test_aclose_waits_for_active_write_and_prevents_reopen(
 
 
 @pytest.mark.asyncio
+async def test_cancelled_record_waits_for_append_before_releasing_lock(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    archive = tmp_path / "raw" / "run.jsonl.gz"
+    transport = RawArchiveTransport(
+        httpx2.MockTransport(lambda _request: httpx2.Response(200, json={})),
+        archive,
+    )
+    write_started = threading.Event()
+    release_write = threading.Event()
+    original_append = transport._append
+
+    def slow_append(member: bytes) -> None:
+        write_started.set()
+        if not release_write.wait(timeout=5):
+            raise TimeoutError("test did not release archive write")
+        original_append(member)
+
+    monkeypatch.setattr(transport, "_append", slow_append)
+    request = httpx2.Request("GET", "https://api.example.com/")
+    record_task = asyncio.create_task(transport._record(request, 200, b"{}"))
+    assert await asyncio.to_thread(write_started.wait, 2)
+
+    record_task.cancel()
+    close_task = asyncio.create_task(transport.aclose())
+    await asyncio.sleep(0)
+    assert record_task.done() is False
+    assert close_task.done() is False
+
+    release_write.set()
+    with pytest.raises(asyncio.CancelledError):
+        await record_task
+    await close_task
+
+    assert len(_read_lines(archive)) == 1
+    assert transport._file is None
+
+
+@pytest.mark.asyncio
 async def test_encoded_responses_survive_rebuild_and_caching(tmp_path) -> None:
     archive = tmp_path / "run.jsonl.gz"
     body = json.dumps({"temperature": 12.5}).encode()
