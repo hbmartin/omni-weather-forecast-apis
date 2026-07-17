@@ -32,9 +32,9 @@ Usage: uv run scripts/repair_db.py <database.sqlite> [--dry-run]
 from __future__ import annotations
 
 import argparse
-import shutil
 import sqlite3
 import sys
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -87,19 +87,6 @@ _OLD_KEYWORD_MAP: tuple[tuple[tuple[str, ...], WeatherCondition], ...] = (
     (("mostly clear",), WeatherCondition.MOSTLY_CLEAR),
     (("clear", "sunny"), WeatherCondition.CLEAR),
 )
-
-# Reverse of the pre-fix Meteosource icon map (it was injective), used to
-# infer the icon code behind stored daily conditions.
-_OLD_METEOSOURCE_REVERSE: dict[str, int] = {
-    WeatherCondition.CLEAR.value: 1,
-    WeatherCondition.PARTLY_CLOUDY.value: 2,
-    WeatherCondition.OVERCAST.value: 3,
-    WeatherCondition.FOG.value: 4,
-    WeatherCondition.DRIZZLE.value: 5,
-    WeatherCondition.RAIN.value: 6,
-    WeatherCondition.SNOW.value: 7,
-    WeatherCondition.THUNDERSTORM.value: 8,
-}
 
 
 def _old_condition_from_text(text: str | None) -> str | None:
@@ -222,15 +209,10 @@ class Repairer:
     ) -> str | None:
         if provider in _TEXT_PROVIDERS:
             return _new_condition_from_text(summary)
-        # Daily rows store no source code; only rows provably derived from
-        # the old text mapping or the old Meteosource icon map are touched.
+        # Daily rows store no source code, so only rows provably derived from
+        # the old text mapping are touched. Inferring an icon from a normalized
+        # condition is ambiguous because multiple icons share conditions.
         if stored is not None and stored == _old_condition_from_text(summary):
-            return _new_condition_from_text(summary)
-        if provider == "meteosource" and stored in _OLD_METEOSOURCE_REVERSE:
-            inferred_code = _OLD_METEOSOURCE_REVERSE[stored]
-            mapped = condition_from_icon_num(inferred_code)
-            if mapped is not None:
-                return mapped.value
             return _new_condition_from_text(summary)
         return stored
 
@@ -371,8 +353,20 @@ class Repairer:
 
 def _backup_path(database: Path) -> Path:
     return database.with_name(
-        f"{database.stem}.pre-repair-{datetime.now(tz=UTC):%Y%m%d}.sqlite",
+        f"{database.stem}.pre-repair-{datetime.now(tz=UTC):%Y%m%dT%H%M%S%fZ}.sqlite",
     )
+
+
+def _write_backup(database: Path, backup: Path) -> None:
+    try:
+        with (
+            closing(sqlite3.connect(database)) as source,
+            closing(sqlite3.connect(backup)) as destination,
+        ):
+            source.backup(destination)
+    except (OSError, sqlite3.Error):
+        backup.unlink(missing_ok=True)
+        raise
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -394,19 +388,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {database} does not exist", file=sys.stderr)
         return 2
 
-    backup = _backup_path(database)
-    if backup.exists():
-        print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
-        return 2
-    shutil.copy2(database, backup)
-    print(f"backup written to {backup}")
-
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        backup = _backup_path(database)
+        if backup.exists():
+            print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
+            return 2
+        _write_backup(database, backup)
+        print(f"backup written to {backup}")
+
         # Bring the schema current first (adds snowfall_depth columns and
-        # refreshes the stacking_features view).
+        # refreshes the stacking_features view). executescript() commits the
+        # snapshot transaction, so reacquire the write reservation afterward.
         _create_schema(connection)
+        if not connection.in_transaction:
+            connection.execute("BEGIN IMMEDIATE")
 
         repairer = Repairer(connection)
         if arguments.dry_run:

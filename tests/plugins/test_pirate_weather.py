@@ -101,6 +101,7 @@ async def test_daily_dates_use_payload_offset() -> None:
                     "time": 1704060000,
                     "temperatureHigh": 5.0,
                     "liquidAccumulation": 0.13,
+                    "precipType": "rain",
                     "snowAccumulation": 1.0,
                 },
             ],
@@ -127,5 +128,6 @@ async def test_daily_dates_use_payload_offset() -> None:
     day = forecast.daily[0]
     assert day.date == date(2024, 1, 1)
     assert day.precipitation_sum == 1.3
+    assert day.rain_sum == 1.3
     assert day.snowfall_depth_sum == 10.0
     assert day.snowfall_sum is None

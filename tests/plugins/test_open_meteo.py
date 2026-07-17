@@ -108,6 +108,10 @@ class TestOpenMeteoInstance:
                 200,
                 json={
                     "timezone": "America/Los_Angeles",
+                    "minutely_15": {
+                        "time": ["2024-01-01T00:00"],
+                        "precipitation": [0.5],
+                    },
                     "hourly": {
                         "time": ["2024-01-01T00:00"],
                         "temperature_2m": [20.0],
@@ -126,7 +130,11 @@ class TestOpenMeteoInstance:
                 PluginFetchParams(
                     latitude=34.0,
                     longitude=-117.0,
-                    granularity=[Granularity.HOURLY, Granularity.DAILY],
+                    granularity=[
+                        Granularity.MINUTELY,
+                        Granularity.HOURLY,
+                        Granularity.DAILY,
+                    ],
                     timezone="America/Los_Angeles",
                 ),
                 client,
@@ -136,6 +144,7 @@ class TestOpenMeteoInstance:
         forecast = result.forecasts[0]
         assert captured_timezone == "America/Los_Angeles"
         assert forecast.timezone == "America/Los_Angeles"
+        assert forecast.minutely[0].timestamp == datetime(2024, 1, 1, 8, tzinfo=UTC)
         assert forecast.hourly[0].timestamp == datetime(2024, 1, 1, 8, tzinfo=UTC)
         assert forecast.daily[0].sunrise == datetime(2024, 1, 1, 15, tzinfo=UTC)
 

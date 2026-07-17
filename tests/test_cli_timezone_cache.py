@@ -35,6 +35,20 @@ class _ManagedLookup:
         return "America/Los_Angeles"
 
 
+class _ManagedTimeout:
+    async def lookup_location_timezone(
+        self,
+        latitude: float,
+        longitude: float,
+    ) -> str:
+        request = httpx2.Request(
+            "GET",
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": latitude, "longitude": longitude},
+        )
+        raise httpx2.ReadTimeout("timezone lookup timed out", request=request)
+
+
 @pytest.mark.asyncio
 async def test_resolve_cli_timezone_caches_open_meteo_result(tmp_path) -> None:
     database_path = tmp_path / "forecasts.sqlite"
@@ -95,6 +109,20 @@ async def test_lookup_can_use_the_aggregation_clients_transport(tmp_path) -> Non
 
     assert result.timezone == "America/Los_Angeles"
     assert managed_client.calls == [(34.0, -117.0)]
+
+
+@pytest.mark.asyncio
+async def test_managed_lookup_timeout_is_informational(tmp_path) -> None:
+    result = await resolve_cli_timezone(
+        tmp_path / "forecasts.sqlite",
+        34.0,
+        -117.0,
+        needs_lookup=True,
+        client=_ManagedTimeout(),
+    )
+
+    assert result.timezone is None
+    assert result.warnings == ("timezone lookup failed: timezone lookup timed out",)
 
 
 @pytest.mark.asyncio

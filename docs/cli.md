@@ -91,9 +91,9 @@ errors. Partial provider failures are visible to schedulers and shell scripts.
 When SQLite output is configured, the CLI caches coordinate-to-IANA-timezone
 mappings in a companion file beside the forecast database. For example,
 `forecasts.sqlite` uses `forecasts.timezones.sqlite`. Coordinates are keyed at
-four decimal places and entries do not expire. Missing, locked, corrupt, or
-unwritable cache state produces a warning and collection continues uncached;
-the cache is an optimization, not a prerequisite for other providers.
+six decimal places and entries are refreshed after 30 days. Missing, locked,
+corrupt, or unwritable cache state produces a warning and collection continues
+uncached; the cache is an optimization, not a prerequisite for other providers.
 
 ## Provider discovery
 

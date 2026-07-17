@@ -193,12 +193,16 @@ def test_task_scheduler_install_and_inspection(monkeypatch, tmp_path: Path) -> N
         commands.append(command)
         if command[0:2] == ("schtasks", "/Query"):
             xml = (
-                "<Task><Triggers><CalendarTrigger>"
+                '<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+                "<Triggers><CalendarTrigger>"
                 "<StartBoundary>2026-07-13T09:30:00</StartBoundary>"
                 "</CalendarTrigger></Triggers><Actions><Exec>"
                 f"<Command>{spec.command[0]}</Command>"
                 f"<Arguments>{subprocess.list2cmdline(list(spec.command[1:]))}</Arguments>"
-                "</Exec></Actions></Task>"
+                "</Exec></Actions><Metadata>"
+                "<StartBoundary>2026-07-13T00:00:00</StartBoundary>"
+                "<Command>decoy.exe</Command><Arguments>--decoy</Arguments>"
+                "</Metadata></Task>"
             )
             return _completed(command, stdout=xml)
         return _completed(command)

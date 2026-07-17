@@ -62,12 +62,23 @@ def _create_database(path: Path, *, conflict: bool = False) -> None:
 
 
 def test_repair_moves_weatherbit_values_and_clears_ambiguous_amounts(
-    tmp_path,
+    tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "forecast.sqlite"
     _create_database(database_path)
 
-    assert repair_db_v2.main([str(database_path)]) == 0
+    wal_connection = sqlite3.connect(database_path)
+    try:
+        assert wal_connection.execute("PRAGMA journal_mode = WAL").fetchone() == (
+            "wal",
+        )
+        wal_connection.execute("INSERT INTO source_forecasts VALUES (3, 'sentinel')")
+        wal_connection.commit()
+        assert database_path.with_name(f"{database_path.name}-wal").exists()
+
+        assert repair_db_v2.main([str(database_path)]) == 0
+    finally:
+        wal_connection.close()
 
     connection = sqlite3.connect(database_path)
     try:
@@ -93,10 +104,25 @@ def test_repair_moves_weatherbit_values_and_clears_ambiguous_amounts(
         (0.0, 0.0, None, None),
     ]
     assert repairs == [("2.0", 2), ("2.0", 1), ("2.0", 2), ("2.0", 1), ("2.0", 2)]
-    assert len(list(tmp_path.glob("forecast.pre-repair-v2-*.sqlite"))) == 1
+    backups = list(tmp_path.glob("forecast.pre-repair-v2-*.sqlite"))
+    assert len(backups) == 1
+    backup_connection = sqlite3.connect(backups[0])
+    try:
+        integrity = backup_connection.execute("PRAGMA integrity_check").fetchone()
+        sentinel = backup_connection.execute(
+            "SELECT provider FROM source_forecasts WHERE id = 3",
+        ).fetchone()
+        original = backup_connection.execute(
+            "SELECT rain, snow, snowfall_depth FROM hourly_points ORDER BY rowid LIMIT 1",
+        ).fetchone()
+    finally:
+        backup_connection.close()
+    assert integrity == ("ok",)
+    assert sentinel == ("sentinel",)
+    assert original == (2.0, 5.0, None)
 
 
-def test_repair_dry_run_rolls_back_without_backup(tmp_path) -> None:
+def test_repair_dry_run_rolls_back_without_backup(tmp_path: Path) -> None:
     database_path = tmp_path / "forecast.sqlite"
     _create_database(database_path)
 
@@ -122,7 +148,7 @@ def test_repair_dry_run_rolls_back_without_backup(tmp_path) -> None:
 
 
 def test_repair_aborts_transaction_on_conflicting_snow_values(
-    tmp_path,
+    tmp_path: Path,
     capsys,
 ) -> None:
     database_path = tmp_path / "forecast.sqlite"

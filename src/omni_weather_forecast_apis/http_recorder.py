@@ -105,8 +105,15 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
         async with self._lock:
             if self._closed or self._recording_failed:
                 return
+            append_task = asyncio.create_task(asyncio.to_thread(self._append, member))
             try:
-                await asyncio.to_thread(self._append, member)
+                await asyncio.shield(append_task)
+            except asyncio.CancelledError:
+                try:
+                    await append_task
+                except (Exception,):  # noqa: B013
+                    self._disable_recording_after_failure()
+                raise
             except (Exception,):  # noqa: B013
                 self._disable_recording_after_failure()
 

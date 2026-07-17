@@ -9,9 +9,9 @@ Usage: uv run scripts/repair_db_v2.py <database.sqlite> [--dry-run]
 from __future__ import annotations
 
 import argparse
-import shutil
 import sqlite3
 import sys
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -160,8 +160,20 @@ class Repairer:
 
 def _backup_path(database: Path) -> Path:
     return database.with_name(
-        f"{database.stem}.pre-repair-v2-{datetime.now(tz=UTC):%Y%m%d}.sqlite",
+        f"{database.stem}.pre-repair-v2-{datetime.now(tz=UTC):%Y%m%dT%H%M%S%fZ}.sqlite",
     )
+
+
+def _write_backup(database: Path, backup: Path) -> None:
+    try:
+        with (
+            closing(sqlite3.connect(database)) as source,
+            closing(sqlite3.connect(backup)) as destination,
+        ):
+            source.backup(destination)
+    except (OSError, sqlite3.Error):
+        backup.unlink(missing_ok=True)
+        raise
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -182,18 +194,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {database} does not exist", file=sys.stderr)
         return 2
 
-    if not arguments.dry_run:
-        backup = _backup_path(database)
-        if backup.exists():
-            print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
-            return 2
-        shutil.copy2(database, backup)
-        print(f"backup written to {backup}")
-
     connection = sqlite3.connect(database)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
+        if not arguments.dry_run:
+            backup = _backup_path(database)
+            if backup.exists():
+                print(
+                    f"error: backup {backup} already exists; aborting",
+                    file=sys.stderr,
+                )
+                return 2
+            _write_backup(database, backup)
+            print(f"backup written to {backup}")
+
         repairer = Repairer(connection)
         print("dry run" if arguments.dry_run else "repairing")
         repairer.assert_no_snow_conflicts()
@@ -206,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
             repairer.log_actions()
             connection.commit()
             print("committed")
-    except (RepairConflictError, sqlite3.Error) as exc:
+    except (OSError, RepairConflictError, sqlite3.Error) as exc:
         connection.rollback()
         print(f"error: repair aborted: {exc}", file=sys.stderr)
         return 2

@@ -440,16 +440,23 @@ def _task_is_installed(spec: ScheduleSpec) -> bool:
         root = ET.fromstring(result.stdout)  # noqa: S314 - local scheduler output.
     except ET.ParseError:
         return False
-    values = {
-        element.tag.rsplit("}", maxsplit=1)[-1]: element.text or ""
-        for element in root.iter()
-    }
-    start_time = values.get("StartBoundary", "").partition("T")[2][:5]
+    start_boundary = root.find(
+        ".//{*}Triggers/{*}CalendarTrigger/{*}StartBoundary",
+    )
+    command = root.find(".//{*}Actions/{*}Exec/{*}Command")
+    arguments = root.find(".//{*}Actions/{*}Exec/{*}Arguments")
+    start_time = (
+        start_boundary.text
+        if start_boundary is not None and start_boundary.text
+        else ""
+    ).partition("T")[2][:5]
     expected_arguments = subprocess.list2cmdline(list(spec.command[1:]))
     return (
         start_time == f"{spec.run_at.hour:02d}:{spec.run_at.minute:02d}"
-        and values.get("Command") == spec.command[0]
-        and values.get("Arguments") == expected_arguments
+        and command is not None
+        and command.text == spec.command[0]
+        and arguments is not None
+        and arguments.text == expected_arguments
     )
 
 
