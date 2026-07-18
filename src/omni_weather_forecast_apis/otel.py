@@ -28,7 +28,7 @@ def create_otel_metrics_hook(meter_provider: Any | None = None) -> MetricsHook:
     """
 
     try:
-        from opentelemetry import (  # noqa: PLC0415  # pyrefly: ignore[missing-import]  # ty: ignore[unresolved-import]
+        from opentelemetry import (  # noqa: PLC0415  # pyrefly: ignore[missing-import]
             metrics as otel_metrics,
         )
     except ImportError as exc:
