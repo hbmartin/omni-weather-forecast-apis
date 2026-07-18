@@ -151,6 +151,7 @@ def test_types_module_reexports_provider_configs() -> None:
         "METNorwayConfig",
         "MetOfficeConfig",
         "MeteosourceConfig",
+        "NBMConfig",
         "NWSConfig",
         "NWSGridOverride",
         "OpenMeteoConfig",

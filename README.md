@@ -46,7 +46,7 @@ library without signing up for anything.
 | [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
 | [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
-| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 7 d | — | — | Global |
+| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 6 d | — | — | Global |
 | [Xweather](https://www.xweather.com/) | `xweather` | Required | — | 10 d | 15 d | — | — | Global |
 | [Apple WeatherKit](https://developer.apple.com/weatherkit/) | `weatherkit` | Required | 1 h | 10 d | 10 d | ✅ | — | Global |
 
@@ -61,6 +61,13 @@ ensembles.
 Every key each plugin accepts, along with per-provider unit and semantics
 caveats, is in the [Providers
 reference](https://hbmartin.github.io/omni-weather-forecast-apis/providers/).
+
+### Upgrade note: Weather Unlocked removed
+
+The `weather_unlocked` provider has been removed. Existing configurations that
+refer to that plugin ID no longer validate and must remove the registration or
+replace it with another supported provider. There is no automatic provider
+substitution because credentials and forecast semantics differ by service.
 
 ## Quick Start
 
@@ -101,13 +108,14 @@ domains such as `example.com` with a `403 Forbidden`.
 Which prints:
 
 ```
-                              Run 1 — 3/3 succeeded
+                              Run 1 — 4/4 succeeded
 ┏━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━┓
 ┃ Provider   ┃ Status ┃ Latency ┃ Hourly ┃ Daily ┃ Minutely ┃ Alerts ┃ Detail      ┃
 ┡━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━┩
 │ open_meteo │   OK   │   924ms │    336 │    14 │        0 │      - │ 2 source(s) │
 │ met_norway │   OK   │   705ms │     90 │     0 │        0 │      - │ 1 source(s) │
 │ nws        │   OK   │   283ms │    156 │     8 │        0 │      - │ 1 source(s) │
+│ nbm        │   OK   │   410ms │     25 │     0 │        0 │      - │ 1 source(s) │
 └────────────┴────────┴─────────┴────────┴───────┴──────────┴────────┴─────────────┘
                        Saved to forecasts.sqlite in 924ms
 ```

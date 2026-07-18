@@ -9,7 +9,7 @@ and condition codes into a common representation.
 
 - **Multi-provider fan-out** with async orchestration and partial-failure tolerance
 - **Typed normalized schema** — common Pydantic models for minutely, hourly, daily, and alert data
-- **Plugin architecture** — 15 providers with typed per-provider config validation
+- **Plugin architecture** — 16 providers with typed per-provider config validation
 - **Resilient by default** — retries with exponential backoff (honoring `Retry-After`), conditional-request HTTP caching, connection pooling limits
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files

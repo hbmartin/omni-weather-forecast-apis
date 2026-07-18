@@ -78,11 +78,15 @@ class TestParsing:
         assert point.timestamp.isoformat().startswith("2026-07-18T18:00")
 
     def test_sentinels_become_none(self):
-        point = _hourly_point(_row(tmp=-88, dpt=None, wsp=None))
+        point = _hourly_point(
+            _row(tmp=-88, dpt=None, wsp=None, sky=-88, p06=-88),
+        )
         assert point is not None
         assert point.temperature is None
         assert point.dew_point is None
         assert point.wind_speed is None
+        assert point.cloud_cover is None
+        assert point.precipitation_probability is None
 
     def test_missing_timestamp_skips_row(self):
         assert _hourly_point(_row(ftime_utc=None, ftime=None)) is None

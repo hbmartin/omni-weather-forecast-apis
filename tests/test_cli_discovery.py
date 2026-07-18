@@ -13,6 +13,7 @@ from omni_weather_forecast_apis import _cli_discovery as discovery
 from omni_weather_forecast_apis._cli_catalog import PROVIDER_CATALOG
 from omni_weather_forecast_apis._cli_discovery import print_providers, run_doctor
 from omni_weather_forecast_apis._cli_scheduling import ScheduleInspection
+from omni_weather_forecast_apis.plugins import get_plugin_registry
 from omni_weather_forecast_apis.types import (
     ErrorCode,
     ProviderError,
@@ -80,6 +81,12 @@ def test_providers_prints_complete_catalog() -> None:
         if item.signup_url is not None:
             assert item.signup_url in output
     assert "Open-Meteo (recommended)" in output
+
+
+def test_provider_catalog_matches_runtime_registry() -> None:
+    assert {item.provider_id for item in PROVIDER_CATALOG} == set(
+        get_plugin_registry(),
+    )
 
 
 def test_doctor_accepts_valid_config_without_contacting_providers(
@@ -355,6 +362,32 @@ def test_doctor_live_check_is_opt_in_and_does_not_persist(
     assert "Live open_meteo" in output
     assert seen["config"].sqlite is None
     assert client.request.providers == [ProviderId.OPEN_METEO]
+
+
+def test_doctor_accepts_and_live_checks_nbm(monkeypatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers='plugin_id = "nbm"\nconfig = { station_id = "KSBD" }',
+        granularities='"hourly"',
+    )
+    client = _LiveClient([SimpleNamespace(provider=ProviderId.NBM)])
+    seen = {}
+
+    async def fake_create(config):
+        seen["config"] = config
+        return client
+
+    monkeypatch.setattr(discovery, "create_omni_weather", fake_create)
+
+    exit_code, output = _doctor_output(config_path, live=True)
+
+    assert exit_code == 0
+    assert "Provider nbm" in output
+    assert "settings valid" in output
+    assert "Live nbm" in output
+    assert seen["config"].providers[0].plugin_id == ProviderId.NBM
+    assert client.request.providers == [ProviderId.NBM]
 
 
 def test_doctor_live_provider_failure_returns_one(

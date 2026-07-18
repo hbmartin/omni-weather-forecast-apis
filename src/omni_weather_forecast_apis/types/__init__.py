@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from omni_weather_forecast_apis.plugins.met_norway import METNorwayConfig
     from omni_weather_forecast_apis.plugins.met_office import MetOfficeConfig
     from omni_weather_forecast_apis.plugins.meteosource import MeteosourceConfig
+    from omni_weather_forecast_apis.plugins.nbm import NBMConfig
     from omni_weather_forecast_apis.plugins.nws import NWSConfig, NWSGridOverride
     from omni_weather_forecast_apis.plugins.open_meteo import OpenMeteoConfig
     from omni_weather_forecast_apis.plugins.openweather import OpenWeatherConfig
@@ -83,6 +84,7 @@ _PROVIDER_CONFIG_EXPORTS = {
         "omni_weather_forecast_apis.plugins.meteosource",
         "MeteosourceConfig",
     ),
+    "NBMConfig": ("omni_weather_forecast_apis.plugins.nbm", "NBMConfig"),
     "NWSConfig": ("omni_weather_forecast_apis.plugins.nws", "NWSConfig"),
     "NWSGridOverride": (
         "omni_weather_forecast_apis.plugins.nws",
@@ -162,6 +164,7 @@ __all__ = [
     "MetricsHook",
     "MinutelyDataPoint",
     "ModelSource",
+    "NBMConfig",
     "NWSConfig",
     "NWSGridOverride",
     "OmniWeatherConfig",

@@ -100,8 +100,10 @@ def _hourly_point(row: dict[str, Any]) -> WeatherDataPoint | None:
         wind_speed=_converted(row.get("wsp"), ms_from_knots),
         wind_gust=_converted(row.get("gst"), ms_from_knots),
         wind_direction=_physical(row.get("wdr")),
-        cloud_cover=normalize_percent(row.get("sky")),
-        precipitation_probability=probability_from_percent_value(row.get("p06")),
+        cloud_cover=normalize_percent(_physical(row.get("sky"))),
+        precipitation_probability=probability_from_percent_value(
+            _physical(row.get("p06")),
+        ),
     )
 
 

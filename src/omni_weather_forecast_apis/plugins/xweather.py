@@ -139,7 +139,7 @@ def _parse_day(period: dict[str, Any]) -> DailyDataPoint:
             as_float(period.get("windSpeedMaxKPH")),
             ms_from_kmh,
         ),
-        wind_gust_max=safe_convert(as_float(period.get("windGustMaxKPH")), ms_from_kmh),
+        wind_gust_max=safe_convert(as_float(period.get("windGustKPH")), ms_from_kmh),
         wind_direction_dominant=as_float(period.get("windDirDEG")),
         precipitation_sum=as_float(period.get("precipMM")),
         precipitation_probability_max=probability_from_percent_value(

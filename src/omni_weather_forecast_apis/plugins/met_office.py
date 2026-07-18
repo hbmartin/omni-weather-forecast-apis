@@ -53,7 +53,7 @@ _CAPABILITIES = PluginCapabilities(
     granularity_hourly=True,
     granularity_daily=True,
     max_horizon_hourly_hours=48,
-    max_horizon_daily_days=7,
+    max_horizon_daily_days=6,
     requires_api_key=True,
     multi_model=False,
     coverage="global",
@@ -77,6 +77,12 @@ def _time_series(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(series, list):
         return []
     return [entry for entry in series if isinstance(entry, dict)]
+
+
+def _future_daily_series(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Drop the leading historical row included by the daily endpoint."""
+
+    return _time_series(payload)[1:]
 
 
 def _weather_code(value: Any) -> int | None:
@@ -178,7 +184,7 @@ class MetOfficeInstance(BasePluginInstance[MetOfficeConfig]):
                 payload = await self._fetch_timesteps(client, params, "daily")
                 if isinstance(payload, PluginFetchError):
                     return payload
-                daily = [_parse_day(entry) for entry in _time_series(payload)]
+                daily = [_parse_day(entry) for entry in _future_daily_series(payload)]
                 if params.include_raw:
                     raw["daily"] = payload
         except (KeyError, TypeError, ValueError) as exc:

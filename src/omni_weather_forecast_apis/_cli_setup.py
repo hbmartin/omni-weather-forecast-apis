@@ -136,14 +136,18 @@ def _provider_default_text(defaults: tuple[ProviderId, ...]) -> str:
 
 def _print_provider_choices(prompts: PromptIO) -> None:
     prompts.print("[bold]Keyless providers[/bold]")
-    for index, item in enumerate(PROVIDER_CATALOG[:3], start=1):
+    for index, item in enumerate(PROVIDER_CATALOG, start=1):
+        if item.authentication not in {"none", "identity"}:
+            continue
         suffix = " [green](recommended)[/green]" if item.recommended else ""
         prompts.print(
             f"  {index}. {item.name} — {item.coverage}, "
             f"{item.granularity_label}{suffix}",
         )
-    prompts.print("\n[bold]Requires API key[/bold]")
-    for index, item in enumerate(PROVIDER_CATALOG[3:], start=4):
+    prompts.print("\n[bold]Requires credentials[/bold]")
+    for index, item in enumerate(PROVIDER_CATALOG, start=1):
+        if item.authentication in {"none", "identity"}:
+            continue
         prompts.print(
             f"  {index}. {item.name} — {item.coverage}, {item.granularity_label}",
         )
@@ -228,7 +232,7 @@ def _prompt_provider_configs(
             configs[provider_id][field.config_key] = _prompt_nonempty(
                 prompts,
                 f"{setup.name} {field.prompt}",
-                password=True,
+                password=field.password,
             )
     return configs
 

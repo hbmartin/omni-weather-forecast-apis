@@ -60,7 +60,7 @@ DAILY_PERIOD = {
     "precipMM": 4.2,
     "snowCM": 0,
     "windSpeedMaxKPH": 36,
-    "windGustMaxKPH": 72,
+    "windGustKPH": 72,
     "windDirDEG": 200,
     "sky": 55,
     "uvi": 8,

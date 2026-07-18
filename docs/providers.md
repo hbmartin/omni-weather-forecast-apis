@@ -1,6 +1,6 @@
 # Providers
 
-Three of the fifteen providers need no API key at all, so you can try the
+Four of the sixteen providers need no API key at all, so you can try the
 library without signing up for anything.
 
 | Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
@@ -8,6 +8,7 @@ library without signing up for anything.
 | [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | 1 h | 16 d | 16 d | — | ✅ | Global |
 | [MET Norway](https://api.met.no/) | `met_norway` | None | — | 9 d | — | — | — | Nordics |
 | [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | None | — | ✅ | ✅ | ✅ | — | US only |
+| [NOAA NBM](https://vlab.noaa.gov/web/mdl/nbm) (via [IEM](https://mesonet.agron.iastate.edu/mos/)) | `nbm` | None | — | 72 h (3-hourly) | — | — | — | US only |
 | [OpenWeather](https://openweathermap.org/api) | `openweather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Required | — | 14 d | 14 d | ✅ | — | Global |
 | [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Required | 1 h | 5 d | 6 d | — | — | Global |
@@ -17,7 +18,7 @@ library without signing up for anything.
 | [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
 | [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
-| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 7 d | — | — | Global |
+| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 6 d | — | — | Global |
 | [Xweather](https://www.xweather.com/) | `xweather` | Required | — | 10 d | 15 d | — | — | Global |
 | [Apple WeatherKit](https://developer.apple.com/weatherkit/) | `weatherkit` | Required | 1 h | 10 d | 10 d | ✅ | — | Global |
 
@@ -30,10 +31,18 @@ returns multiple upstream sources — which is what makes them useful for
 ensembles.
 
 MET Norway and NWS additionally require a `user_agent` identifying your
-application; Xweather uses a `client_id` + `client_secret` pair, and Apple
-WeatherKit signs each request with an ES256 JWT built from your Apple
-Developer credentials rather than sending a static key. Pirate Weather's
-hourly horizon extends to 168 h when `extend_hourly = true`.
+application. NBM is keyless but requires a nearby NBM/METAR `station_id`.
+Xweather uses a `client_id` + `client_secret` pair, and Apple WeatherKit signs
+each request with an ES256 JWT built from your Apple Developer credentials
+rather than sending a static key. Pirate Weather's hourly horizon extends to
+168 h when `extend_hourly = true`.
+
+## Upgrade note: Weather Unlocked removed
+
+The `weather_unlocked` plugin ID and its provider configuration type have been
+removed. Configurations from earlier releases must remove that registration or
+replace it with another supported provider before upgrading. No automatic
+substitution is performed.
 
 ## Configuration reference
 
@@ -46,6 +55,7 @@ placeholder](configuration.md#environment-variable-placeholders).
 | `open_meteo` | `api_key`?, `models` (default: `["best_match"]`), `extra_hourly_vars`?, `extra_daily_vars`? |
 | `met_norway` | **`user_agent`**, `altitude`?, `variant` (`"compact"` \| `"complete"`, default: `"complete"`) |
 | `nws` | **`user_agent`**, `grid_override`? (`{office, grid_x, grid_y}`) |
+| `nbm` | **`station_id`** (4-8 character uppercase NBM/METAR station, for example `"KSBD"`) |
 | `openweather` | **`api_key`**, `exclude`?, `units` (`"standard"` \| `"metric"` \| `"imperial"`, default: `"metric"`) |
 | `weatherapi` | **`api_key`**, `days` (1-14, default: 7), `aqi` (default: false), `alerts` (default: true) |
 | `tomorrow_io` | **`api_key`**, `fields`? |
@@ -73,6 +83,25 @@ Google Maps Platform API key with the Weather API enabled.
 - Responses are requested in metric units and converted to the library's
   normalized units (km/h wind speeds become m/s, etc.).
 
+## NOAA NBM
+
+The `nbm` plugin reads NOAA's National Blend of Models short-range station
+bulletin through the [Iowa Environmental Mesonet MOS
+archive](https://mesonet.agron.iastate.edu/mos/). Choose the nearest supported
+NBM/METAR `station_id` to the requested coordinates; the feed is station-based
+and US-only rather than a coordinate-interpolated global product.
+
+- The keyless NBS bulletin provides 3-hourly points through 72 hours and is
+  exposed through the normalized hourly collection without inventing
+  intermediate hourly values.
+- `P06` is a six-hour probability of precipitation and is mapped to
+  `precipitation_probability`; its wider probability window should be
+  considered when comparing providers.
+- `Q06` is a six-hour accumulation and is deliberately not assigned to an
+  individual point, which would double-count it during later aggregation.
+- Bulletin sentinel values such as `-88` are treated as missing before unit or
+  percentage normalization.
+
 ## Met Office
 
 The `met_office` plugin talks to the [Met Office Weather DataHub Global Spot
@@ -80,9 +109,10 @@ API](https://datahub.metoffice.gov.uk/) (site-specific forecasts). Subscribe
 to the Site Specific plan on the DataHub portal to obtain the `api_key`,
 which is sent as an `apikey` request header.
 
-- Hourly forecasts come from the `point/hourly` endpoint (≈48 h) and daily
-  forecasts from `point/daily` (≈7 days); the service snaps the request to
-  the nearest of its global forecast sites.
+- Hourly forecasts come from the `point/hourly` endpoint (≈48 h). The daily
+  endpoint returns one historical row followed by six future days; the plugin
+  discards the historical row and exposes the six forecast days. The service
+  snaps the request to the nearest of its global forecast sites.
 - Sea-level pressure arrives in pascals and is converted to hPa.
 - Daily rows merge the API's day/night split: `temperature_max` is the day
   maximum, `temperature_min` the night minimum, and wind maxima take the
@@ -102,6 +132,8 @@ API](https://www.xweather.com/docs/weather-api) `forecasts` endpoint with
   `RATE_LIMITED`, `warn_no_data` → `NO_DATA`).
 - `hourly_limit` and `daily_limit` bound how many periods are requested;
   each granularity is a separate billed request.
+- Daily wind gusts use the endpoint's `windGustKPH` period value; Xweather does
+  not publish a separate `windGustMaxKPH` field.
 - The forecast timezone comes from the response's `profile.tz` field, so no
   extra timezone lookup is needed.
 
@@ -167,7 +199,7 @@ history behind these rules):
   `apparent_temperature_max/min` and `visibility_min` are `None` rather
   than approximations (the API only offers air temps and a daily average
   visibility).
-- **Probability scales are declared per provider** (percent for NWS,
+- **Probability scales are declared per provider** (percent for NWS, NBM,
   Open-Meteo, Google, Meteosource, WeatherAPI, Visual Crossing,
   Tomorrow.io, Weatherbit, Met Office, Xweather; 0-1 fractions for
   OpenWeather, Pirate Weather, Stormglass, WeatherKit), so a raw `1` from
