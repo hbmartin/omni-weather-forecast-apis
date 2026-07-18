@@ -316,5 +316,9 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
         ({ProviderId.OPEN_METEO}, [Granularity.HOURLY, Granularity.DAILY], False),
     ],
 )
-def test_cli_needs_timezone_lookup(provider_ids, granularities, expected) -> None:
+def test_cli_needs_timezone_lookup(
+    provider_ids: set[ProviderId],
+    granularities: list[Granularity],
+    expected: bool,
+) -> None:
     assert cli._cli_needs_timezone_lookup(provider_ids, granularities) is expected

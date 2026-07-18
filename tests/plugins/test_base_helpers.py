@@ -21,6 +21,9 @@ from omni_weather_forecast_apis.plugins._base import (
     first_present,
     normalize_percent,
     normalize_severity,
+    optional_max,
+    optional_mean,
+    optional_sum,
     parse_retry_after,
     probability_from_fraction,
     probability_from_percent_value,
@@ -90,6 +93,24 @@ class TestFirstPresent:
 
     def test_all_missing_returns_none(self):
         assert first_present({"a": None}, "a", "b") is None
+
+
+class TestOptionalAggregates:
+    def test_no_arguments_return_none(self) -> None:
+        assert optional_max() is None
+        assert optional_mean() is None
+        assert optional_sum() is None
+
+    def test_all_none_returns_none(self) -> None:
+        assert optional_max(None, None) is None
+        assert optional_mean(None, None) is None
+        assert optional_sum(None, None) is None
+
+    def test_mixed_values_ignore_none(self) -> None:
+        values = (2.0, None, 4.0)
+        assert optional_max(*values) == 4.0
+        assert optional_mean(*values) == 3.0
+        assert optional_sum(*values) == 6.0
 
 
 class TestProbabilityFromPercentValue:

@@ -100,6 +100,12 @@ def _condition_code(period: dict[str, Any]) -> str | None:
     return coded if isinstance(coded, str) else None
 
 
+def _iso_datetime(value: object) -> str | None:
+    """Keep Xweather ISO timestamps while discarding polar false sentinels."""
+
+    return value if isinstance(value, str) else None
+
+
 def _parse_hour(period: dict[str, Any]) -> WeatherDataPoint:
     is_day = period.get("isDay")
     return build_hourly_point(
@@ -154,8 +160,8 @@ def _parse_day(period: dict[str, Any]) -> DailyDataPoint:
         ),
         condition=_condition(period),
         summary=_condition_text(period),
-        sunrise=period.get("sunriseISO"),
-        sunset=period.get("sunsetISO"),
+        sunrise=_iso_datetime(period.get("sunriseISO")),
+        sunset=_iso_datetime(period.get("sunsetISO")),
     )
 
 
