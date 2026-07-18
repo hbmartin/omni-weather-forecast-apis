@@ -33,6 +33,7 @@ class ProviderId(str, Enum):
     OPENWEATHER = "openweather"
     OPEN_METEO = "open_meteo"
     NWS = "nws"
+    NBM = "nbm"
     WEATHERAPI = "weatherapi"
     TOMORROW_IO = "tomorrow_io"
     VISUAL_CROSSING = "visual_crossing"

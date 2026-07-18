@@ -18,7 +18,7 @@ Requires **Python 3.13 or newer**.
 
 - **Multi-provider fan-out** with async orchestration and partial-failure tolerance
 - **Typed normalized schema** — common Pydantic models for minutely, hourly, daily, and alert data
-- **Plugin architecture** — 15 providers with typed per-provider config validation
+- **Plugin architecture** — 16 providers with typed per-provider config validation
 - **Resilient by default** — retries with exponential backoff (honoring `Retry-After`), conditional-request HTTP caching (`ETag`/`Last-Modified`/`Expires`), and explicit connection pool limits
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
@@ -28,7 +28,7 @@ Requires **Python 3.13 or newer**.
 
 ## Supported Providers
 
-Three of the fifteen providers need no API key at all, so you can try the
+Four of the sixteen providers need no API key at all, so you can try the
 library without signing up for anything.
 
 | Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
@@ -36,6 +36,7 @@ library without signing up for anything.
 | [Open-Meteo](https://open-meteo.com/) | `open_meteo` | Optional | 1 h | 16 d | 16 d | — | ✅ | Global |
 | [MET Norway](https://api.met.no/) | `met_norway` | None | — | 9 d | — | — | — | Nordics |
 | [NWS / NOAA](https://www.weather.gov/documentation/services-web-api) | `nws` | None | — | ✅ | ✅ | ✅ | — | US only |
+| [NOAA NBM](https://vlab.noaa.gov/web/mdl/nbm) (via [IEM](https://mesonet.agron.iastate.edu/mos/)) | `nbm` | None | — | 72 h (3-hourly) | — | — | — | US only |
 | [OpenWeather](https://openweathermap.org/api) | `openweather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [WeatherAPI](https://www.weatherapi.com/) | `weatherapi` | Required | — | 14 d | 14 d | ✅ | — | Global |
 | [Tomorrow.io](https://www.tomorrow.io/) | `tomorrow_io` | Required | 1 h | 5 d | 6 d | — | — | Global |
@@ -63,7 +64,7 @@ reference](https://hbmartin.github.io/omni-weather-forecast-apis/providers/).
 
 ## Quick Start
 
-Open-Meteo, MET Norway, and NWS need no API keys, so this runs end to end
+Open-Meteo, MET Norway, NWS, and NBM need no API keys, so this runs end to end
 without any signup. No install step — [uv](https://docs.astral.sh/uv/) fetches
 the package into a throwaway environment:
 
@@ -80,6 +81,10 @@ config = { user_agent = "MyApp/1.0 you@yourdomain.com" }
 [[providers]]
 plugin_id = "nws"
 config = { user_agent = "MyApp/1.0 you@yourdomain.com" }
+
+[[providers]]
+plugin_id = "nbm"
+config = { station_id = "KNYC" }  # nearest NBM/METAR station to your coordinates
 EOF
 
 uvx --from "omni-weather-forecast-apis[cli]" omni-weather \

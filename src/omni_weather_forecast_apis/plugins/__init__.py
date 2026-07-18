@@ -6,6 +6,7 @@ from omni_weather_forecast_apis.plugins.google_weather import google_weather_plu
 from omni_weather_forecast_apis.plugins.met_norway import met_norway_plugin
 from omni_weather_forecast_apis.plugins.met_office import met_office_plugin
 from omni_weather_forecast_apis.plugins.meteosource import meteosource_plugin
+from omni_weather_forecast_apis.plugins.nbm import nbm_plugin
 from omni_weather_forecast_apis.plugins.nws import nws_plugin
 from omni_weather_forecast_apis.plugins.open_meteo import open_meteo_plugin
 from omni_weather_forecast_apis.plugins.openweather import openweather_plugin
@@ -23,6 +24,7 @@ _INITIAL_REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
     openweather_plugin,
     open_meteo_plugin,
     nws_plugin,
+    nbm_plugin,
     weatherapi_plugin,
     tomorrow_io_plugin,
     visual_crossing_plugin,
@@ -60,6 +62,7 @@ __all__ = [
     "met_norway_plugin",
     "met_office_plugin",
     "meteosource_plugin",
+    "nbm_plugin",
     "nws_plugin",
     "open_meteo_plugin",
     "openweather_plugin",
