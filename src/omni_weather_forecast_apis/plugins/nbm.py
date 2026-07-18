@@ -22,6 +22,7 @@ Two deliberate omissions:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
@@ -82,7 +83,10 @@ def _physical(value: Any) -> float | None:
     return numeric
 
 
-def _converted(value: Any, convert: Any) -> float | None:
+def _converted(
+    value: Any,
+    convert: Callable[[float], float],
+) -> float | None:
     numeric = _physical(value)
     if numeric is None:
         return None

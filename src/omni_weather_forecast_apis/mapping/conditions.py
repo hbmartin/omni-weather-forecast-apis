@@ -287,6 +287,7 @@ def map_xweather_coded(
 
 
 WEATHERKIT_CONDITION_MAP: dict[str, WeatherCondition] = {
+    "BlowingDust": WeatherCondition.DUST,
     "Clear": WeatherCondition.CLEAR,
     "MostlyClear": WeatherCondition.MOSTLY_CLEAR,
     "PartlyCloudy": WeatherCondition.PARTLY_CLOUDY,

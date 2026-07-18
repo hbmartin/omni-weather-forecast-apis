@@ -129,7 +129,7 @@ class TestConditionFromText:
 
 
 class TestMetOfficeMap:
-    def test_known_codes(self):
+    def test_known_codes(self) -> None:
         assert map_met_office_condition(1) is WeatherCondition.CLEAR
         assert map_met_office_condition(5) is WeatherCondition.HAZE
         assert map_met_office_condition(15) is WeatherCondition.HEAVY_RAIN
@@ -137,18 +137,18 @@ class TestMetOfficeMap:
         assert map_met_office_condition(30) is WeatherCondition.THUNDERSTORM
         assert map_met_office_condition(-1) is WeatherCondition.DRIZZLE
 
-    def test_unknown_code_maps_to_unknown(self):
+    def test_unknown_code_maps_to_unknown(self) -> None:
         assert map_met_office_condition(4) is WeatherCondition.UNKNOWN
         assert map_met_office_condition(99) is WeatherCondition.UNKNOWN
 
-    def test_is_day_variants(self):
+    def test_is_day_variants(self) -> None:
         assert met_office_is_day(1) is True
         assert met_office_is_day(0) is False
         assert met_office_is_day(10) is True
         assert met_office_is_day(9) is False
         assert met_office_is_day(7) is None
 
-    def test_all_values_are_conditions(self):
+    def test_all_values_are_conditions(self) -> None:
         assert all(
             isinstance(value, WeatherCondition)
             for value in MET_OFFICE_CONDITION_MAP.values()
@@ -172,15 +172,20 @@ class TestXweatherCoded:
             ("::", "BK", WeatherCondition.MOSTLY_CLOUDY),
         ],
     )
-    def test_coded_combinations(self, coded, clouds, expected):
+    def test_coded_combinations(
+        self,
+        coded: str | None,
+        clouds: str | None,
+        expected: WeatherCondition,
+    ) -> None:
         assert map_xweather_coded(coded, clouds) is expected
 
-    def test_unknown_inputs_return_none(self):
+    def test_unknown_inputs_return_none(self) -> None:
         assert map_xweather_coded(None, None) is None
         assert map_xweather_coded("not-coded", None) is None
         assert map_xweather_coded("::", "??") is None
 
-    def test_all_values_are_conditions(self):
+    def test_all_values_are_conditions(self) -> None:
         tables = (XWEATHER_WEATHER_CODED_MAP, XWEATHER_CLOUDS_CODED_MAP)
         assert all(
             isinstance(value, WeatherCondition)
@@ -190,7 +195,8 @@ class TestXweatherCoded:
 
 
 class TestWeatherKitMap:
-    def test_known_codes(self):
+    def test_known_codes(self) -> None:
+        assert WEATHERKIT_CONDITION_MAP["BlowingDust"] is WeatherCondition.DUST
         assert WEATHERKIT_CONDITION_MAP["Clear"] is WeatherCondition.CLEAR
         assert WEATHERKIT_CONDITION_MAP["Cloudy"] is WeatherCondition.OVERCAST
         assert (
@@ -200,7 +206,7 @@ class TestWeatherKitMap:
         assert WEATHERKIT_CONDITION_MAP["Blizzard"] is WeatherCondition.HEAVY_SNOW
         assert WEATHERKIT_CONDITION_MAP["TropicalStorm"] is WeatherCondition.HURRICANE
 
-    def test_all_values_are_conditions(self):
+    def test_all_values_are_conditions(self) -> None:
         assert all(
             isinstance(value, WeatherCondition)
             for value in WEATHERKIT_CONDITION_MAP.values()

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from omni_weather_forecast_apis.plugins.xweather import (
     XweatherConfig,
     XweatherInstance,
+    _parse_day,
     xweather_plugin,
 )
 from omni_weather_forecast_apis.types import (
@@ -146,6 +147,18 @@ class TestXweatherInstance:
         assert caps.max_horizon_hourly_hours == 48.0
         assert caps.max_horizon_daily_days == 7.0
         assert caps.alerts is False
+
+    def test_polar_day_omits_false_sunrise_and_sunset(self) -> None:
+        period = {
+            **DAILY_PERIOD,
+            "sunriseISO": False,
+            "sunsetISO": False,
+        }
+
+        day = _parse_day(period)
+
+        assert day.sunrise is None
+        assert day.sunset is None
 
     @pytest.mark.asyncio
     async def test_fetch_success(self) -> None:

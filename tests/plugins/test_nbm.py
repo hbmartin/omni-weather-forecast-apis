@@ -47,23 +47,23 @@ def _row(**overrides: object) -> dict[str, object]:
 
 
 class TestConfig:
-    def test_station_id_required(self):
+    def test_station_id_required(self) -> None:
         with pytest.raises(ValidationError):
             nbm_plugin.validate_config({})
 
-    def test_station_id_pattern(self):
+    def test_station_id_pattern(self) -> None:
         with pytest.raises(ValidationError):
             nbm_plugin.validate_config({"station_id": "ks"})
         config = nbm_plugin.validate_config({"station_id": "KSBD"})
         assert config.station_id == "KSBD"
 
-    def test_extra_keys_forbidden(self):
+    def test_extra_keys_forbidden(self) -> None:
         with pytest.raises(ValidationError):
             nbm_plugin.validate_config({"station_id": "KSBD", "user_agent": "x"})
 
 
 class TestParsing:
-    def test_hourly_point_units(self):
+    def test_hourly_point_units(self) -> None:
         point = _hourly_point(_row())
         assert point is not None
         assert point.temperature == pytest.approx((83 - 32) * 5 / 9)
@@ -77,7 +77,7 @@ class TestParsing:
         assert point.precipitation is None
         assert point.timestamp.isoformat().startswith("2026-07-18T18:00")
 
-    def test_sentinels_become_none(self):
+    def test_sentinels_become_none(self) -> None:
         point = _hourly_point(
             _row(tmp=-88, dpt=None, wsp=None, sky=-88, p06=-88),
         )
@@ -88,10 +88,10 @@ class TestParsing:
         assert point.cloud_cover is None
         assert point.precipitation_probability is None
 
-    def test_missing_timestamp_skips_row(self):
+    def test_missing_timestamp_skips_row(self) -> None:
         assert _hourly_point(_row(ftime_utc=None, ftime=None)) is None
 
-    def test_latest_run_filter(self):
+    def test_latest_run_filter(self) -> None:
         stale = _row(runtime_utc="2026-07-18T06:00:00.000")
         fresh = _row()
         assert _latest_run_rows([stale, fresh]) == [fresh]
@@ -99,7 +99,7 @@ class TestParsing:
 
 class TestFetch:
     @pytest.mark.asyncio
-    async def test_fetch_normalizes_latest_run(self):
+    async def test_fetch_normalizes_latest_run(self) -> None:
         payload = {
             "schema": {"fields": []},
             "data": [
@@ -134,7 +134,7 @@ class TestFetch:
         assert forecast.daily == []
 
     @pytest.mark.asyncio
-    async def test_fetch_reports_malformed_payload(self):
+    async def test_fetch_reports_malformed_payload(self) -> None:
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(200, json={"detail": "nope"}),
         )
@@ -146,7 +146,7 @@ class TestFetch:
         assert result.code == ErrorCode.PARSE
 
     @pytest.mark.asyncio
-    async def test_fetch_reports_malformed_row_and_preserves_raw_payload(self):
+    async def test_fetch_reports_malformed_row_and_preserves_raw_payload(self) -> None:
         payload = {"data": [_row(ftime_utc="not-a-timestamp")]}
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(200, json=payload),
@@ -164,7 +164,7 @@ class TestFetch:
         assert result.raw == payload
 
     @pytest.mark.asyncio
-    async def test_fetch_reports_http_error(self):
+    async def test_fetch_reports_http_error(self) -> None:
         transport = httpx2.MockTransport(
             lambda _request: httpx2.Response(503, text="unavailable"),
         )
@@ -175,7 +175,7 @@ class TestFetch:
         assert result.status == "error"
 
     @pytest.mark.asyncio
-    async def test_capabilities(self):
+    async def test_capabilities(self) -> None:
         config = nbm_plugin.validate_config({"station_id": "KSBD"})
         instance = await nbm_plugin.initialize(config)
         capabilities = instance.get_capabilities()
