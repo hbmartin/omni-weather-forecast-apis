@@ -1,0 +1,47 @@
+I need a very thorough and thoughtful comparison of two competing git commits of the same feature: {{COMMIT_1}} and {{COMMIT_2}}.
+
+Take your time and think hard. You may copy files and diff them as needed. I need an in-depth analysis of feature completeness, diverging implementations, good architectural patterns, and best TypeScript practices.
+
+Write a detailed report followed by a summary table rating each commit 0 (poor), 1 (acceptable), 2 (good), or 3 (excellent) in these categories:
+- Product & Feature Completeness
+- Hexagonal Architectural Alignment (3: Isolated, 0: Leaky/Fat abstraction)
+- TypeScript Quality
+- Data Safety & Security
+- Error Handling & Side-Effect Safety
+- System Resilience & Blast Radius
+- Performance & Scalability
+- Complexity & Maintainability & Project Convention Adherence
+- Testability & Observability (3: Unit tested/Isolated and Proper logging, 0: Untestable/Silent)
+- Business Logic: look at things like variable substitution, data transformation, and whether the feature actually solves the user’s problem, or just "implements the requirements." (3: Perfect, 0: Placeholder logic only)
+
+### Decision & Hybridization Strategy
+ After producing the report and summary table, write a recommendation Based on your analysis, with a final decision and an improvement plan:
+
+1. **The Recommendation:** State clearly which commit ({{COMMIT_1}} or {{COMMIT_2}}) you prefer with a one sentence justification and a score of your certainty. (0: uncertain / same total score, 3: highly certain, obvious winner)
+2. **The Lost Value Audit:** Identify specific features, error cases, or metadata patterns that the *other* (non-merged)
+commit handled better.
+3. **The "Best of Both" Roadmap:** Write a bulleted list of all actionable engineering steps to "backport" those unique strengths into your recommended candidate.
+
+The goal is to produce a hybrid implementation that combines the superiorities of the winner with those of the runner-up.
+
+After producing the report and table, persist the rating results to SQLite at this exact path:
+{{SQLITE_DB_PATH}}
+
+Name the feature you're comparing (using the diff messages) and use it for `feature_name` in the SQLite table. (This should be the same for every row you insert)
+Extract the model name from the diff messages and use it for `model` in the SQLite table. (This should be stable across categories)
+
+Use SQLite to create the database and table if they do not already exist, then insert one row per commit per category:
+
+CREATE TABLE IF NOT EXISTS commit_ratings (
+  feature_name TEXT NOT NULL,
+  model TEXT NOT NULL,
+  commit_hash TEXT NOT NULL,
+  category TEXT NOT NULL,
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 3),
+  rationale TEXT NOT NULL,
+  compared_at_utc TEXT NOT NULL,
+  PRIMARY KEY (feature_name, model, commit_hash, category)
+);
+
+Set `baseline_commit` to the other commit in the pair for each rating row (for rows about {{COMMIT_1}}, baseline is {{COMMIT_2}}; for rows about {{COMMIT_2}}, baseline is {{COMMIT_1}}).
+Insert all rating rows with UPSERT semantics so reruns update existing rows for the same (baseline_commit, compared_commit, category) key instead of inserting duplicates.

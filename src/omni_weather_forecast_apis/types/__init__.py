@@ -52,6 +52,7 @@ from omni_weather_forecast_apis.types.schema import (
 if TYPE_CHECKING:
     from omni_weather_forecast_apis.plugins.google_weather import GoogleWeatherConfig
     from omni_weather_forecast_apis.plugins.met_norway import METNorwayConfig
+    from omni_weather_forecast_apis.plugins.met_office import MetOfficeConfig
     from omni_weather_forecast_apis.plugins.meteosource import MeteosourceConfig
     from omni_weather_forecast_apis.plugins.nws import NWSConfig, NWSGridOverride
     from omni_weather_forecast_apis.plugins.open_meteo import OpenMeteoConfig
@@ -60,11 +61,10 @@ if TYPE_CHECKING:
     from omni_weather_forecast_apis.plugins.stormglass import StormglassConfig
     from omni_weather_forecast_apis.plugins.tomorrow_io import TomorrowIOConfig
     from omni_weather_forecast_apis.plugins.visual_crossing import VisualCrossingConfig
-    from omni_weather_forecast_apis.plugins.weather_unlocked import (
-        WeatherUnlockedConfig,
-    )
     from omni_weather_forecast_apis.plugins.weatherapi import WeatherAPIConfig
     from omni_weather_forecast_apis.plugins.weatherbit import WeatherbitConfig
+    from omni_weather_forecast_apis.plugins.weatherkit import WeatherKitConfig
+    from omni_weather_forecast_apis.plugins.xweather import XweatherConfig
 
 _PROVIDER_CONFIG_EXPORTS = {
     "GoogleWeatherConfig": (
@@ -74,6 +74,10 @@ _PROVIDER_CONFIG_EXPORTS = {
     "METNorwayConfig": (
         "omni_weather_forecast_apis.plugins.met_norway",
         "METNorwayConfig",
+    ),
+    "MetOfficeConfig": (
+        "omni_weather_forecast_apis.plugins.met_office",
+        "MetOfficeConfig",
     ),
     "MeteosourceConfig": (
         "omni_weather_forecast_apis.plugins.meteosource",
@@ -116,9 +120,13 @@ _PROVIDER_CONFIG_EXPORTS = {
         "omni_weather_forecast_apis.plugins.weatherbit",
         "WeatherbitConfig",
     ),
-    "WeatherUnlockedConfig": (
-        "omni_weather_forecast_apis.plugins.weather_unlocked",
-        "WeatherUnlockedConfig",
+    "WeatherKitConfig": (
+        "omni_weather_forecast_apis.plugins.weatherkit",
+        "WeatherKitConfig",
+    ),
+    "XweatherConfig": (
+        "omni_weather_forecast_apis.plugins.xweather",
+        "XweatherConfig",
     ),
 }
 
@@ -147,6 +155,7 @@ __all__ = [
     "IANATimezoneName",
     "LogHook",
     "METNorwayConfig",
+    "MetOfficeConfig",
     "MeteosourceConfig",
     "MetricEvent",
     "MetricKind",
@@ -184,7 +193,8 @@ __all__ = [
     "WeatherAlert",
     "WeatherCondition",
     "WeatherDataPoint",
+    "WeatherKitConfig",
     "WeatherPlugin",
-    "WeatherUnlockedConfig",
     "WeatherbitConfig",
+    "XweatherConfig",
 ]

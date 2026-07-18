@@ -323,10 +323,9 @@ def _cli_needs_timezone_lookup(
     granularities: list[Granularity],
 ) -> bool:
     requested = set(granularities)
-    return (
-        ProviderId.WEATHER_UNLOCKED in provider_ids
-        and bool(requested & {Granularity.HOURLY, Granularity.DAILY})
-    ) or (ProviderId.TOMORROW_IO in provider_ids and Granularity.DAILY in requested)
+    return (ProviderId.WEATHERKIT in provider_ids and bool(requested)) or (
+        ProviderId.TOMORROW_IO in provider_ids and Granularity.DAILY in requested
+    )
 
 
 def _print_timezone_warnings(warnings: tuple[str, ...]) -> None:

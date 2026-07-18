@@ -303,3 +303,18 @@ def test_cli_passes_cached_timezone_to_library_request(monkeypatch, tmp_path) ->
     assert isinstance(client.request, ForecastRequest)
     assert client.request.timezone == "America/Los_Angeles"
     assert client.request.granularity == [Granularity.DAILY]
+
+
+@pytest.mark.parametrize(
+    ("provider_ids", "granularities", "expected"),
+    [
+        ({ProviderId.WEATHERKIT}, [Granularity.MINUTELY], True),
+        ({ProviderId.WEATHERKIT}, [Granularity.HOURLY], True),
+        ({ProviderId.WEATHERKIT}, [], False),
+        ({ProviderId.TOMORROW_IO}, [Granularity.DAILY], True),
+        ({ProviderId.TOMORROW_IO}, [Granularity.HOURLY], False),
+        ({ProviderId.OPEN_METEO}, [Granularity.HOURLY, Granularity.DAILY], False),
+    ],
+)
+def test_cli_needs_timezone_lookup(provider_ids, granularities, expected) -> None:
+    assert cli._cli_needs_timezone_lookup(provider_ids, granularities) is expected

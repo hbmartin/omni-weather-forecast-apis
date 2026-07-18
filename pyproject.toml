@@ -38,6 +38,7 @@ keywords = [
 dependencies = [
     "httpx2>=2.5.0",
     "pydantic>=2.12.5",
+    "pyjwt[crypto]>=2.10",
     "tzdata>=2025.2; sys_platform == 'win32'",
 ]
 
@@ -67,6 +68,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "codecov>=2.1.13",
+    "cryptography>=44",
     "deptry>=0.23.0",
     "hypothesis>=6.130",
     "lizard>=1.23.0",
@@ -126,6 +128,8 @@ lint.ignore = [
     "ANN",    # Type annotations not required in tests
     "D",      # Docstrings not required in tests
     "S101",   # assert is expected in tests
+    "S105",   # Fake credentials in test fixtures are expected
+    "S106",   # Fake credentials in test fixtures are expected
     "SLF001", # Private member access is fine in tests
 ]
 "scripts/**/*.py" = [
@@ -145,6 +149,7 @@ known_first_party = ["omni_weather_forecast_apis"]
 
 [tool.deptry.package_module_name_map]
 opentelemetry-api = "opentelemetry"
+pyjwt = "jwt"
 
 [tool.deptry.per_rule_ignores]
 # CLI extras are loaded dynamically so the core library works without them.

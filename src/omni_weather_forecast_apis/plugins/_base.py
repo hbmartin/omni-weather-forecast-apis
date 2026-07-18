@@ -88,6 +88,27 @@ def first_present(mapping: Mapping[str, Any], *keys: str) -> Any | None:
     return None
 
 
+def optional_max(*values: float | None) -> float | None:
+    """Max across the present values, or None when all are absent."""
+
+    present = [value for value in values if value is not None]
+    return max(present) if present else None
+
+
+def optional_mean(*values: float | None) -> float | None:
+    """Mean across the present values, or None when all are absent."""
+
+    present = [value for value in values if value is not None]
+    return sum(present) / len(present) if present else None
+
+
+def optional_sum(*values: float | None) -> float | None:
+    """Sum across the present values, or None when all are absent."""
+
+    present = [value for value in values if value is not None]
+    return sum(present) if present else None
+
+
 def probability_from_percent_value(value: Any) -> float | None:
     """Normalize a percent-scale (0-100) probability into the 0..1 range.
 

@@ -149,6 +149,7 @@ def test_types_module_reexports_provider_configs() -> None:
     expected_names = {
         "GoogleWeatherConfig",
         "METNorwayConfig",
+        "MetOfficeConfig",
         "MeteosourceConfig",
         "NWSConfig",
         "NWSGridOverride",
@@ -160,7 +161,8 @@ def test_types_module_reexports_provider_configs() -> None:
         "VisualCrossingConfig",
         "WeatherAPIConfig",
         "WeatherbitConfig",
-        "WeatherUnlockedConfig",
+        "WeatherKitConfig",
+        "XweatherConfig",
     }
 
     assert expected_names.issubset(public_types.__all__)

@@ -23,6 +23,9 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_source_forecast,
     fallback_condition,
+    optional_max,
+    optional_mean,
+    optional_sum,
     probability_from_percent_value,
 )
 from omni_weather_forecast_apis.types import (
@@ -216,21 +219,6 @@ def _interval_start(entry: dict[str, Any]) -> str | None:
         return None
     start = interval.get("startTime")
     return start if isinstance(start, str) else None
-
-
-def _optional_max(*values: float | None) -> float | None:
-    present = [value for value in values if value is not None]
-    return max(present) if present else None
-
-
-def _optional_mean(*values: float | None) -> float | None:
-    present = [value for value in values if value is not None]
-    return sum(present) / len(present) if present else None
-
-
-def _optional_sum(*values: float | None) -> float | None:
-    present = [value for value in values if value is not None]
-    return sum(present) if present else None
 
 
 class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
@@ -434,32 +422,32 @@ class GoogleWeatherInstance(BasePluginInstance[GoogleWeatherConfig]):
             temperature_min=_degrees(entry.get("minTemperature")),
             apparent_temperature_max=_degrees(entry.get("feelsLikeMaxTemperature")),
             apparent_temperature_min=_degrees(entry.get("feelsLikeMinTemperature")),
-            wind_speed_max=_optional_max(
+            wind_speed_max=optional_max(
                 _speed_ms(_wind_block(day_part, "speed")),
                 _speed_ms(_wind_block(night_part, "speed")),
             ),
-            wind_gust_max=_optional_max(
+            wind_gust_max=optional_max(
                 _speed_ms(_wind_block(day_part, "gust")),
                 _speed_ms(_wind_block(night_part, "gust")),
             ),
             wind_direction_dominant=_wind_direction(day_part),
-            precipitation_sum=_optional_sum(
+            precipitation_sum=optional_sum(
                 _qpf_mm(_precipitation_block(day_part, "qpf")),
                 _qpf_mm(_precipitation_block(night_part, "qpf")),
             ),
-            precipitation_probability_max=_optional_max(
+            precipitation_probability_max=optional_max(
                 _precipitation_probability(day_part),
                 _precipitation_probability(night_part),
             ),
-            cloud_cover_mean=_optional_mean(
+            cloud_cover_mean=optional_mean(
                 as_float(day_part.get("cloudCover")),
                 as_float(night_part.get("cloudCover")),
             ),
-            uv_index_max=_optional_max(
+            uv_index_max=optional_max(
                 as_float(day_part.get("uvIndex")),
                 as_float(night_part.get("uvIndex")),
             ),
-            humidity_mean=_optional_mean(
+            humidity_mean=optional_mean(
                 as_float(day_part.get("relativeHumidity")),
                 as_float(night_part.get("relativeHumidity")),
             ),
