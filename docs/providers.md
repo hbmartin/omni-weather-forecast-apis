@@ -1,6 +1,6 @@
 # Providers
 
-Three of the thirteen providers need no API key at all, so you can try the
+Three of the fifteen providers need no API key at all, so you can try the
 library without signing up for anything.
 
 | Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
@@ -16,8 +16,10 @@ library without signing up for anything.
 | [Meteosource](https://www.meteosource.com/) | `meteosource` | Required | 1 h | 7 d | 30 d | ✅ | — | Global |
 | [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
-| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Required | — | ✅ | ✅ | — | — | Global |
 | [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
+| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 7 d | — | — | Global |
+| [Xweather](https://www.xweather.com/) | `xweather` | Required | — | 10 d | 15 d | — | — | Global |
+| [Apple WeatherKit](https://developer.apple.com/weatherkit/) | `weatherkit` | Required | 1 h | 10 d | 10 d | ✅ | — | Global |
 
 The minutely, hourly, and daily columns give each provider's **maximum forecast
 horizon**. `✅` means the granularity is supported but the plugin declares no
@@ -28,9 +30,10 @@ returns multiple upstream sources — which is what makes them useful for
 ensembles.
 
 MET Norway and NWS additionally require a `user_agent` identifying your
-application; Weather Unlocked uses an `app_id` + `app_key` pair rather than a
-single key. Pirate Weather's hourly horizon extends to 168 h when
-`extend_hourly = true`.
+application; Xweather uses a `client_id` + `client_secret` pair, and Apple
+WeatherKit signs each request with an ES256 JWT built from your Apple
+Developer credentials rather than sending a static key. Pirate Weather's
+hourly horizon extends to 168 h when `extend_hourly = true`.
 
 ## Configuration reference
 
@@ -51,8 +54,10 @@ placeholder](configuration.md#environment-variable-placeholders).
 | `meteosource` | **`api_key`**, `sections` (default: `["current", "hourly", "daily"]`) |
 | `pirate_weather` | **`api_key`**, `extend_hourly` (default: false), `version` (`"1"` \| `"2"`, default: `"2"`) |
 | `stormglass` | **`api_key`**, `sources` (default: `["sg"]`), `params` (list of weather variables) |
-| `weather_unlocked` | **`app_id`**, **`app_key`**, `lang`? |
 | `google_weather` | **`api_key`**, `hours` (1-240, default: 48), `days` (1-10, default: 10) |
+| `met_office` | **`api_key`** |
+| `xweather` | **`client_id`**, **`client_secret`**, `hourly_limit` (1-240, default: 120), `daily_limit` (1-15, default: 10) |
+| `weatherkit` | **`team_id`**, **`service_id`**, **`key_id`**, `private_key` or `private_key_path` (exactly one), `country_code`?, `hours` (1-240, default: 48) |
 
 ## Google Weather
 
@@ -68,6 +73,60 @@ Google Maps Platform API key with the Weather API enabled.
 - Responses are requested in metric units and converted to the library's
   normalized units (km/h wind speeds become m/s, etc.).
 
+## Met Office
+
+The `met_office` plugin talks to the [Met Office Weather DataHub Global Spot
+API](https://datahub.metoffice.gov.uk/) (site-specific forecasts). Subscribe
+to the Site Specific plan on the DataHub portal to obtain the `api_key`,
+which is sent as an `apikey` request header.
+
+- Hourly forecasts come from the `point/hourly` endpoint (≈48 h) and daily
+  forecasts from `point/daily` (≈7 days); the service snaps the request to
+  the nearest of its global forecast sites.
+- Sea-level pressure arrives in pascals and is converted to hPa.
+- Daily rows merge the API's day/night split: `temperature_max` is the day
+  maximum, `temperature_min` the night minimum, and wind maxima take the
+  larger of the midday/midnight values. `humidity_mean`,
+  `pressure_sea_mean`, and `visibility_min` stay `None` because the API
+  only exposes single-instant midday values, not daily aggregates.
+
+## Xweather
+
+The `xweather` plugin talks to the [Xweather (formerly Aeris) Weather
+API](https://www.xweather.com/docs/weather-api) `forecasts` endpoint with
+`filter=1hr` for hourly and `filter=day` for daily periods.
+
+- Xweather reports auth and quota failures with **HTTP 200** and a
+  `success: false` envelope; the plugin maps envelope error codes to typed
+  errors (`invalid_client`/`unauthorized` → `AUTH_FAILED`, `maxed_out` →
+  `RATE_LIMITED`, `warn_no_data` → `NO_DATA`).
+- `hourly_limit` and `daily_limit` bound how many periods are requested;
+  each granularity is a separate billed request.
+- The forecast timezone comes from the response's `profile.tz` field, so no
+  extra timezone lookup is needed.
+
+## Apple WeatherKit
+
+The `weatherkit` plugin talks to the [WeatherKit REST
+API](https://developer.apple.com/documentation/weatherkitrestapi). It needs
+an Apple Developer account with WeatherKit enabled: a Team ID, a WeatherKit
+service identifier, and a `.p8` signing key (Key ID + private key).
+
+- Provide the key as either `private_key_path` (path to the `.p8` file) or
+  `private_key` (the PEM text, handy with `${ENV_VAR}` placeholders) —
+  exactly one of the two.
+- Each request is authenticated with a short-lived ES256 JWT signed in
+  process; tokens are cached and refreshed before expiry. An unreadable or
+  invalid key surfaces as `AUTH_FAILED` before any network call.
+- One `GET /api/v1/weather/...` call covers minutely
+  (`forecastNextHour`, available only in some regions), hourly
+  (`forecastHourly`, bounded by the `hours` config key), daily
+  (`forecastDaily`, 10 days), and alerts (`weatherAlerts`, only requested
+  when `country_code` is configured).
+- The API requires an IANA `timezone` query parameter for daily rollups, so
+  the plugin resolves one from the request or the keyless Open-Meteo
+  lookup.
+
 ## Unit and semantics notes
 
 A few provider-specific behaviors are worth knowing when comparing values
@@ -75,22 +134,18 @@ across providers (see [Data corrections](data-corrections.md) for the
 history behind these rules):
 
 - **Snow fields are split by what the provider reports.** `snow` /
-  `snowfall_sum` hold liquid-equivalent millimetres (OpenWeather, and
-  Open-Meteo via `snowfall_water_equivalent`); `snowfall_depth` /
-  `snowfall_depth_sum` hold new-snow depth in millimetres (Open-Meteo
-  `snowfall`, Pirate Weather `snowAccumulation`). No 10:1 conversion is
-  ever guessed between the two.
+  `snowfall_sum` hold liquid-equivalent millimetres (OpenWeather, Met
+  Office `totalSnowAmount`, and Open-Meteo via
+  `snowfall_water_equivalent`); `snowfall_depth` / `snowfall_depth_sum`
+  hold new-snow depth in millimetres (Open-Meteo `snowfall`, Pirate
+  Weather `snowAccumulation`, Xweather `snowCM`, WeatherKit
+  `snowfallAmount`). No 10:1 conversion is ever guessed between the two.
 - **Pirate Weather liquid amounts** come from `liquidAccumulation`
   (cm→mm), falling back to `precipAccumulation` only for rain-typed rows —
   when snowing, `precipAccumulation` reports snow depth and is not a
   liquid amount. `precipIntensity` (a mm/h rate) is used only for the
   minutely `precipitation_intensity` field.
-- **Weather Unlocked returns local times with no offset**, so the plugin
-  resolves an IANA location timezone from the request or the keyless
-  Open-Meteo `timezone=auto` endpoint. It applies date-specific DST rules to
-  every wall time and fails the provider on ambiguous or nonexistent local
-  times rather than guessing an instant.
-- **Open-Meteo and Meteosource also emit offset-free local times**, but they
+- **Open-Meteo and Meteosource emit offset-free local times**, but they
   resolve DST discontinuities deterministically instead of failing the whole
   run: an ambiguous fall-back hour maps to the earlier (pre-transition)
   instant, and a nonexistent spring-forward hour is shifted to the real
@@ -114,6 +169,6 @@ history behind these rules):
   visibility).
 - **Probability scales are declared per provider** (percent for NWS,
   Open-Meteo, Google, Meteosource, WeatherAPI, Visual Crossing,
-  Tomorrow.io, Weatherbit, Weather Unlocked; 0-1 fractions for
-  OpenWeather, Pirate Weather, Stormglass), so a raw `1` from a percent
-  API means 1%, never 100%.
+  Tomorrow.io, Weatherbit, Met Office, Xweather; 0-1 fractions for
+  OpenWeather, Pirate Weather, Stormglass, WeatherKit), so a raw `1` from
+  a percent API means 1%, never 100%.

@@ -5,7 +5,13 @@ from typing import Literal
 
 from omni_weather_forecast_apis.types import Granularity, ProviderId
 
-type AuthenticationKind = Literal["none", "identity", "api_key", "app_credentials"]
+type AuthenticationKind = Literal[
+    "none",
+    "identity",
+    "api_key",
+    "app_credentials",
+    "jwt",
+]
 
 
 @dataclass(frozen=True)
@@ -40,6 +46,8 @@ class ProviderSetup:
                 return "API key"
             case "app_credentials":
                 return "App ID + key"
+            case "jwt":
+                return "Signed JWT (key file)"
 
     @property
     def granularity_label(self) -> str:
@@ -147,18 +155,6 @@ PROVIDER_CATALOG: tuple[ProviderSetup, ...] = (
         _API_KEY,
     ),
     ProviderSetup(
-        ProviderId.WEATHER_UNLOCKED,
-        "Weather Unlocked",
-        "Global",
-        _HOURLY_DAILY,
-        "app_credentials",
-        "https://developer.weatherunlocked.com/signup",
-        (
-            CredentialField("app_id", "Application ID"),
-            CredentialField("app_key", "Application key"),
-        ),
-    ),
-    ProviderSetup(
         ProviderId.GOOGLE_WEATHER,
         "Google Weather",
         "Global",
@@ -166,6 +162,41 @@ PROVIDER_CATALOG: tuple[ProviderSetup, ...] = (
         "api_key",
         "https://developers.google.com/maps/documentation/weather/get-api-key",
         _API_KEY,
+    ),
+    ProviderSetup(
+        ProviderId.MET_OFFICE,
+        "Met Office",
+        "Global",
+        _HOURLY_DAILY,
+        "api_key",
+        "https://datahub.metoffice.gov.uk/",
+        _API_KEY,
+    ),
+    ProviderSetup(
+        ProviderId.XWEATHER,
+        "Xweather",
+        "Global",
+        _HOURLY_DAILY,
+        "app_credentials",
+        "https://signup.xweather.com/",
+        (
+            CredentialField("client_id", "Client ID"),
+            CredentialField("client_secret", "Client secret"),
+        ),
+    ),
+    ProviderSetup(
+        ProviderId.WEATHERKIT,
+        "Apple WeatherKit",
+        "Global",
+        _ALL,
+        "jwt",
+        "https://developer.apple.com/weatherkit/get-started/",
+        (
+            CredentialField("team_id", "Apple Developer Team ID"),
+            CredentialField("service_id", "WeatherKit service ID"),
+            CredentialField("key_id", "Key ID"),
+            CredentialField("private_key_path", "Path to the .p8 private key"),
+        ),
     ),
 )
 

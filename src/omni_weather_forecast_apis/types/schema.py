@@ -42,7 +42,9 @@ class ProviderId(str, Enum):
     MET_NORWAY = "met_norway"
     GOOGLE_WEATHER = "google_weather"
     STORMGLASS = "stormglass"
-    WEATHER_UNLOCKED = "weather_unlocked"
+    MET_OFFICE = "met_office"
+    XWEATHER = "xweather"
+    WEATHERKIT = "weatherkit"
 
 
 class ModelSource(BaseModel):

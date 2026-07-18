@@ -8,6 +8,7 @@ from omni_weather_forecast_apis.mapping.units import (
     celsius_from_fahrenheit,
     celsius_from_kelvin,
     hpa_from_inhg,
+    hpa_from_pa,
     km_from_meters,
     km_from_miles,
     mm_from_cm,
@@ -36,6 +37,7 @@ def test_speed_conversions():
 
 def test_pressure_and_precipitation_conversions():
     assert hpa_from_inhg(1) == pytest.approx(33.8639)
+    assert hpa_from_pa(101320) == pytest.approx(1013.2)
     assert mm_from_inches(1) == pytest.approx(25.4)
     assert mm_from_cm(2.3) == pytest.approx(23.0)
 

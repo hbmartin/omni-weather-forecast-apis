@@ -112,16 +112,17 @@ def test_wizard_collects_every_keyed_credential_shape(tmp_path: Path) -> None:
             "meteosource",
             "pirate_weather",
             "stormglass",
-            "weather_unlocked",
             "google_weather",
+            "met_office",
+            "xweather",
         ]
     )
-    secrets = [f"secret-{index}" for index in range(1, 12)]
+    secrets = [f"secret-{index}" for index in range(1, 13)]
     prompts = FakePrompts(
         [
             "1",
             "2",
-            ",".join(str(index) for index in range(4, 14)),
+            ",".join(str(index) for index in range(4, 15)),
             *secrets,
             str(tmp_path / "forecast.sqlite"),
             "hourly,daily",
@@ -134,13 +135,13 @@ def test_wizard_collects_every_keyed_credential_shape(tmp_path: Path) -> None:
     assert result is not None
     configs = {item.plugin_id: item.config for item in result.config.providers}
     assert set(configs) == set(keyed_ids)
-    assert configs[ProviderId.WEATHER_UNLOCKED] == {
-        "app_id": secrets[8],
-        "app_key": secrets[9],
+    assert configs[ProviderId.MET_OFFICE] == {"api_key": secrets[9]}
+    assert configs[ProviderId.XWEATHER] == {
+        "client_id": secrets[10],
+        "client_secret": secrets[11],
     }
-    assert configs[ProviderId.GOOGLE_WEATHER] == {"api_key": secrets[10]}
     credential_questions = [item for item in prompts.questions if item[1]]
-    assert len(credential_questions) == 11
+    assert len(credential_questions) == 12
     preview = _syntax_text(prompts)
     assert all(secret in preview for secret in secrets)
 

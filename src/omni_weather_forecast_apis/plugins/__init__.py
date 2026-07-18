@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from omni_weather_forecast_apis.plugins.google_weather import google_weather_plugin
 from omni_weather_forecast_apis.plugins.met_norway import met_norway_plugin
+from omni_weather_forecast_apis.plugins.met_office import met_office_plugin
 from omni_weather_forecast_apis.plugins.meteosource import meteosource_plugin
 from omni_weather_forecast_apis.plugins.nws import nws_plugin
 from omni_weather_forecast_apis.plugins.open_meteo import open_meteo_plugin
@@ -12,9 +13,10 @@ from omni_weather_forecast_apis.plugins.pirate_weather import pirate_weather_plu
 from omni_weather_forecast_apis.plugins.stormglass import stormglass_plugin
 from omni_weather_forecast_apis.plugins.tomorrow_io import tomorrow_io_plugin
 from omni_weather_forecast_apis.plugins.visual_crossing import visual_crossing_plugin
-from omni_weather_forecast_apis.plugins.weather_unlocked import weather_unlocked_plugin
 from omni_weather_forecast_apis.plugins.weatherapi import weatherapi_plugin
 from omni_weather_forecast_apis.plugins.weatherbit import weatherbit_plugin
+from omni_weather_forecast_apis.plugins.weatherkit import weatherkit_plugin
+from omni_weather_forecast_apis.plugins.xweather import xweather_plugin
 from omni_weather_forecast_apis.types import ProviderId, WeatherPlugin
 
 _INITIAL_REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
@@ -30,7 +32,9 @@ _INITIAL_REGISTERED_PLUGINS: tuple[WeatherPlugin, ...] = (
     met_norway_plugin,
     google_weather_plugin,
     stormglass_plugin,
-    weather_unlocked_plugin,
+    met_office_plugin,
+    xweather_plugin,
+    weatherkit_plugin,
 )
 PLUGIN_REGISTRY: dict[ProviderId, WeatherPlugin] = {
     plugin.id: plugin for plugin in _INITIAL_REGISTERED_PLUGINS
@@ -54,6 +58,7 @@ __all__ = [
     "get_plugin_registry",
     "google_weather_plugin",
     "met_norway_plugin",
+    "met_office_plugin",
     "meteosource_plugin",
     "nws_plugin",
     "open_meteo_plugin",
@@ -63,7 +68,8 @@ __all__ = [
     "stormglass_plugin",
     "tomorrow_io_plugin",
     "visual_crossing_plugin",
-    "weather_unlocked_plugin",
     "weatherapi_plugin",
     "weatherbit_plugin",
+    "weatherkit_plugin",
+    "xweather_plugin",
 ]

@@ -27,6 +27,10 @@ def hpa_from_inhg(pressure: float) -> float:
     return pressure * 33.8639
 
 
+def hpa_from_pa(pressure: float) -> float:
+    return pressure / 100.0
+
+
 def mm_from_inches(amount: float) -> float:
     return amount * 25.4
 

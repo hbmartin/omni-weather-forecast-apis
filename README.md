@@ -18,7 +18,7 @@ Requires **Python 3.13 or newer**.
 
 - **Multi-provider fan-out** with async orchestration and partial-failure tolerance
 - **Typed normalized schema** — common Pydantic models for minutely, hourly, daily, and alert data
-- **Plugin architecture** — 13 providers with typed per-provider config validation
+- **Plugin architecture** — 15 providers with typed per-provider config validation
 - **Resilient by default** — retries with exponential backoff (honoring `Retry-After`), conditional-request HTTP caching (`ETag`/`Last-Modified`/`Expires`), and explicit connection pool limits
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
@@ -28,7 +28,7 @@ Requires **Python 3.13 or newer**.
 
 ## Supported Providers
 
-Three of the thirteen providers need no API key at all, so you can try the
+Three of the fifteen providers need no API key at all, so you can try the
 library without signing up for anything.
 
 | Provider | Plugin ID | API key | Minutely | Hourly | Daily | Alerts | Multi-model | Coverage |
@@ -44,8 +44,10 @@ library without signing up for anything.
 | [Meteosource](https://www.meteosource.com/) | `meteosource` | Required | 1 h | 7 d | 30 d | ✅ | — | Global |
 | [Pirate Weather](https://pirateweather.net/) | `pirate_weather` | Required | 1 h | 48 h | 8 d | ✅ | — | Global |
 | [Stormglass](https://stormglass.io/) | `stormglass` | Required | — | ✅ | — | — | ✅ | Global |
-| [Weather Unlocked](https://developer.weatherunlocked.com/) | `weather_unlocked` | Required | — | ✅ | ✅ | — | — | Global |
 | [Google Weather](https://developers.google.com/maps/documentation/weather) | `google_weather` | Required | — | 10 d | 10 d | — | — | Global |
+| [Met Office](https://datahub.metoffice.gov.uk/) | `met_office` | Required | — | 48 h | 7 d | — | — | Global |
+| [Xweather](https://www.xweather.com/) | `xweather` | Required | — | 10 d | 15 d | — | — | Global |
+| [Apple WeatherKit](https://developer.apple.com/weatherkit/) | `weatherkit` | Required | 1 h | 10 d | 10 d | ✅ | — | Global |
 
 The minutely, hourly, and daily columns give each provider's **maximum forecast
 horizon**. `✅` means the granularity is supported but the plugin declares no
