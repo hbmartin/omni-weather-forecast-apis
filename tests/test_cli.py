@@ -23,6 +23,8 @@ from omni_weather_forecast_apis.types import (
     ForecastResponseRequest,
     ForecastResponseSummary,
     Granularity,
+    ProviderError,
+    ProviderErrorDetail,
     ProviderId,
     ProviderLogEvent,
 )
@@ -172,6 +174,173 @@ def _run_cli_capturing_config(monkeypatch, tmp_path, argv, config_body=None):
     )
     assert exit_code == 0
     return captured["config"]
+
+
+def _run_cli_capturing_request(
+    monkeypatch,
+    tmp_path,
+    argv,
+    config_body=None,
+) -> ForecastRequest:
+    """Run main() with a stubbed client; return the ForecastRequest it built."""
+
+    stub = _ArchiveStubClient()
+
+    async def fake_create(config, **kwargs):
+        del config, kwargs
+        return stub
+
+    monkeypatch.setattr(cli, "create_omni_weather", fake_create)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        config_body or '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n',
+    )
+    exit_code = cli.main(
+        ["--config", str(config_path), "--lat", "34.0", "--lon", "-118.0", *argv],
+    )
+    assert exit_code == 0
+    assert isinstance(stub.request, ForecastRequest)
+    return stub.request
+
+
+_PROVIDER_BLOCK = '[[providers]]\nplugin_id = "open_meteo"\nconfig = {}\n'
+
+
+def _config_with(top_level: str) -> str:
+    """Build a TOML body; root keys must precede the [[providers]] array-of-tables."""
+
+    return f"{top_level}\n{_PROVIDER_BLOCK}"
+
+
+def test_config_values_reach_the_forecast_request(monkeypatch, tmp_path) -> None:
+    request = _run_cli_capturing_request(
+        monkeypatch,
+        tmp_path,
+        [],
+        config_body=_config_with(
+            'granularity = ["minutely"]\n'
+            'language = "de"\n'
+            "default_timeout_ms = 4200.0\n",
+        ),
+    )
+
+    assert request.granularity == [Granularity.MINUTELY]
+    assert request.language == "de"
+    assert request.timeout_ms == 4200.0
+
+
+def test_cli_flags_override_config_values(monkeypatch, tmp_path) -> None:
+    request = _run_cli_capturing_request(
+        monkeypatch,
+        tmp_path,
+        ["--language", "fr", "--timeout-ms", "999"],
+        config_body=_config_with('language = "de"\ndefault_timeout_ms = 4200.0\n'),
+    )
+
+    assert request.language == "fr"
+    assert request.timeout_ms == 999.0
+
+
+def test_granularity_flag_replaces_rather_than_merges_config(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    request = _run_cli_capturing_request(
+        monkeypatch,
+        tmp_path,
+        ["--granularity", "daily"],
+        config_body=_config_with('granularity = ["minutely", "hourly"]\n'),
+    )
+
+    assert request.granularity == [Granularity.DAILY]
+
+
+def test_config_include_raw_applies_without_a_flag(monkeypatch, tmp_path) -> None:
+    """Config acts as a baseline the CLI flag can only enable, never disable."""
+
+    request = _run_cli_capturing_request(
+        monkeypatch,
+        tmp_path,
+        [],
+        config_body=_config_with("include_raw = true\n"),
+    )
+
+    assert request.include_raw is True
+
+
+def test_defaults_apply_when_neither_cli_nor_config_sets_them(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    request = _run_cli_capturing_request(monkeypatch, tmp_path, [])
+
+    assert request.granularity == [Granularity.HOURLY, Granularity.DAILY]
+    assert request.language == "en"
+    assert request.include_raw is False
+
+
+def _failing_response() -> ForecastResponse:
+    return ForecastResponse(
+        request=ForecastResponseRequest(
+            latitude=34.0,
+            longitude=-118.0,
+            granularity=[Granularity.HOURLY],
+            language="en",
+        ),
+        results=[
+            ProviderError(
+                provider=ProviderId.OPEN_METEO,
+                error=ProviderErrorDetail(
+                    code=ErrorCode.NETWORK,
+                    message="connection reset",
+                    latency_ms=12.0,
+                ),
+            ),
+        ],
+        summary=ForecastResponseSummary(total=1, succeeded=0, failed=1),
+        completed_at=datetime(2026, 7, 13, 12, 0, tzinfo=UTC),
+        total_latency_ms=12.0,
+    )
+
+
+@pytest.mark.parametrize("printer", ["_print_results", "_print_results_plain"])
+def test_provider_failures_are_mirrored_to_stderr(capsys, printer: str) -> None:
+    getattr(cli, printer)(_failing_response(), None, None)
+
+    captured = capsys.readouterr()
+    assert (
+        "provider open_meteo failed: network: connection reset" in captured.err
+    )
+    # The typed error code is diagnosable from stdout too, not just the message.
+    assert "network" in captured.out
+
+
+def test_rich_fallback_reports_each_failure_exactly_once(monkeypatch, capsys) -> None:
+    """_print_results delegates to the plain printer; only one of them may emit."""
+
+    real_import = importlib.import_module
+
+    def no_rich(name, *args, **kwargs):
+        if name.startswith("rich."):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(cli.importlib, "import_module", no_rich)
+    cli._print_results(_failing_response(), None, None)
+
+    err = capsys.readouterr().err
+    assert err.count("provider open_meteo failed: network: connection reset") == 1
+
+
+def test_explicit_missing_config_reports_a_targeted_error(tmp_path, capsys) -> None:
+    missing = tmp_path / "absent.toml"
+
+    assert cli.main(["--config", str(missing), "--lat", "1", "--lon", "2"]) == 2
+
+    err = capsys.readouterr().err
+    assert f"error: config file not found: {missing}" in err
+    assert "omni-weather init" in err
+    assert "No such file or directory" not in err
 
 
 def test_sqlite_enables_raw_archive_with_run_scoped_path(

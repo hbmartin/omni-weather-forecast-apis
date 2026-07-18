@@ -392,7 +392,7 @@ class ForecastResponse(BaseModel):
     total_latency_ms: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ProviderLogEvent:
     """Structured log event emitted by the client for each provider interaction."""
 

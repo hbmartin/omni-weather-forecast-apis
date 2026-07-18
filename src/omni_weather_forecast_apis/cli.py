@@ -240,6 +240,13 @@ async def _run_explicit_init(parsed: argparse.Namespace) -> int:
 async def _run_forecast(parsed: argparse.Namespace) -> int:
     explicit_path = cast(Path | None, parsed.config)
     if (config_path := find_config_path(explicit_path)) is not None:
+        if explicit_path is not None and not config_path.is_file():
+            print(f"error: config file not found: {config_path}", file=sys.stderr)
+            print(
+                f"run 'omni-weather init --config {config_path}' to create it",
+                file=sys.stderr,
+            )
+            return 2
         parsed.config = config_path
         return await _async_main(parsed)
     expected_path = default_config_path()
@@ -612,6 +619,12 @@ def _print_csv(response: ForecastResponse) -> None:
             "use --format ndjson to include them",
             file=sys.stderr,
         )
+    _print_provider_errors(response)
+
+
+def _print_provider_errors(response: ForecastResponse) -> None:
+    """Mirror provider failures to stderr so they survive stdout redirection."""
+
     for result in response.results:
         if isinstance(result, ProviderError):
             print(
@@ -720,10 +733,14 @@ def _print_results(
                     "-",
                     "-",
                     "-",
-                    text_cls(result.error.message, style="red"),
+                    text_cls(
+                        f"{result.error.code.value}: {result.error.message}",
+                        style="red",
+                    ),
                 )
 
     console.print(table)
+    _print_provider_errors(response)
 
 
 def _print_results_plain(
@@ -758,8 +775,10 @@ def _print_results_plain(
                 print(
                     f"{result.provider.value}: fail "
                     f"latency={result.error.latency_ms:.0f}ms "
+                    f"code={result.error.code.value} "
                     f"message={result.error.message}",
                 )
+    _print_provider_errors(response)
 
 
 def _load_config(path: Path) -> OmniWeatherConfig:

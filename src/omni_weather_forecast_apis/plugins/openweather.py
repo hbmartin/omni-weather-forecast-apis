@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import Field
+
 from omni_weather_forecast_apis.mapping import OPENWEATHER_CONDITION_MAP, km_from_meters
 from omni_weather_forecast_apis.mapping.units import (
     celsius_from_fahrenheit,
@@ -42,8 +44,6 @@ from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 
 if TYPE_CHECKING:
     import httpx2
-
-from pydantic import Field
 
 
 class OpenWeatherConfig(ProviderConfigModel):

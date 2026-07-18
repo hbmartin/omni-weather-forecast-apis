@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+from pydantic import Field
+
 from omni_weather_forecast_apis.plugins._base import (
     BasePlugin,
     BasePluginInstance,
@@ -35,8 +37,6 @@ from omni_weather_forecast_apis.utils import parse_datetime
 
 if TYPE_CHECKING:
     import httpx2
-
-from pydantic import Field
 
 
 class TomorrowIOConfig(ProviderConfigModel):
