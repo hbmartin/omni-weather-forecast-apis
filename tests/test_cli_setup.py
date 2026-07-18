@@ -100,6 +100,33 @@ def test_wizard_uses_one_identity_for_met_norway_and_nws(tmp_path: Path) -> None
     assert sum(question == "Contact email" for question, _ in prompts.questions) == 1
 
 
+def test_wizard_collects_visible_nbm_station_id(tmp_path: Path) -> None:
+    sqlite_path = tmp_path / "forecast.sqlite"
+    prompts = FakePrompts(
+        ["34.2", "-117.2", "4", "KSBD", str(sqlite_path), "hourly"],
+        [True, False, False],
+    )
+
+    result = run_init(tmp_path / "config.toml", automatic=False, prompts=prompts)
+
+    assert result is not None
+    assert result.config.providers[0].plugin_id == ProviderId.NBM
+    assert result.config.providers[0].config == {"station_id": "KSBD"}
+    assert ("NOAA NBM Station ID", False) in prompts.questions
+
+
+def test_wizard_groups_catalog_without_positional_assumptions() -> None:
+    prompts = FakePrompts([], [])
+
+    setup._print_provider_choices(prompts)
+
+    output = "\n".join(str(item) for item in prompts.printed)
+    assert "4. NOAA NBM — US only, hourly" in output
+    assert "5. OpenWeather — Global, minutely, hourly, daily" in output
+    assert output.index("NOAA NBM") < output.index("Requires credentials")
+    assert output.index("Requires credentials") < output.index("OpenWeather")
+
+
 def test_wizard_collects_every_keyed_credential_shape(tmp_path: Path) -> None:
     keyed_ids = tuple(
         ProviderId(item)
@@ -122,7 +149,7 @@ def test_wizard_collects_every_keyed_credential_shape(tmp_path: Path) -> None:
         [
             "1",
             "2",
-            ",".join(str(index) for index in range(4, 15)),
+            ",".join(str(index) for index in range(5, 16)),
             *secrets,
             str(tmp_path / "forecast.sqlite"),
             "hourly,daily",

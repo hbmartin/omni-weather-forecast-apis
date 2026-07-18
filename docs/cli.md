@@ -20,11 +20,12 @@ The wizard writes all interaction to stderr and prompts in this order:
 
 1. Required latitude and longitude.
 2. At least one provider. Open-Meteo is the recommended, preselected keyless
-   provider; MET Norway and NWS are also keyless, and the other twelve are
-   grouped under “Requires API key.”
+   provider; MET Norway, NWS, and NBM are also keyless, and the other twelve
+   are grouped under “Requires credentials.”
 3. One shared application name/contact email when MET Norway or NWS is used.
-4. Masked credentials for keyed providers. Xweather collects a client ID and
-   client secret; Apple WeatherKit collects its team, service, and key
+4. Provider settings: NBM visibly collects its non-secret station ID. Keyed
+   provider credentials are masked; Xweather collects a client ID and client
+   secret, while Apple WeatherKit collects its team, service, and key
    identifiers plus the path to the `.p8` signing key.
 5. A required SQLite path, defaulting to the platform data directory.
 6. One or more compatible granularities, defaulting to hourly and daily.

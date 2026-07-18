@@ -60,6 +60,10 @@ DAILY_ENTRY = {
     "dayProbabilityOfPrecipitation": 20,
     "nightProbabilityOfPrecipitation": 45,
 }
+PAST_DAILY_ENTRY = {
+    **DAILY_ENTRY,
+    "time": "2026-07-17T00:00Z",
+}
 
 
 def _geojson(entries: list[object]) -> dict[str, object]:
@@ -111,7 +115,7 @@ class TestMetOfficeInstance:
         assert caps.granularity_hourly is True
         assert caps.granularity_daily is True
         assert caps.max_horizon_hourly_hours == 48
-        assert caps.max_horizon_daily_days == 7
+        assert caps.max_horizon_daily_days == 6
         assert caps.requires_api_key is True
         assert caps.alerts is False
 
@@ -125,7 +129,10 @@ class TestMetOfficeInstance:
             captured_params.update(dict(request.url.params))
             if request.url.path.endswith("/hourly"):
                 return httpx2.Response(200, json=_geojson([HOURLY_ENTRY]))
-            return httpx2.Response(200, json=_geojson([DAILY_ENTRY]))
+            return httpx2.Response(
+                200,
+                json=_geojson([PAST_DAILY_ENTRY, DAILY_ENTRY]),
+            )
 
         transport = httpx2.MockTransport(handler)
         async with httpx2.AsyncClient(transport=transport) as client:
@@ -171,6 +178,32 @@ class TestMetOfficeInstance:
         assert day.precipitation_probability_max == 0.45
         assert day.condition == WeatherCondition.PARTLY_CLOUDY
         assert day.humidity_mean is None
+
+    @pytest.mark.asyncio
+    async def test_daily_drops_historical_row_and_returns_six_future_days(
+        self,
+        instance: MetOfficeInstance,
+    ) -> None:
+        entries = [
+            {
+                **DAILY_ENTRY,
+                "time": f"2026-07-{day:02d}T00:00Z",
+            }
+            for day in range(17, 24)
+        ]
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=_geojson(entries)),
+        )
+        async with httpx2.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(
+                _fetch_params([Granularity.DAILY]),
+                client,
+            )
+
+        assert isinstance(result, PluginFetchSuccess)
+        assert [point.date for point in result.forecasts[0].daily] == [
+            date(2026, 7, day) for day in range(18, 24)
+        ]
 
     @pytest.mark.asyncio
     async def test_hourly_only_skips_daily_endpoint(
@@ -276,7 +309,10 @@ class TestMetOfficeInstance:
         def handler(request: httpx2.Request) -> httpx2.Response:
             if request.url.path.endswith("/hourly"):
                 return httpx2.Response(200, json=_geojson([HOURLY_ENTRY]))
-            return httpx2.Response(200, json=_geojson([DAILY_ENTRY]))
+            return httpx2.Response(
+                200,
+                json=_geojson([PAST_DAILY_ENTRY, DAILY_ENTRY]),
+            )
 
         transport = httpx2.MockTransport(handler)
         params = PluginFetchParams(

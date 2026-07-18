@@ -100,8 +100,10 @@ def _hourly_point(row: dict[str, Any]) -> WeatherDataPoint | None:
         wind_speed=_converted(row.get("wsp"), ms_from_knots),
         wind_gust=_converted(row.get("gst"), ms_from_knots),
         wind_direction=_physical(row.get("wdr")),
-        cloud_cover=normalize_percent(row.get("sky")),
-        precipitation_probability=probability_from_percent_value(row.get("p06")),
+        cloud_cover=normalize_percent(_physical(row.get("sky"))),
+        precipitation_probability=probability_from_percent_value(
+            _physical(row.get("p06")),
+        ),
     )
 
 
@@ -145,14 +147,21 @@ class _NBMInstance(BasePluginInstance[NBMConfig]):
                 "IEM MOS payload has no data table",
                 raw=payload if params.include_raw else None,
             )
-        hourly = [
-            point
-            for row in sorted(
-                _latest_run_rows([r for r in rows if isinstance(r, dict)]),
-                key=lambda r: str(r.get("ftime_utc") or r.get("ftime")),
+        try:
+            hourly = [
+                point
+                for row in sorted(
+                    _latest_run_rows([r for r in rows if isinstance(r, dict)]),
+                    key=lambda r: str(r.get("ftime_utc") or r.get("ftime")),
+                )
+                if (point := _hourly_point(row)) is not None
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._error(
+                ErrorCode.PARSE,
+                f"Failed to parse NBM payload: {exc}",
+                raw=payload if params.include_raw else None,
             )
-            if (point := _hourly_point(row)) is not None
-        ]
         return self._success(
             [
                 build_source_forecast(

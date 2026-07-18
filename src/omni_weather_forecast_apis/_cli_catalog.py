@@ -16,10 +16,11 @@ type AuthenticationKind = Literal[
 
 @dataclass(frozen=True)
 class CredentialField:
-    """One credential collected by the setup wizard."""
+    """One provider setting collected by the setup wizard."""
 
     config_key: str
     prompt: str
+    password: bool = True
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,16 @@ PROVIDER_CATALOG: tuple[ProviderSetup, ...] = (
         "US only",
         _HOURLY_DAILY,
         "identity",
+    ),
+    ProviderSetup(
+        ProviderId.NBM,
+        "NOAA NBM",
+        "US only",
+        _HOURLY,
+        "none",
+        credential_fields=(
+            CredentialField("station_id", "Station ID", password=False),
+        ),
     ),
     ProviderSetup(
         ProviderId.OPENWEATHER,

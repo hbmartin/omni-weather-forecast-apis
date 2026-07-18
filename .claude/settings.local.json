@@ -3,11 +3,7 @@
     "allow": [
       "Bash(uv run *)",
       "Bash(wc -l /Users/haroldmartin/Downloads/imagemine/omni-weather-forecast-apis/src/omni_weather_forecast_apis/plugins/*.py | tail -1)",
-      "Bash(gh pr *)",
-      "Bash(git -C . status --short)"
+      "Bash(gh pr *)"
     ]
-  },
-  "enabledMcpjsonServers": [
-    "paper-search-mcp"
-  ]
+  }
 }

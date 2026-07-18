@@ -16,7 +16,7 @@ audit table listing every action and row count.
 | 1 | Meteosource icon map used a fictional 1–8 table | icon 5 (Mostly cloudy) → `drizzle`, 6 (Cloudy) → `rain`, 7 (Overcast) → `snow`, 8 → `thunderstorm` | Full official 1–36 table; icon 1 ("Not available") falls back to summary text |
 | 2 | Pirate Weather SI accumulations stored unconverted | `precipAccumulation`/`snowAccumulation` are **cm**; stored as mm (10× low); `precipIntensity` (mm/h rate) leaked into the amount field | Liquid from `liquidAccumulation` (cm→mm, rain-typed `precipAccumulation` fallback); snow depth cm→mm into `snowfall_depth` |
 | 3 | Text keyword ordering mapped wintry showers to RAIN | "Snow Showers", "Sleet showers", "Wintry Showers" → `rain`; "Mostly/Partly Sunny" → `clear`; "Partially cloudy"/"Cloudy" → `unknown` | Wintry phrases win before the generic "showers"; sunny/cloudy variants map to their own buckets |
-| 4 | Weather Unlocked local times stored as UTC | Every hourly timestamp and sunrise/sunset was treated as an absolute UTC instant | An IANA location timezone converts wall times with date-specific DST rules; ambiguous/nonexistent wall times fail that provider |
+| 4 | Removed Weather Unlocked provider stored local times as UTC | Every hourly timestamp and sunrise/sunset was treated as an absolute UTC instant | An IANA location timezone converted wall times with date-specific DST rules; ambiguous/nonexistent wall times failed that provider |
 | 5 | Open-Meteo DNI held horizontal direct radiation | `solar_radiation_dni` = `direct_radiation` (horizontal plane) | Requests and stores `direct_normal_irradiance` |
 | 6 | Probability heuristic collapsed 1% into 100% | Any raw value ≤ 1 was treated as a 0–1 fraction, so a raw `1` (1%) became 1.0 | Every plugin declares its provider's documented scale (percent vs fraction) explicitly |
 | 7 | Daily dates east of Greenwich off by one day | Pirate Weather / OpenWeather daily epochs converted to the **UTC** calendar date | Local calendar date computed with the provider's IANA timezone, never a fixed offset |
@@ -131,7 +131,8 @@ Representative condition corrections (before → after):
 - **Pirate Weather precipitation amounts** were NULLed (zeros kept): the
   old parser mixed cm accumulations with mm/h intensity rates per row and
   the source cannot be recovered.
-- **Weather Unlocked rows** would need a timestamp shift by the location's
+- **Historical Weather Unlocked rows from releases that supported the removed
+  provider** would need a timestamp shift by the location's
   UTC offset; this database has none (the provider errored in both runs),
   so no shift was implemented in the repair script.
 - **Weatherbit sea-level pressure** reached 1074 hPa in one run — outside

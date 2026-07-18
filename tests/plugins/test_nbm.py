@@ -78,11 +78,15 @@ class TestParsing:
         assert point.timestamp.isoformat().startswith("2026-07-18T18:00")
 
     def test_sentinels_become_none(self):
-        point = _hourly_point(_row(tmp=-88, dpt=None, wsp=None))
+        point = _hourly_point(
+            _row(tmp=-88, dpt=None, wsp=None, sky=-88, p06=-88),
+        )
         assert point is not None
         assert point.temperature is None
         assert point.dew_point is None
         assert point.wind_speed is None
+        assert point.cloud_cover is None
+        assert point.precipitation_probability is None
 
     def test_missing_timestamp_skips_row(self):
         assert _hourly_point(_row(ftime_utc=None, ftime=None)) is None
@@ -140,6 +144,24 @@ class TestFetch:
             result = await instance.fetch_forecast(_PARAMS, client)
         assert result.status == "error"
         assert result.code == ErrorCode.PARSE
+
+    @pytest.mark.asyncio
+    async def test_fetch_reports_malformed_row_and_preserves_raw_payload(self):
+        payload = {"data": [_row(ftime_utc="not-a-timestamp")]}
+        transport = httpx2.MockTransport(
+            lambda _request: httpx2.Response(200, json=payload),
+        )
+        config = nbm_plugin.validate_config({"station_id": "KSBD"})
+        instance = await nbm_plugin.initialize(config)
+        params = _PARAMS.model_copy(update={"include_raw": True})
+
+        async with httpx2.AsyncClient(transport=transport) as client:
+            result = await instance.fetch_forecast(params, client)
+
+        assert result.status == "error"
+        assert result.code == ErrorCode.PARSE
+        assert result.message.startswith("Failed to parse NBM payload:")
+        assert result.raw == payload
 
     @pytest.mark.asyncio
     async def test_fetch_reports_http_error(self):
