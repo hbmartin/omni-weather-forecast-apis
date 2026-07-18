@@ -38,6 +38,9 @@ from omni_weather_forecast_apis.types import (
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
 from omni_weather_forecast_apis.utils import parse_datetime, zoneinfo_from_name
 
+if TYPE_CHECKING:
+    import httpx2
+
 
 class NWSGridOverride(ProviderConfigModel):
     office: str = Field(min_length=1)
@@ -49,9 +52,6 @@ class NWSConfig(ProviderConfigModel):
     user_agent: str = Field(min_length=1)
     grid_override: NWSGridOverride | None = None
 
-
-if TYPE_CHECKING:
-    import httpx2
 
 _BASE_URL = "https://api.weather.gov"
 _CAPABILITIES = PluginCapabilities(

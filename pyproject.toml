@@ -127,6 +127,7 @@ lint.ignore = [
 "tests/**/*.py" = [
     "ANN",    # Type annotations not required in tests
     "D",      # Docstrings not required in tests
+    "FBT001", # pytest.mark.parametrize injects bool params positionally
     "S101",   # assert is expected in tests
     "S105",   # Fake credentials in test fixtures are expected
     "S106",   # Fake credentials in test fixtures are expected

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from pydantic import Field
+
 from omni_weather_forecast_apis.mapping import condition_from_text
 from omni_weather_forecast_apis.mapping.units import ms_from_kmh
 from omni_weather_forecast_apis.plugins._base import (
@@ -32,8 +34,6 @@ from omni_weather_forecast_apis.utils import zoneinfo_from_name
 
 if TYPE_CHECKING:
     import httpx2
-
-from pydantic import Field
 
 
 class WeatherAPIConfig(ProviderConfigModel):

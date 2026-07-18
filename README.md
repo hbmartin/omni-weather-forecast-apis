@@ -105,6 +105,11 @@ Put a real contact address in `user_agent` before running this. MET Norway's
 terms require one to identify the caller, and their API rejects placeholder
 domains such as `example.com` with a `403 Forbidden`.
 
+`--config` is optional — it defaults to a TOML file in your platform's config
+directory, which `omni-weather init` creates for you. It is passed explicitly
+above only so the example is self-contained. `--lat`, `--lon`, and `--sqlite`
+likewise fall back to the config file when omitted.
+
 Which prints:
 
 ```
