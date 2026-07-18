@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from omni_weather_forecast_apis.sqlite_store import _create_schema
 from scripts import repair_db
 
@@ -62,3 +64,43 @@ def test_meteosource_daily_repair_preserves_ambiguous_condition() -> None:
         connection.close()
 
     assert condition == "thunderstorm"
+
+
+def test_write_backup_does_not_replace_existing_file(tmp_path: Path) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    sqlite3.connect(database_path).close()
+    backup_path = tmp_path / "backup.sqlite"
+    backup_path.write_bytes(b"owned by another process")
+
+    with pytest.raises(FileExistsError):
+        repair_db._write_backup(database_path, backup_path)
+
+    assert backup_path.read_bytes() == b"owned by another process"
+
+
+def test_write_backup_removes_owned_reservation_after_failure(
+    tmp_path: Path,
+) -> None:
+    backup_path = tmp_path / "backup.sqlite"
+
+    with pytest.raises(sqlite3.OperationalError):
+        repair_db._write_backup(tmp_path, backup_path)
+
+    assert not backup_path.exists()
+
+
+def test_main_reports_backup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    sqlite3.connect(database_path).close()
+
+    def fail_backup(_database: Path, _backup: Path) -> None:
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(repair_db, "_write_backup", fail_backup)
+
+    assert repair_db.main([str(database_path)]) == 2
+    assert "error: backup failed: disk full" in capsys.readouterr().err

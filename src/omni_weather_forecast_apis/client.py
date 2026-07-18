@@ -88,7 +88,7 @@ _RETRYABLE_ERROR_CODES: frozenset[ErrorCode] = frozenset(
 )
 _MAX_HONORED_RETRY_AFTER_SECONDS = 60.0
 _TIMEZONE_LOOKUP_URL = "https://api.open-meteo.com/v1/forecast"
-_TIMEZONE_LOOKUP_TIMEOUT_SECONDS = 10.0
+_TIMEZONE_LOOKUP_TIMEOUT_SECONDS: float = 10.0
 
 
 class OmniWeatherClient:

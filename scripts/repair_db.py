@@ -358,14 +358,18 @@ def _backup_path(database: Path) -> Path:
 
 
 def _write_backup(database: Path, backup: Path) -> None:
+    reserved = False
     try:
+        backup.touch(exist_ok=False)
+        reserved = True
         with (
             closing(sqlite3.connect(database)) as source,
             closing(sqlite3.connect(backup)) as destination,
         ):
             source.backup(destination)
     except (OSError, sqlite3.Error):
-        backup.unlink(missing_ok=True)
+        if reserved:
+            backup.unlink(missing_ok=True)
         raise
 
 
@@ -396,7 +400,11 @@ def main(argv: list[str] | None = None) -> int:
         if backup.exists():
             print(f"error: backup {backup} already exists; aborting", file=sys.stderr)
             return 2
-        _write_backup(database, backup)
+        try:
+            _write_backup(database, backup)
+        except (OSError, sqlite3.Error) as exc:
+            print(f"error: backup failed: {exc}", file=sys.stderr)
+            return 2
         print(f"backup written to {backup}")
 
         # Bring the schema current first (adds snowfall_depth columns and

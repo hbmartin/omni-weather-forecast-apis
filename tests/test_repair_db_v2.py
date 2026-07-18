@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from scripts import repair_db_v2
 
 
@@ -166,3 +168,26 @@ def test_repair_aborts_transaction_on_conflicting_snow_values(
 
     assert row == (2.0, 5.0, 6.0)
     assert "conflicting corrected snow values" in capsys.readouterr().err
+
+
+def test_write_backup_does_not_replace_existing_file(tmp_path: Path) -> None:
+    database_path = tmp_path / "forecast.sqlite"
+    sqlite3.connect(database_path).close()
+    backup_path = tmp_path / "backup.sqlite"
+    backup_path.write_bytes(b"owned by another process")
+
+    with pytest.raises(FileExistsError):
+        repair_db_v2._write_backup(database_path, backup_path)
+
+    assert backup_path.read_bytes() == b"owned by another process"
+
+
+def test_write_backup_removes_owned_reservation_after_failure(
+    tmp_path: Path,
+) -> None:
+    backup_path = tmp_path / "backup.sqlite"
+
+    with pytest.raises(sqlite3.OperationalError):
+        repair_db_v2._write_backup(tmp_path, backup_path)
+
+    assert not backup_path.exists()

@@ -249,6 +249,10 @@ async def test_cancelled_record_waits_for_append_before_releasing_lock(
     assert await asyncio.to_thread(write_started.wait, 2)
 
     record_task.cancel()
+    await asyncio.sleep(0)
+    assert record_task.done() is False
+
+    record_task.cancel()
     close_task = asyncio.create_task(transport.aclose())
     await asyncio.sleep(0)
     assert record_task.done() is False
