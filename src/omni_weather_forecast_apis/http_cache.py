@@ -265,11 +265,13 @@ class CachingTransport(httpx2.AsyncBaseTransport):
             # The response changed which headers it varies on, so variants
             # stored under the previous names are unreachable: drop them.
             self._purge_key(key)
-            self._vary_names[key] = names
         variant = _variant_key(key, names, request)
         if variant not in self._entries and len(self._entries) >= self._max_entries:
             self._evict_oldest()
         self._entries[variant] = entry
+        # Eviction may have removed the last old variant for this same key,
+        # along with its index. Install the index after storing the replacement.
+        self._vary_names[key] = names
 
     def _purge_key(self, key: _CacheKey) -> None:
         """Drop every stored variant of one cache key. Caller holds the lock."""
