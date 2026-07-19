@@ -25,6 +25,8 @@ _MAX_AGE_PATTERN = re.compile(r"max-age=(\d+)")
 _SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie"})
 _VARIANT_REQUEST_HEADERS = ("accept", "accept-encoding", "accept-language")
 type _CacheKey = tuple[str, tuple[tuple[str, str], ...]]
+type _VaryValues = tuple[tuple[str, str | None], ...]
+type _VariantKey = tuple[_CacheKey, _VaryValues]
 
 
 @dataclass
@@ -35,9 +37,6 @@ class _CacheEntry:
     etag: str | None
     last_modified: str | None
     fresh_until: float | None
-    # Request-header values the response declared via ``Vary``; the entry is
-    # only reusable for requests sending the same values.
-    vary: tuple[tuple[str, str | None], ...] = ()
 
 
 def _parse_http_date(value: str | None) -> float | None:
@@ -94,16 +93,14 @@ def _vary_names(headers: httpx2.Headers) -> tuple[str, ...] | None:
     return None if "*" in names else names
 
 
-def _vary_request_values(
-    response_headers: httpx2.Headers,
+def _variant_key(
+    key: _CacheKey,
+    names: tuple[str, ...],
     request: httpx2.Request,
-) -> tuple[tuple[str, str | None], ...]:
-    names = _vary_names(response_headers) or ()
-    return tuple((name, request.headers.get(name)) for name in names)
+) -> _VariantKey:
+    """Extend a cache key with the request values named by ``Vary``."""
 
-
-def _entry_matches_variant(entry: _CacheEntry, request: httpx2.Request) -> bool:
-    return all(request.headers.get(name) == value for name, value in entry.vary)
+    return key, tuple((name, request.headers.get(name)) for name in names)
 
 
 def _is_cacheable(headers: httpx2.Headers, *, now: float) -> bool:
@@ -143,7 +140,10 @@ class CachingTransport(httpx2.AsyncBaseTransport):
     ) -> None:
         self._transport = transport
         self._max_entries = max_entries
-        self._entries: dict[_CacheKey, _CacheEntry] = {}
+        self._entries: dict[_VariantKey, _CacheEntry] = {}
+        # Field names each cache key's last response varied on, so a lookup
+        # can rebuild the variant key before the next response is seen.
+        self._vary_names: dict[_CacheKey, tuple[str, ...]] = {}
         self._lock = asyncio.Lock()
         self._on_cache_event = on_cache_event
 
@@ -158,9 +158,8 @@ class CachingTransport(httpx2.AsyncBaseTransport):
         key = _cache_key(request)
         now = time.time()
         async with self._lock:
-            entry = self._entries.get(key)
-        if entry is not None and not _entry_matches_variant(entry, request):
-            entry = None
+            names = self._vary_names.get(key, ())
+            entry = self._entries.get(_variant_key(key, names, request))
 
         if (
             entry is not None
@@ -221,14 +220,13 @@ class CachingTransport(httpx2.AsyncBaseTransport):
             or _freshness_lifetime(entry.headers, now=now, response_time=now)
             or entry.fresh_until
         )
-        if _vary_names(entry.headers) is None:
+        if (names := _vary_names(entry.headers)) is None:
             # A 304 widened Vary to "*": the entry is no longer reusable.
             async with self._lock:
-                self._entries.pop(key, None)
+                self._purge_key(key)
             return self._response_from_entry(entry, request)
-        entry.vary = _vary_request_values(entry.headers, request)
         async with self._lock:
-            self._entries[key] = entry
+            self._store_variant(key, names, request, entry)
         return self._response_from_entry(entry, request)
 
     async def _response_from_store(
@@ -247,14 +245,46 @@ class CachingTransport(httpx2.AsyncBaseTransport):
             etag=response.headers.get("ETag"),
             last_modified=response.headers.get("Last-Modified"),
             fresh_until=_freshness_lifetime(response.headers, now=now),
-            vary=_vary_request_values(response.headers, request),
         )
+        # _is_cacheable already rejected the "*" case, so names is never None.
+        names = _vary_names(response.headers) or ()
         async with self._lock:
-            if key not in self._entries and len(self._entries) >= self._max_entries:
-                oldest_key = next(iter(self._entries))
-                del self._entries[oldest_key]
-            self._entries[key] = new_entry
+            self._store_variant(key, names, request, new_entry)
         return self._response_from_entry(new_entry, request, hit=False)
+
+    def _store_variant(
+        self,
+        key: _CacheKey,
+        names: tuple[str, ...],
+        request: httpx2.Request,
+        entry: _CacheEntry,
+    ) -> None:
+        """Store one variant of a cache key. The caller must hold the lock."""
+
+        if self._vary_names.get(key, ()) != names:
+            # The response changed which headers it varies on, so variants
+            # stored under the previous names are unreachable: drop them.
+            self._purge_key(key)
+            self._vary_names[key] = names
+        variant = _variant_key(key, names, request)
+        if variant not in self._entries and len(self._entries) >= self._max_entries:
+            self._evict_oldest()
+        self._entries[variant] = entry
+
+    def _purge_key(self, key: _CacheKey) -> None:
+        """Drop every stored variant of one cache key. Caller holds the lock."""
+
+        self._vary_names.pop(key, None)
+        for variant in [v for v in self._entries if v[0] == key]:
+            del self._entries[variant]
+
+    def _evict_oldest(self) -> None:
+        """Evict the oldest variant. The caller must hold the lock."""
+
+        oldest = next(iter(self._entries))
+        del self._entries[oldest]
+        if not any(variant[0] == oldest[0] for variant in self._entries):
+            self._vary_names.pop(oldest[0], None)
 
     @staticmethod
     def _response_from_entry(

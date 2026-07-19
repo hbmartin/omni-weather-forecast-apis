@@ -107,7 +107,7 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
                 separators=(",", ":"),
             )
             member = gzip.compress(f"{line}\n".encode())
-        except (Exception,):  # noqa: B013
+        except (Exception,):
             async with self._lock:
                 if not self._closed:
                     self._disable_recording_after_failure()
@@ -122,10 +122,10 @@ class RawArchiveTransport(httpx2.AsyncBaseTransport):
             except asyncio.CancelledError:
                 try:
                     await _finish_task_despite_cancellation(append_task)
-                except (Exception,):  # noqa: B013
+                except (Exception,):
                     self._disable_recording_after_failure()
                 raise
-            except (Exception,):  # noqa: B013
+            except (Exception,):
                 self._disable_recording_after_failure()
 
     def _disable_recording_after_failure(self) -> None:

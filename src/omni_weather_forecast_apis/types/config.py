@@ -22,6 +22,8 @@ class RetryPolicy(BaseModel):
             return self
         # Only reject explicit conflicts; a default on the unset side must not
         # invalidate a config that was valid before cross-field validation.
+        # The explicit value always wins, so the unset side moves to meet it
+        # in either direction -- see docs/configuration.md.
         if {"initial_backoff_ms", "max_backoff_ms"} <= self.model_fields_set:
             raise ValueError("initial_backoff_ms must not exceed max_backoff_ms")
         if "initial_backoff_ms" in self.model_fields_set:
@@ -82,6 +84,8 @@ class HTTPConfig(BaseModel):
             return self
         # Only reject explicit conflicts; a default on the unset side must not
         # invalidate a config that was valid before cross-field validation.
+        # The explicit value always wins, so setting only the keepalive cap
+        # raises max_connections above its default -- see docs/configuration.md.
         if {"max_connections", "max_keepalive_connections"} <= self.model_fields_set:
             raise ValueError(
                 "max_keepalive_connections must not exceed max_connections",

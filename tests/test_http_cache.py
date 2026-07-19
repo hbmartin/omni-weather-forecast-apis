@@ -75,14 +75,78 @@ async def test_vary_header_partitions_cached_variants() -> None:
             "https://example.test/data",
             headers={"X-Api-Key": "key-b"},
         )
+        # Re-requesting the *first* variant proves both are retained: a cache
+        # holding only the newest variant would go back to the network here.
         third = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-a"},
+        )
+        fourth = await client.get(
             "https://example.test/data",
             headers={"X-Api-Key": "key-b"},
         )
 
     assert first.json() == {"variant": "a"}
     assert second.json() == {"variant": "b"}
-    assert third.json() == {"variant": "b"}
+    assert third.json() == {"variant": "a"}
+    assert fourth.json() == {"variant": "b"}
+    assert third.extensions.get("omni_weather_cache") == "hit"
+    assert fourth.extensions.get("omni_weather_cache") == "hit"
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_revalidation_widening_vary_to_star_evicts_entry() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"value": 1},
+                {"ETag": '"abc"', "Vary": "X-Api-Key"},
+            ),
+            httpx2.Response(304, headers={"Vary": "*"}),
+            _json_response({"value": 2}, {"ETag": '"def"'}),
+        ],
+    )
+    headers = {"X-Api-Key": "key-a"}
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
+        await client.get("https://example.test/data", headers=headers)
+        second = await client.get("https://example.test/data", headers=headers)
+        await client.get("https://example.test/data", headers=headers)
+
+    # The 304 still validates the stored body for this request...
+    assert second.json() == {"value": 1}
+    assert inner.requests[1].headers["If-None-Match"] == '"abc"'
+    # ...but the entry is gone, so the next call cannot revalidate against it.
+    assert len(inner.requests) == 3
+    assert "If-None-Match" not in inner.requests[2].headers
+
+
+@pytest.mark.asyncio
+async def test_changed_vary_names_drop_stale_variants() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"value": 1},
+                {"Cache-Control": "max-age=3600", "Vary": "X-Api-Key"},
+            ),
+            _json_response(
+                {"value": 2},
+                {"Cache-Control": "max-age=3600", "Vary": "Accept-Language"},
+            ),
+        ],
+    )
+    async with httpx2.AsyncClient(transport=CachingTransport(inner)) as client:
+        await client.get("https://example.test/data", headers={"X-Api-Key": "key-a"})
+        # A different key is a miss under the old Vary, and the response
+        # re-declares Vary on another header entirely.
+        await client.get("https://example.test/data", headers={"X-Api-Key": "key-b"})
+        third = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-b"},
+        )
+
+    # Variants keyed on the superseded name must not linger and shadow lookups.
+    assert third.json() == {"value": 2}
     assert third.extensions.get("omni_weather_cache") == "hit"
     assert len(inner.requests) == 2
 

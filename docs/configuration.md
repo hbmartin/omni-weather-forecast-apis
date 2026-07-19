@@ -89,9 +89,11 @@ seconds. Non-transient failures such as auth errors are never retried.
 | `backoff_multiplier` | `2.0` | Exponential growth factor |
 | `jitter` | `true` | Randomize each delay to avoid thundering herds |
 
-Setting only one of `initial_backoff_ms` / `max_backoff_ms` adjusts the
+Setting only one of `initial_backoff_ms` / `max_backoff_ms` moves the
 other's default to keep `initial <= max`; setting both to conflicting
-values is a validation error.
+values is a validation error. The explicit value always wins, so
+`initial_backoff_ms = 10000` on its own raises `max_backoff_ms` from its
+`8000` default to `10000` rather than being clamped down to it.
 
 A per-provider `retry` table on a registration overrides the global policy.
 
@@ -106,9 +108,12 @@ A per-provider `retry` table on a registration overrides the global policy.
 | `cache_max_entries` | `256` | In-memory cache size |
 | `raw_archive_enabled` | `true` | Archive raw HTTP payloads next to the SQLite database |
 
-Setting only one of `max_connections` / `max_keepalive_connections` adjusts
+Setting only one of `max_connections` / `max_keepalive_connections` moves
 the other's default to keep `keepalive <= connections`; setting both to
-conflicting values is a validation error.
+conflicting values is a validation error. The explicit value always wins,
+so `max_keepalive_connections = 50` on its own raises `max_connections`
+from its `20` default to `50` — set both keys when you need a specific
+pool ceiling.
 
 The cache is standards-aware: responses with `Cache-Control: max-age` or
 `Expires` are served from memory while fresh, and stale responses carrying
