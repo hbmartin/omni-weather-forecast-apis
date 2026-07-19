@@ -303,7 +303,7 @@ class OmniWeatherClient:
         for hook in self._log_hooks:
             try:
                 hook(event)
-            except (Exception,):  # noqa: B013
+            except (Exception,):
                 logger.exception(
                     "Log hook failed for provider %s (%s)",
                     event.provider.value,
@@ -314,7 +314,7 @@ class OmniWeatherClient:
         for hook in self._metrics_hooks:
             try:
                 hook(event)
-            except (Exception,):  # noqa: B013
+            except (Exception,):
                 logger.exception("Metrics hook failed (%s)", event.kind.value)
 
     def _handle_cache_event(self, url: str, outcome: str) -> None:
@@ -337,7 +337,7 @@ class OmniWeatherClient:
                 result = hook(response)
                 if inspect.isawaitable(result):
                     await result
-            except (Exception,):  # noqa: B013
+            except (Exception,):
                 logger.exception("Response hook failed")
 
     async def _fetch_one_provider(
@@ -635,7 +635,7 @@ class OmniWeatherClient:
                 today,
                 limit,
             )
-        except (Exception,) as exc:  # noqa: B013
+        except (Exception,) as exc:
             message = f"Quota tracking failed: {exc}"
             self._emit_log(
                 ProviderLogEvent(

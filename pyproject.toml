@@ -108,6 +108,7 @@ target-version = "py313"
 lint.select = ["ALL"]
 lint.ignore = [
     "ANN401",
+    "B013",   # CLAUDE.md mandates the parenthesized exception-tuple form.
     "BLE001",
     "C901",
     "COM812", # Conflicts with Ruff's formatter.

@@ -63,6 +63,26 @@ def test_sqlite_tracker_persists_across_instances(tmp_path: Path) -> None:
     assert isinstance(second, QuotaTracker)
 
 
+def test_sqlite_tracker_recreates_schema_after_database_removal(
+    tmp_path: Path,
+) -> None:
+    """A long-lived tracker must survive the database being deleted."""
+
+    database = tmp_path / "quota.sqlite"
+    day = date(2026, 7, 3)
+
+    tracker = SqliteQuotaTracker(database)
+    tracker.record_request(ProviderId.OPENWEATHER, day)
+    assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 1
+
+    # Rotated out from under us; the cached "schema exists" flag is now stale.
+    database.unlink()
+
+    assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 0
+    assert tracker.try_consume(ProviderId.OPENWEATHER, day, 2) is True
+    assert tracker.get_usage(ProviderId.OPENWEATHER, day) == 1
+
+
 def test_sqlite_tracker_try_consume_is_atomic(tmp_path: Path) -> None:
     tracker = SqliteQuotaTracker(tmp_path / "quota.sqlite")
     day = date(2026, 7, 3)

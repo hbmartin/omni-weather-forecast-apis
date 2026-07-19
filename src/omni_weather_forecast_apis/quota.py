@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -12,6 +13,15 @@ from typing import Protocol, runtime_checkable
 
 from omni_weather_forecast_apis.types import ProviderId
 
+_MISSING_TABLE_ERROR = "no such table"
+_CREATE_SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS provider_quota_usage (
+        provider TEXT NOT NULL,
+        day TEXT NOT NULL,
+        request_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (provider, day)
+    )
+"""
 _SELECT_USAGE_SQL = """
     SELECT request_count FROM provider_quota_usage
     WHERE provider = ? AND day = ?
@@ -79,25 +89,29 @@ class SqliteQuotaTracker:
         self._schema_ready = False
 
     def get_usage(self, provider: ProviderId, day: date) -> int:
-        with closing(self._connect()) as connection:
+        def read(connection: sqlite3.Connection) -> int:
             row = connection.execute(
                 _SELECT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             ).fetchone()
-        return int(row[0]) if row is not None else 0
+            return int(row[0]) if row is not None else 0
+
+        return self._run(read)
 
     def record_request(self, provider: ProviderId, day: date) -> None:
-        with closing(self._connect()) as connection:
+        def increment(connection: sqlite3.Connection) -> None:
             connection.execute(
                 _INCREMENT_USAGE_SQL,
                 (provider.value, day.isoformat()),
             )
             connection.commit()
 
+        self._run(increment)
+
     def try_consume(self, provider: ProviderId, day: date, limit: int) -> bool:
         """Atomically reserve one daily request when quota remains."""
 
-        with closing(self._connect()) as connection:
+        def consume(connection: sqlite3.Connection) -> bool:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 _SELECT_USAGE_SQL,
@@ -114,20 +128,28 @@ class SqliteQuotaTracker:
             connection.commit()
             return True
 
+        return self._run(consume)
+
+    def _run[T](self, operation: Callable[[sqlite3.Connection], T]) -> T:
+        """Run an operation, recreating the schema once if it went missing."""
+
+        try:
+            with closing(self._connect()) as connection:
+                return operation(connection)
+        except sqlite3.OperationalError as exc:
+            if _MISSING_TABLE_ERROR not in str(exc):
+                raise
+        # The database file was deleted or rotated out from under a long-lived
+        # tracker, so the cached "schema exists" flag is stale.
+        self._schema_ready = False
+        with closing(self._connect()) as connection:
+            return operation(connection)
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._database_path, timeout=10.0)
         connection.execute("PRAGMA busy_timeout = 10000")
         if not self._schema_ready:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS provider_quota_usage (
-                    provider TEXT NOT NULL,
-                    day TEXT NOT NULL,
-                    request_count INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (provider, day)
-                )
-                """,
-            )
+            connection.execute(_CREATE_SCHEMA_SQL)
             connection.commit()
             self._schema_ready = True
         return connection
