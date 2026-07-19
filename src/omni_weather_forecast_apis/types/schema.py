@@ -1,29 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from datetime import date as calendar_date
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
+from omni_weather_forecast_apis.types._time import normalize_utc_datetime, utc_now
 from omni_weather_forecast_apis.utils.timezones import validate_timezone_name
 
-
-def _normalize_utc_datetime(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
-UTCDateTime = Annotated[datetime, AfterValidator(_normalize_utc_datetime)]
+UTCDateTime = Annotated[datetime, AfterValidator(normalize_utc_datetime)]
 IANATimezoneName = Annotated[str, AfterValidator(validate_timezone_name)]
 
 
@@ -392,18 +382,25 @@ class ForecastResponse(BaseModel):
     total_latency_ms: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True, slots=True)
 class ProviderLogEvent:
     """Structured log event emitted by the client for each provider interaction."""
 
     provider: ProviderId
     phase: Literal["start", "retry", "success", "error"]
     message: str
-    timestamp: datetime = field(default_factory=_utc_now, kw_only=True)
+    timestamp: datetime = field(default_factory=utc_now)
     latency_ms: float = 0.0
     error_code: ErrorCode | None = None
     http_status: int | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "timestamp",
+            normalize_utc_datetime(self.timestamp),
+        )
 
 
 LogHook: TypeAlias = Callable[[ProviderLogEvent], None]

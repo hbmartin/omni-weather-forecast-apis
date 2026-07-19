@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
@@ -146,25 +147,80 @@ def test_provider_log_event_defaults_timestamp_to_utc() -> None:
     assert event.timestamp.tzinfo == UTC
 
 
-def test_provider_log_event_preserves_positional_field_compatibility() -> None:
+def test_provider_log_event_rejects_positional_construction() -> None:
+    """Keyword-only construction makes field misbinding structurally impossible."""
+
+    with pytest.raises(TypeError, match="positional"):
+        ProviderLogEvent(
+            ProviderId.OPEN_METEO,
+            "error",
+            "Fetching failed",
+        )
+
+
+def test_provider_log_event_binds_every_keyword_field() -> None:
     timestamp = datetime(2026, 7, 18, 12, tzinfo=UTC)
 
     event = ProviderLogEvent(
-        ProviderId.OPEN_METEO,
-        "error",
-        "Fetching failed",
-        42.0,
-        ErrorCode.NETWORK,
-        503,
-        {"attempt": 2},
+        provider=ProviderId.OPEN_METEO,
+        phase="error",
+        message="Fetching failed",
         timestamp=timestamp,
+        latency_ms=42.0,
+        error_code=ErrorCode.NETWORK,
+        http_status=503,
+        extra={"attempt": 2},
     )
 
+    assert event.provider is ProviderId.OPEN_METEO
+    assert event.phase == "error"
+    assert event.message == "Fetching failed"
     assert event.timestamp == timestamp
     assert event.latency_ms == 42.0
     assert event.error_code is ErrorCode.NETWORK
     assert event.http_status == 503
     assert event.extra == {"attempt": 2}
+
+
+@pytest.mark.parametrize(
+    ("supplied", "expected"),
+    [
+        (
+            datetime(2026, 7, 18, 12),  # noqa: DTZ001  # naive input is the point
+            datetime(2026, 7, 18, 12, tzinfo=UTC),
+        ),
+        (
+            datetime(2026, 7, 18, 12, tzinfo=timezone(timedelta(hours=-5))),
+            datetime(2026, 7, 18, 17, tzinfo=UTC),
+        ),
+    ],
+)
+def test_provider_log_event_normalizes_timestamp_to_utc(
+    supplied: datetime,
+    expected: datetime,
+) -> None:
+    """Naive input is assumed UTC; aware input is converted, preserving the instant."""
+
+    event = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="start",
+        message="Fetching forecast",
+        timestamp=supplied,
+    )
+
+    assert event.timestamp == expected
+    assert event.timestamp.tzinfo == UTC
+
+
+def test_provider_log_event_is_frozen() -> None:
+    event = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="start",
+        message="Fetching forecast",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        event.latency_ms = 1.0
 
 
 def test_types_module_reexports_provider_configs() -> None:

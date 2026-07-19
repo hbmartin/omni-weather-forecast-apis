@@ -248,6 +248,9 @@ async def _run_forecast(parsed: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
+        if explicit_path is not None and not config_path.is_file():
+            print(f"error: config path is not a file: {config_path}", file=sys.stderr)
+            return 2
         parsed.config = config_path
         return await _async_main(parsed)
     expected_path = default_config_path()
