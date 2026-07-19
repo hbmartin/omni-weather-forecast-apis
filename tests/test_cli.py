@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import importlib
 import logging
+import shlex
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -177,16 +178,19 @@ def _run_cli_capturing_config(monkeypatch, tmp_path, argv, config_body=None):
 
 
 def _run_cli_capturing_request(
-    monkeypatch,
-    tmp_path,
-    argv,
-    config_body=None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+    config_body: str | None = None,
 ) -> ForecastRequest:
     """Run main() with a stubbed client; return the ForecastRequest it built."""
 
     stub = _ArchiveStubClient()
 
-    async def fake_create(config, **kwargs):
+    async def fake_create(
+        config: object,
+        **kwargs: object,
+    ) -> _ArchiveStubClient:
         del config, kwargs
         return stub
 
@@ -212,7 +216,10 @@ def _config_with(top_level: str) -> str:
     return f"{top_level}\n{_PROVIDER_BLOCK}"
 
 
-def test_config_values_reach_the_forecast_request(monkeypatch, tmp_path) -> None:
+def test_config_values_reach_the_forecast_request(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     request = _run_cli_capturing_request(
         monkeypatch,
         tmp_path,
@@ -229,7 +236,10 @@ def test_config_values_reach_the_forecast_request(monkeypatch, tmp_path) -> None
     assert request.timeout_ms == 4200.0
 
 
-def test_cli_flags_override_config_values(monkeypatch, tmp_path) -> None:
+def test_cli_flags_override_config_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     request = _run_cli_capturing_request(
         monkeypatch,
         tmp_path,
@@ -242,8 +252,8 @@ def test_cli_flags_override_config_values(monkeypatch, tmp_path) -> None:
 
 
 def test_granularity_flag_replaces_rather_than_merges_config(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     request = _run_cli_capturing_request(
         monkeypatch,
@@ -255,7 +265,10 @@ def test_granularity_flag_replaces_rather_than_merges_config(
     assert request.granularity == [Granularity.DAILY]
 
 
-def test_config_include_raw_applies_without_a_flag(monkeypatch, tmp_path) -> None:
+def test_config_include_raw_applies_without_a_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """Config acts as a baseline the CLI flag can only enable, never disable."""
 
     request = _run_cli_capturing_request(
@@ -269,8 +282,8 @@ def test_config_include_raw_applies_without_a_flag(monkeypatch, tmp_path) -> Non
 
 
 def test_defaults_apply_when_neither_cli_nor_config_sets_them(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     request = _run_cli_capturing_request(monkeypatch, tmp_path, [])
 
@@ -304,26 +317,30 @@ def _failing_response() -> ForecastResponse:
 
 
 @pytest.mark.parametrize("printer", ["_print_results", "_print_results_plain"])
-def test_provider_failures_are_mirrored_to_stderr(capsys, printer: str) -> None:
+def test_provider_failures_are_mirrored_to_stderr(
+    capsys: pytest.CaptureFixture[str],
+    printer: str,
+) -> None:
     getattr(cli, printer)(_failing_response(), None, None)
 
     captured = capsys.readouterr()
-    assert (
-        "provider open_meteo failed: network: connection reset" in captured.err
-    )
+    assert "provider open_meteo failed: network: connection reset" in captured.err
     # The typed error code is diagnosable from stdout too, not just the message.
     assert "network" in captured.out
 
 
-def test_rich_fallback_reports_each_failure_exactly_once(monkeypatch, capsys) -> None:
+def test_rich_fallback_reports_each_failure_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """_print_results delegates to the plain printer; only one of them may emit."""
 
     real_import = importlib.import_module
 
-    def no_rich(name, *args, **kwargs):
+    def no_rich(name: str, package: str | None = None) -> ModuleType:
         if name.startswith("rich."):
             raise ImportError(name)
-        return real_import(name, *args, **kwargs)
+        return real_import(name, package)
 
     monkeypatch.setattr(cli.importlib, "import_module", no_rich)
     cli._print_results(_failing_response(), None, None)
@@ -332,15 +349,32 @@ def test_rich_fallback_reports_each_failure_exactly_once(monkeypatch, capsys) ->
     assert err.count("provider open_meteo failed: network: connection reset") == 1
 
 
-def test_explicit_missing_config_reports_a_targeted_error(tmp_path, capsys) -> None:
-    missing = tmp_path / "absent.toml"
+def test_explicit_missing_config_reports_a_targeted_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = tmp_path / "config directory" / "absent $(unsafe).toml"
 
     assert cli.main(["--config", str(missing), "--lat", "1", "--lon", "2"]) == 2
 
     err = capsys.readouterr().err
     assert f"error: config file not found: {missing}" in err
-    assert "omni-weather init" in err
+    assert (
+        f"run: omni-weather init --config {shlex.quote(str(missing))}"
+        in err.splitlines()
+    )
     assert "No such file or directory" not in err
+
+
+def test_explicit_directory_config_is_not_reported_missing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["--config", str(tmp_path), "--lat", "1", "--lon", "2"]) == 2
+
+    err = capsys.readouterr().err
+    assert "config file not found" not in err
+    assert "omni-weather init" not in err
 
 
 def test_sqlite_enables_raw_archive_with_run_scoped_path(
