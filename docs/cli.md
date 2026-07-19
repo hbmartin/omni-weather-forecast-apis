@@ -45,7 +45,9 @@ With no explicit `--config`, forecasts use the platform-native
 `~/.config/omni_weather_forecast_apis.toml`. If neither exists and stdin/stderr
 are interactive, the wizard runs automatically and the original forecast
 continues with its overrides. Non-interactive first use exits `2` with setup
-instructions. An explicitly supplied missing file is always an error.
+instructions. An explicitly supplied missing file is always an error, and an
+explicit path that exists but is not a file — a directory, for example — is
+rejected before any provider work, also exiting `2`.
 
 ## Forecast
 

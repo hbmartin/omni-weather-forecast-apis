@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import httpx2
@@ -239,3 +241,42 @@ def test_otel_bridge_raises_without_dependency(
 
     with pytest.raises(ImportError, match=r"omni-weather-forecast-apis\[otel\]"):
         create_otel_metrics_hook()
+
+
+def test_metric_event_rejects_positional_construction() -> None:
+    """Keyword-only construction makes field misbinding structurally impossible."""
+
+    with pytest.raises(TypeError, match="positional"):
+        MetricEvent(MetricKind.REQUEST_START)
+
+
+@pytest.mark.parametrize(
+    ("supplied", "expected"),
+    [
+        (
+            datetime(2026, 7, 18, 12),  # noqa: DTZ001  # naive input is the point
+            datetime(2026, 7, 18, 12, tzinfo=UTC),
+        ),
+        (
+            datetime(2026, 7, 18, 12, tzinfo=timezone(timedelta(hours=-5))),
+            datetime(2026, 7, 18, 17, tzinfo=UTC),
+        ),
+    ],
+)
+def test_metric_event_normalizes_timestamp_to_utc(
+    supplied: datetime,
+    expected: datetime,
+) -> None:
+    """Naive input is assumed UTC; aware input is converted, preserving the instant."""
+
+    event = MetricEvent(kind=MetricKind.REQUEST_START, timestamp=supplied)
+
+    assert event.timestamp == expected
+    assert event.timestamp.tzinfo == UTC
+
+
+def test_metric_event_is_frozen() -> None:
+    event = MetricEvent(kind=MetricKind.REQUEST_START)
+
+    with pytest.raises(FrozenInstanceError):
+        event.latency_ms = 1.0

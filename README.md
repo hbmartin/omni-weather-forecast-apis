@@ -108,7 +108,9 @@ domains such as `example.com` with a `403 Forbidden`.
 `--config` is optional — it defaults to a TOML file in your platform's config
 directory, which `omni-weather init` creates for you. It is passed explicitly
 above only so the example is self-contained. `--lat`, `--lon`, and `--sqlite`
-likewise fall back to the config file when omitted.
+likewise fall back to the config file when omitted. An explicit `--config` that
+is missing, or that points at something other than a file, is reported before
+any provider work and exits `2`.
 
 Which prints:
 
@@ -232,6 +234,18 @@ Full documentation lives at
 | [Database Design](https://hbmartin.github.io/omni-weather-forecast-apis/database/) | The SQLite schema, and the `stacking_features` view — aligned per-provider forecasts for the same point and valid time, already unit-normalized, which is the input a blending or verification model wants |
 | [Extending](https://hbmartin.github.io/omni-weather-forecast-apis/extending/) | Response hooks, custom provider plugins, and quota trackers |
 | [API Reference](https://hbmartin.github.io/omni-weather-forecast-apis/api-reference/) | Generated from the source |
+
+## Upgrading to 1.0.0
+
+`ProviderLogEvent` and `MetricEvent` are now keyword-only, and their `timestamp`
+is always normalized to UTC. If you construct either type directly — most code
+only receives them in hooks — switch positional arguments to keywords:
+
+```python
+ProviderLogEvent(provider=ProviderId.OPEN_METEO, phase="success", message="Fetched")
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of breaking changes.
 
 ## Development
 

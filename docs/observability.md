@@ -10,6 +10,10 @@ retry, HTTP cache lookup, and quota consumption.
 Neither needs an extra dependency, and a hook that raises is logged and never
 breaks the forecast.
 
+Both event types are frozen, keyword-only dataclasses. Their `timestamp` is
+always an offset-aware UTC `datetime`: a naive value is assumed to be UTC, and
+an aware value in another zone is converted, preserving the instant.
+
 ## Metrics hooks
 
 Register any callable that accepts a `MetricEvent`:

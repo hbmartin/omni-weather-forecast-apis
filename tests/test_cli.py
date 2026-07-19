@@ -366,15 +366,19 @@ def test_explicit_missing_config_reports_a_targeted_error(
     assert "No such file or directory" not in err
 
 
-def test_explicit_directory_config_is_not_reported_missing(
+def test_explicit_directory_config_reports_a_targeted_error(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """An existing non-file is diagnosed up front, not as a leaked errno."""
+
     assert cli.main(["--config", str(tmp_path), "--lat", "1", "--lon", "2"]) == 2
 
     err = capsys.readouterr().err
+    assert f"error: config path is not a file: {tmp_path}" in err
     assert "config file not found" not in err
     assert "omni-weather init" not in err
+    assert "Is a directory" not in err
 
 
 def test_sqlite_enables_raw_archive_with_run_scoped_path(
