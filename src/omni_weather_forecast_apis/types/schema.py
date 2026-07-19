@@ -10,7 +10,12 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 import omni_weather_forecast_apis._compat  # noqa: F401  # Pydantic Python 3.14 compat
-from omni_weather_forecast_apis.types._time import normalize_utc_datetime, utc_now
+from omni_weather_forecast_apis.types._time import (
+    EventState,
+    normalize_utc_datetime,
+    restore_utc_event_state,
+    utc_now,
+)
 from omni_weather_forecast_apis.utils.timezones import validate_timezone_name
 
 UTCDateTime = Annotated[datetime, AfterValidator(normalize_utc_datetime)]
@@ -401,6 +406,11 @@ class ProviderLogEvent:
             "timestamp",
             normalize_utc_datetime(self.timestamp),
         )
+
+    def __setstate__(self, state: EventState) -> None:
+        """Restore current slot state or the dictionary state used before 1.0."""
+
+        restore_utc_event_state(self, state)
 
 
 LogHook: TypeAlias = Callable[[ProviderLogEvent], None]

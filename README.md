@@ -245,7 +245,9 @@ only receives them in hooks — switch positional arguments to keywords:
 ProviderLogEvent(provider=ProviderId.OPEN_METEO, phase="success", message="Fetched")
 ```
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list of breaking changes.
+See the
+[changelog](https://github.com/hbmartin/omni-weather-forecast-apis/blob/main/CHANGELOG.md)
+for the full list of breaking changes.
 
 ## Development
 

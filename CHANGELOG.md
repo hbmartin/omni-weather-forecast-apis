@@ -38,12 +38,21 @@ are now keyword-only, and their timestamps are always normalized to UTC.
   models already used. Previously a naive timestamp reached the SQLite archive and was written as
   an offset-less ISO string.
 
+- **Weather Unlocked has been removed.** The `weather_unlocked` plugin, the
+  `ProviderId.WEATHER_UNLOCKED` enum member, and the `WeatherUnlockedConfig` export are no longer
+  available. Existing configurations must remove that provider registration or replace it with
+  another provider. There is no automatic substitution because credentials and forecast semantics
+  differ between services.
+
 - **`ProviderLogEvent.extra` is typed `Mapping[str, Any]`** rather than `dict[str, Any]`, matching
   `MetricEvent.extra` and giving a frozen event a read-only mapping interface. The runtime default
-  is still a `dict`; this affects type checking only.
+  is still a `dict`; other mapping implementations are preserved as JSON objects when archived.
 
-- **Both event types use `slots=True`**, so assigning an undeclared attribute raises
-  `AttributeError` instead of silently succeeding.
+- **`ProviderLogEvent` now uses `slots=True`; `MetricEvent` was already slotted.**
+  `ProviderLogEvent` no longer exposes a per-instance `__dict__` or supports weak references,
+  which may affect reflection-based serializers and weak-reference caches. Both event types were
+  already frozen, so assignment behavior is unchanged. Pickles of either event type written by
+  0.3.x remain readable and their timestamps are normalized when restored.
 
 ### Fixed
 
@@ -52,5 +61,6 @@ are now keyword-only, and their timestamps are always normalized to UTC.
   errno — `error: [Errno 21] Is a directory: '...'` — from deep in the config loader. The wording
   matches what `omni-weather doctor` already reports for the same filesystem state.
 
-- Recovery hints for a missing config are shell-quoted, so paths containing spaces or shell
-  metacharacters produce copy-pastable commands.
+- Recovery hints for a missing config use POSIX quoting on Unix-like systems and explicitly
+  labeled PowerShell quoting on Windows, so paths containing spaces or shell metacharacters
+  produce copy-pastable commands.

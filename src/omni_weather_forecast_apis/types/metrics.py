@@ -8,7 +8,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from omni_weather_forecast_apis.types._time import normalize_utc_datetime, utc_now
+from omni_weather_forecast_apis.types._time import (
+    EventState,
+    normalize_utc_datetime,
+    restore_utc_event_state,
+    utc_now,
+)
 from omni_weather_forecast_apis.types.schema import ErrorCode, ProviderId
 
 
@@ -49,6 +54,11 @@ class MetricEvent:
             "timestamp",
             normalize_utc_datetime(self.timestamp),
         )
+
+    def __setstate__(self, state: EventState) -> None:
+        """Restore slot state while applying the timestamp contract."""
+
+        restore_utc_event_state(self, state)
 
 
 type MetricsHook = Callable[[MetricEvent], None]
