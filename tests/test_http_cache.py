@@ -96,6 +96,42 @@ async def test_vary_header_partitions_cached_variants() -> None:
 
 
 @pytest.mark.asyncio
+async def test_variant_replacement_remains_reachable_after_eviction() -> None:
+    inner = RecordingTransport(
+        [
+            _json_response(
+                {"variant": "a"},
+                {"Cache-Control": "max-age=3600", "Vary": "X-Api-Key"},
+            ),
+            _json_response(
+                {"variant": "b"},
+                {"Cache-Control": "max-age=3600", "Vary": "X-Api-Key"},
+            ),
+        ],
+    )
+    async with httpx2.AsyncClient(
+        transport=CachingTransport(inner, max_entries=1),
+    ) as client:
+        await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-a"},
+        )
+        second = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-b"},
+        )
+        third = await client.get(
+            "https://example.test/data",
+            headers={"X-Api-Key": "key-b"},
+        )
+
+    assert second.json() == {"variant": "b"}
+    assert third.json() == {"variant": "b"}
+    assert third.extensions.get("omni_weather_cache") == "hit"
+    assert len(inner.requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_revalidation_widening_vary_to_star_evicts_entry() -> None:
     inner = RecordingTransport(
         [
