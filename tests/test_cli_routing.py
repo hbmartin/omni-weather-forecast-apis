@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 from omni_weather_forecast_apis import _cli_paths as paths
@@ -103,7 +104,7 @@ def test_noninteractive_first_run_explains_platform_path(
     tmp_path: Path,
     capsys,
 ) -> None:
-    expected = tmp_path / "platform" / "config.toml"
+    expected = tmp_path / "platform config" / "config.toml"
     monkeypatch.setattr(cli, "find_config_path", lambda _explicit: None)
     monkeypatch.setattr(cli, "default_config_path", lambda: expected)
     monkeypatch.setattr(cli, "_automatic_setup_available", lambda: False)
@@ -111,7 +112,10 @@ def test_noninteractive_first_run_explains_platform_path(
     assert main([]) == 2
     error = capsys.readouterr().err
     assert str(expected) in error
-    assert "omni-weather init --config" in error
+    assert (
+        "run in an interactive terminal: omni-weather init --config "
+        f"{shlex.quote(str(expected))}" in error.splitlines()
+    )
 
 
 def test_automatic_setup_runs_original_forecast_with_overrides(

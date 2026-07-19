@@ -8,6 +8,7 @@ from pydantic import ValidationError
 import omni_weather_forecast_apis.types as public_types
 from omni_weather_forecast_apis.types import (
     DailyDataPoint,
+    ErrorCode,
     ForecastRequest,
     Granularity,
     HTTPConfig,
@@ -143,6 +144,27 @@ def test_provider_log_event_defaults_timestamp_to_utc() -> None:
 
     assert before <= event.timestamp <= after
     assert event.timestamp.tzinfo == UTC
+
+
+def test_provider_log_event_preserves_positional_field_compatibility() -> None:
+    timestamp = datetime(2026, 7, 18, 12, tzinfo=UTC)
+
+    event = ProviderLogEvent(
+        ProviderId.OPEN_METEO,
+        "error",
+        "Fetching failed",
+        42.0,
+        ErrorCode.NETWORK,
+        503,
+        {"attempt": 2},
+        timestamp=timestamp,
+    )
+
+    assert event.timestamp == timestamp
+    assert event.latency_ms == 42.0
+    assert event.error_code is ErrorCode.NETWORK
+    assert event.http_status == 503
+    assert event.extra == {"attempt": 2}
 
 
 def test_types_module_reexports_provider_configs() -> None:

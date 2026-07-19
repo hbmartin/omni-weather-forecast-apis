@@ -392,14 +392,14 @@ class ForecastResponse(BaseModel):
     total_latency_ms: float
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True)
 class ProviderLogEvent:
     """Structured log event emitted by the client for each provider interaction."""
 
     provider: ProviderId
     phase: Literal["start", "retry", "success", "error"]
     message: str
-    timestamp: datetime = field(default_factory=_utc_now)
+    timestamp: datetime = field(default_factory=_utc_now, kw_only=True)
     latency_ms: float = 0.0
     error_code: ErrorCode | None = None
     http_status: int | None = None

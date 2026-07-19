@@ -6,6 +6,7 @@ import csv
 import importlib
 import json
 import logging
+import shlex
 import sys
 import tomllib
 from collections.abc import Iterator
@@ -240,10 +241,10 @@ async def _run_explicit_init(parsed: argparse.Namespace) -> int:
 async def _run_forecast(parsed: argparse.Namespace) -> int:
     explicit_path = cast(Path | None, parsed.config)
     if (config_path := find_config_path(explicit_path)) is not None:
-        if explicit_path is not None and not config_path.is_file():
+        if explicit_path is not None and not config_path.exists():
             print(f"error: config file not found: {config_path}", file=sys.stderr)
             print(
-                f"run 'omni-weather init --config {config_path}' to create it",
+                f"run: omni-weather init --config {shlex.quote(str(config_path))}",
                 file=sys.stderr,
             )
             return 2
@@ -256,7 +257,8 @@ async def _run_forecast(parsed: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         print(
-            f"run 'omni-weather init --config {expected_path}' in an interactive terminal",
+            "run in an interactive terminal: omni-weather init --config "
+            f"{shlex.quote(str(expected_path))}",
             file=sys.stderr,
         )
         return 2
