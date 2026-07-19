@@ -245,9 +245,12 @@ only receives them in hooks — switch positional arguments to keywords:
 ProviderLogEvent(provider=ProviderId.OPEN_METEO, phase="success", message="Fetched")
 ```
 
-See the
+The [0.3.1 → 1.0.0 upgrade
+guide](https://hbmartin.github.io/omni-weather-forecast-apis/upgrading-to-1.0/)
+covers every breaking change, the removed provider, the four new ones, and the
+behavioral differences in CLI output and the maintenance scripts. The
 [changelog](https://github.com/hbmartin/omni-weather-forecast-apis/blob/main/CHANGELOG.md)
-for the full list of breaking changes.
+has the condensed list.
 
 ## Development
 

@@ -42,7 +42,8 @@ rather than sending a static key. Pirate Weather's hourly horizon extends to
 The `weather_unlocked` plugin ID and its provider configuration type have been
 removed. Configurations from earlier releases must remove that registration or
 replace it with another supported provider before upgrading. No automatic
-substitution is performed.
+substitution is performed. See [Upgrading to 1.0](upgrading-to-1.0.md) for the
+exact error and the closest replacements.
 
 ## Configuration reference
 

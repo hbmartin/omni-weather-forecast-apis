@@ -8,6 +8,7 @@ repo_name = "hbmartin/omni-weather-forecast-apis"
 nav = [
   { "Home" = "index.md" },
   { "Getting Started" = "getting-started.md" },
+  { "Upgrading to 1.0" = "upgrading-to-1.0.md" },
   { "Configuration" = "configuration.md" },
   { "Providers" = "providers.md" },
   { "CLI" = "cli.md" },
