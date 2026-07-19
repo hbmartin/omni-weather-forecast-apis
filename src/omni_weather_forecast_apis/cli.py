@@ -225,6 +225,24 @@ def _automatic_setup_available() -> bool:
     return sys.stdin.isatty() and sys.stderr.isatty()
 
 
+def _powershell_quote(value: str) -> str:
+    """Quote one literal PowerShell argument."""
+
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _init_recovery_hint(config_path: Path, *, interactive: bool) -> str:
+    """Render a pasteable init command for the platform's documented shell."""
+
+    if sys.platform == "win32":
+        shell = "an interactive PowerShell" if interactive else "PowerShell"
+        quoted_path = _powershell_quote(str(config_path))
+        return f"run in {shell}: omni-weather init --config {quoted_path}"
+    prefix = "run in an interactive terminal" if interactive else "run"
+    return f"{prefix}: omni-weather init --config {shlex.quote(str(config_path))}"
+
+
 async def _run_explicit_init(parsed: argparse.Namespace) -> int:
     target_path = init_target_path(_config_argument(parsed))
     result = run_init(
@@ -243,10 +261,7 @@ async def _run_forecast(parsed: argparse.Namespace) -> int:
     if (config_path := find_config_path(explicit_path)) is not None:
         if explicit_path is not None and not config_path.exists():
             print(f"error: config file not found: {config_path}", file=sys.stderr)
-            print(
-                f"run: omni-weather init --config {shlex.quote(str(config_path))}",
-                file=sys.stderr,
-            )
+            print(_init_recovery_hint(config_path, interactive=False), file=sys.stderr)
             return 2
         if explicit_path is not None and not config_path.is_file():
             print(f"error: config path is not a file: {config_path}", file=sys.stderr)
@@ -259,11 +274,7 @@ async def _run_forecast(parsed: argparse.Namespace) -> int:
             f"error: no configuration found at {expected_path}",
             file=sys.stderr,
         )
-        print(
-            "run in an interactive terminal: omni-weather init --config "
-            f"{shlex.quote(str(expected_path))}",
-            file=sys.stderr,
-        )
+        print(_init_recovery_hint(expected_path, interactive=True), file=sys.stderr)
         return 2
     result = run_init(
         expected_path,

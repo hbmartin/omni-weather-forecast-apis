@@ -767,7 +767,7 @@ def save_provider_logs(
                     event.latency_ms,
                     event.error_code.value if event.error_code is not None else None,
                     event.http_status,
-                    _json_dump(event.extra) if event.extra else None,
+                    _json_dump(dict(event.extra)) if event.extra else None,
                     event.timestamp.isoformat(),
                 )
                 for event in events

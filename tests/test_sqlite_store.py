@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
@@ -258,7 +259,7 @@ def test_save_provider_logs_migrates_schema_and_persists_metadata(tmp_path) -> N
                 latency_ms=12.5,
                 error_code=ErrorCode.NETWORK,
                 http_status=502,
-                extra={"attempt": 1},
+                extra=MappingProxyType({"attempt": 1}),
             ),
         ],
         run_id=7,

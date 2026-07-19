@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import builtins
+import pickle
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
@@ -25,6 +27,15 @@ from omni_weather_forecast_apis.types import (
     RetryPolicy,
 )
 from tests.helpers import DummyPlugin, FlakyInstance
+
+_LEGACY_METRIC_EVENT_PICKLE = base64.b64decode(
+    "gASVLAEAAAAAAACMKG9tbmlfd2VhdGhlcl9mb3JlY2FzdF9hcGlzLnR5cGVzLm1ldHJpY3OU"
+    "jAtNZXRyaWNFdmVudJSTlCmBlF2UKGgAjApNZXRyaWNLaW5klJOUjAtyZXF1ZXN0X2VuZJSF"
+    "lFKUjCdvbW5pX3dlYXRoZXJfZm9yZWNhc3RfYXBpcy50eXBlcy5zY2hlbWGUjApQcm92aWRl"
+    "cklklJOUjApvcGVuX21ldGVvlIWUUpSMCGRhdGV0aW1llIwIZGF0ZXRpbWWUk5RDCgfqBxIM"
+    "AAAAAACUhZRSlEsCR0BFAAAAAAAAaAqMCUVycm9yQ29kZZSTlIwHbmV0d29ya5SFlFKUTfcB"
+    "jBRodHRwczovL2V4YW1wbGUudGVzdJR9lIwHYXR0ZW1wdJRLAnNlYi4="
+)
 
 
 def _run_forecast(
@@ -280,3 +291,40 @@ def test_metric_event_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         event.latency_ms = 1.0
+
+
+def test_metric_event_restores_legacy_pickle_state() -> None:
+    event = pickle.loads(  # noqa: S301  # trusted fixture created by version 0.3.1
+        _LEGACY_METRIC_EVENT_PICKLE,
+    )
+
+    assert isinstance(event, MetricEvent)
+    assert event.kind is MetricKind.REQUEST_END
+    assert event.provider is ProviderId.OPEN_METEO
+    assert event.timestamp == datetime(2026, 7, 18, 12, tzinfo=UTC)
+    assert event.attempt == 2
+    assert event.latency_ms == 42.0
+    assert event.error_code is ErrorCode.NETWORK
+    assert event.http_status == 503
+    assert event.url == "https://example.test"
+    assert event.extra == {"attempt": 2}
+
+
+def test_metric_event_round_trips_current_pickle_state() -> None:
+    expected = MetricEvent(
+        kind=MetricKind.REQUEST_END,
+        provider=ProviderId.OPEN_METEO,
+        timestamp=datetime(2026, 7, 18, 12, tzinfo=UTC),
+        attempt=2,
+        latency_ms=42.0,
+        error_code=ErrorCode.NETWORK,
+        http_status=503,
+        url="https://example.test",
+        extra={"attempt": 2},
+    )
+
+    restored = pickle.loads(  # noqa: S301  # trusted in-process pickle
+        pickle.dumps(expected),
+    )
+
+    assert restored == expected

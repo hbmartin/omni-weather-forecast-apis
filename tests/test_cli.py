@@ -366,6 +366,31 @@ def test_explicit_missing_config_reports_a_targeted_error(
     assert "No such file or directory" not in err
 
 
+@pytest.mark.parametrize(
+    ("interactive", "prefix"),
+    [
+        (False, "run in PowerShell:"),
+        (True, "run in an interactive PowerShell:"),
+    ],
+)
+def test_recovery_hint_uses_powershell_quoting_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+    interactive: bool,
+    prefix: str,
+) -> None:
+    config_path = Path(
+        r"C:\Users\O'Brien\Config Files\absent $(unsafe).toml",
+    )
+    monkeypatch.setattr(cli.sys, "platform", "win32")
+
+    hint = cli._init_recovery_hint(config_path, interactive=interactive)
+
+    assert hint == (
+        f"{prefix} omni-weather init --config "
+        r"'C:\Users\O''Brien\Config Files\absent $(unsafe).toml'"
+    )
+
+
 def test_explicit_directory_config_reports_a_targeted_error(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

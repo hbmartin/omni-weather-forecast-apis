@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
+import pickle
 from dataclasses import FrozenInstanceError
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
 
 import pytest
 from pydantic import ValidationError
@@ -21,6 +23,33 @@ from omni_weather_forecast_apis.types import (
     WeatherCondition,
     WeatherDataPoint,
 )
+
+_LEGACY_PROVIDER_LOG_EVENT_PICKLE = base64.b64decode(
+    "gASVPAEAAAAAAACMJ29tbmlfd2VhdGhlcl9mb3JlY2FzdF9hcGlzLnR5cGVzLnNjaGVtYZSM"
+    "EFByb3ZpZGVyTG9nRXZlbnSUk5QpgZR9lCiMCHByb3ZpZGVylGgAjApQcm92aWRlcklklJOU"
+    "jApvcGVuX21ldGVvlIWUUpSMBXBoYXNllIwFZXJyb3KUjAdtZXNzYWdllIwMbGVnYWN5IGV2"
+    "ZW50lIwJdGltZXN0YW1wlIwIZGF0ZXRpbWWUjAhkYXRldGltZZSTlEMKB+oHEgwAAAAAAJSF"
+    "lFKUjApsYXRlbmN5X21zlEdARQAAAAAAAIwKZXJyb3JfY29kZZRoAIwJRXJyb3JDb2RllJOU"
+    "jAduZXR3b3JrlIWUUpSMC2h0dHBfc3RhdHVzlE33AYwFZXh0cmGUfZSMB2F0dGVtcHSUSwJz"
+    "dWIu"
+)
+
+
+class _FloatingTimezone(tzinfo):
+    """Represent a legal tzinfo that leaves its datetime semantically naive."""
+
+    def utcoffset(self, _value: datetime | None) -> None:
+        return None
+
+    def dst(self, _value: datetime | None) -> None:
+        return None
+
+
+class _FloatingDateTime(datetime):
+    """Fail if normalization incorrectly asks the host timezone for an offset."""
+
+    def astimezone(self, _zone: tzinfo | None = None) -> datetime:
+        raise AssertionError("semantically naive input must not use astimezone")
 
 
 def test_request_defaults_match_spec() -> None:
@@ -210,6 +239,61 @@ def test_provider_log_event_normalizes_timestamp_to_utc(
 
     assert event.timestamp == expected
     assert event.timestamp.tzinfo == UTC
+
+
+def test_provider_log_event_treats_none_utcoffset_as_naive() -> None:
+    supplied = _FloatingDateTime(
+        2026,
+        7,
+        18,
+        12,
+        tzinfo=_FloatingTimezone(),
+    )
+
+    event = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="start",
+        message="Fetching forecast",
+        timestamp=supplied,
+    )
+
+    assert event.timestamp == datetime(2026, 7, 18, 12, tzinfo=UTC)
+    assert event.timestamp.tzinfo == UTC
+
+
+def test_provider_log_event_restores_legacy_pickle_state() -> None:
+    event = pickle.loads(  # noqa: S301  # trusted fixture created by version 0.3.1
+        _LEGACY_PROVIDER_LOG_EVENT_PICKLE,
+    )
+
+    assert isinstance(event, ProviderLogEvent)
+    assert event.provider is ProviderId.OPEN_METEO
+    assert event.phase == "error"
+    assert event.message == "legacy event"
+    assert event.timestamp == datetime(2026, 7, 18, 12, tzinfo=UTC)
+    assert event.latency_ms == 42.0
+    assert event.error_code is ErrorCode.NETWORK
+    assert event.http_status == 503
+    assert event.extra == {"attempt": 2}
+
+
+def test_provider_log_event_round_trips_current_pickle_state() -> None:
+    expected = ProviderLogEvent(
+        provider=ProviderId.OPEN_METEO,
+        phase="error",
+        message="current event",
+        timestamp=datetime(2026, 7, 18, 12, tzinfo=UTC),
+        latency_ms=42.0,
+        error_code=ErrorCode.NETWORK,
+        http_status=503,
+        extra={"attempt": 2},
+    )
+
+    restored = pickle.loads(  # noqa: S301  # trusted in-process pickle
+        pickle.dumps(expected),
+    )
+
+    assert restored == expected
 
 
 def test_provider_log_event_is_frozen() -> None:
