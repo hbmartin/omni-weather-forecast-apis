@@ -47,6 +47,7 @@ from omni_weather_forecast_apis.types import (
     WeatherPlugin,
 )
 from omni_weather_forecast_apis.utils import (
+    expand_api_key_variants,
     resolve_env_placeholders,
     utc_now,
     zoneinfo_from_name,
@@ -62,6 +63,28 @@ class _RequestStats:
     """Mutable per-forecast() counters shared across provider tasks."""
 
     retries: int = 0
+
+
+@dataclass
+class _ProviderInstancePool:
+    """Per-API-key plugin instances plus the sticky pointer to the last good key.
+
+    Mutated only on the event loop (promotion is a single assignment with no
+    read-modify-write across an await), so no lock is needed.
+    """
+
+    instances: list[PluginInstance]
+    active_index: int = 0
+
+    @property
+    def active_instance(self) -> PluginInstance:
+        return self.instances[self.active_index]
+
+    def rotation_order(self) -> list[int]:
+        """Key indices to try, starting from the sticky index and wrapping."""
+
+        count = len(self.instances)
+        return [(self.active_index + offset) % count for offset in range(count)]
 
 
 def _normalize_plugins(
@@ -110,7 +133,7 @@ class OmniWeatherClient:
         self._metrics_hooks: list[MetricsHook] = metrics_hooks or []
         self._response_hooks: list[ResponseHook] = response_hooks or []
         self._quota_tracker: QuotaTracker = quota_tracker or InMemoryQuotaTracker()
-        self._instances: dict[ProviderId, PluginInstance] = {}
+        self._instances: dict[ProviderId, _ProviderInstancePool] = {}
         self._provider_registrations: dict[ProviderId, ProviderRegistration] = {}
         self._initialization_errors: dict[ProviderId, str] = {}
         self._http_client: httpx2.AsyncClient | None = None
@@ -146,14 +169,17 @@ class OmniWeatherClient:
                 continue
             try:
                 resolved_config = resolve_env_placeholders(registration.config)
-                validated_config = plugin.validate_config(resolved_config)
-                instance = await plugin.initialize(validated_config)
+                variant_configs = expand_api_key_variants(resolved_config)
+                instances = [
+                    await plugin.initialize(plugin.validate_config(variant_config))
+                    for variant_config in variant_configs
+                ]
             except Exception as exc:
                 self._initialization_errors[registration.plugin_id] = (
                     f"Failed to initialize provider: {exc}"
                 )
                 continue
-            self._instances[registration.plugin_id] = instance
+            self._instances[registration.plugin_id] = _ProviderInstancePool(instances)
             if registration.rate_limit_rps is not None:
                 self._provider_limiters[registration.plugin_id] = (
                     TokenBucketRateLimiter(
@@ -280,8 +306,8 @@ class OmniWeatherClient:
         """Return capabilities for initialized providers."""
 
         return {
-            provider_id: instance.get_capabilities()
-            for provider_id, instance in self._instances.items()
+            provider_id: pool.active_instance.get_capabilities()
+            for provider_id, pool in self._instances.items()
         }
 
     def get_configured_providers(self) -> list[ProviderId]:
@@ -316,6 +342,50 @@ class OmniWeatherClient:
                 hook(event)
             except (Exception,):
                 logger.exception("Metrics hook failed (%s)", event.kind.value)
+
+    def _emit_rotation(
+        self,
+        provider_id: ProviderId,
+        failure: ProviderError,
+        *,
+        from_index: int,
+        to_index: int,
+        key_count: int,
+    ) -> None:
+        """Report a fallback to the next configured API key.
+
+        Events carry 1-based key positions only — never key material.
+        """
+
+        extra = {
+            "from_key": from_index + 1,
+            "to_key": to_index + 1,
+            "key_count": key_count,
+        }
+        self._emit_metric(
+            MetricEvent(
+                kind=MetricKind.KEY_ROTATED,
+                provider=provider_id,
+                error_code=failure.error.code,
+                http_status=failure.error.http_status,
+                extra=extra,
+            )
+        )
+        self._emit_log(
+            ProviderLogEvent(
+                provider=provider_id,
+                phase="retry",
+                message=(
+                    f"API key {from_index + 1}/{key_count} failed with "
+                    f"{failure.error.code.value}; rotating to key "
+                    f"{to_index + 1}/{key_count}"
+                ),
+                latency_ms=failure.error.latency_ms,
+                error_code=failure.error.code,
+                http_status=failure.error.http_status,
+                extra=extra,
+            )
+        )
 
     def _handle_cache_event(self, url: str, outcome: str) -> None:
         kind = (
@@ -365,8 +435,8 @@ class OmniWeatherClient:
                 started_at,
             )
 
-        instance = self._instances.get(provider_id)
-        if instance is None:
+        pool = self._instances.get(provider_id)
+        if pool is None:
             return self._provider_error(
                 provider_id,
                 ErrorCode.NOT_AVAILABLE,
@@ -374,7 +444,7 @@ class OmniWeatherClient:
                 started_at,
             )
 
-        capabilities = instance.get_capabilities()
+        capabilities = pool.active_instance.get_capabilities()
         supported_granularity = _filter_supported_granularity(
             request.granularity,
             capabilities,
@@ -414,6 +484,60 @@ class OmniWeatherClient:
         )
         policy = registration.retry or self._config.retry
 
+        key_order = pool.rotation_order()
+        for position, key_index in enumerate(key_order):
+            result, rotation_allowed = await self._fetch_with_key_retries(
+                provider_id,
+                pool.instances[key_index],
+                registration,
+                params,
+                client,
+                limiter,
+                timeout_ms,
+                policy,
+                started_at,
+                request,
+                stats,
+            )
+            if isinstance(result, ProviderSuccess):
+                pool.active_index = key_index
+                return result
+            if not rotation_allowed:
+                return result
+            if position == len(key_order) - 1:
+                return _annotate_all_keys_failed(result, len(key_order))
+            self._emit_rotation(
+                provider_id,
+                result,
+                from_index=key_index,
+                to_index=key_order[position + 1],
+                key_count=len(key_order),
+            )
+        msg = "provider instance pool is empty"
+        raise RuntimeError(msg)
+
+    async def _fetch_with_key_retries(
+        self,
+        provider_id: ProviderId,
+        instance: PluginInstance,
+        registration: ProviderRegistration,
+        params: PluginFetchParams,
+        client: httpx2.AsyncClient,
+        limiter: CompositeRateLimiter,
+        timeout_ms: float,
+        policy: RetryPolicy,
+        started_at: float,
+        request: ForecastRequest,
+        stats: _RequestStats,
+    ) -> tuple[ProviderResult, bool]:
+        """Run the retry loop for one API key's instance.
+
+        Returns the final result plus whether rotating to another key is
+        allowed. Rotation is disallowed only for client-side quota-gate
+        rejections: the daily quota is provider-scoped, so another key would
+        be rejected identically.
+        """
+
         attempt = 1
         while True:
             quota_error = await self._quota_error_or_record(
@@ -422,7 +546,7 @@ class OmniWeatherClient:
                 started_at,
             )
             if quota_error is not None:
-                return quota_error
+                return quota_error, False
 
             result, retry_after_seconds = await self._attempt_fetch(
                 provider_id,
@@ -436,19 +560,19 @@ class OmniWeatherClient:
                 attempt,
             )
             if isinstance(result, ProviderSuccess):
-                return result
+                return result, True
             if (
                 attempt >= policy.max_attempts
                 or result.error.code not in _RETRYABLE_ERROR_CODES
             ):
-                return result
+                return result, True
             delay_seconds = _compute_backoff_seconds(
                 policy,
                 attempt,
                 retry_after_seconds,
             )
             if delay_seconds is None:
-                return result
+                return result, True
             stats.retries += 1
             self._emit_metric(
                 MetricEvent(
@@ -810,6 +934,23 @@ def _compute_backoff_seconds(
             return None
         backoff_seconds = max(backoff_seconds, retry_after_seconds)
     return backoff_seconds
+
+
+def _annotate_all_keys_failed(result: ProviderError, key_count: int) -> ProviderError:
+    """Mark a multi-key pool's final error so key exhaustion is visible."""
+
+    if key_count <= 1:
+        return result
+    detail = result.error
+    return result.model_copy(
+        update={
+            "error": detail.model_copy(
+                update={
+                    "message": f"{detail.message} (all {key_count} API keys failed)",
+                },
+            ),
+        },
+    )
 
 
 def _exception_error_code(exc: Exception) -> ErrorCode:

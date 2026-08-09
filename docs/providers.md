@@ -49,7 +49,9 @@ exact error and the closest replacements.
 
 Each provider accepts a typed config dict. Required fields are marked in
 **bold**. Any string value may be an [environment variable
-placeholder](configuration.md#environment-variable-placeholders).
+placeholder](configuration.md#environment-variable-placeholders). The
+`api_key` field also accepts a list of keys for automatic
+[key rotation](configuration.md#api-key-rotation).
 
 | Provider | Config Keys |
 |----------|-------------|

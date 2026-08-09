@@ -121,7 +121,10 @@ references, config/SQLite path type and writability, POSIX config permissions,
 duplicate registrations, provider/granularity compatibility, and the
 platform-native daily schedule. A missing or inactive schedule is a warning,
 not a failure. Environment variable names and presence are shown; values are
-never printed.
+never printed. When a provider lists several API keys (see
+[API key rotation](configuration.md#api-key-rotation)), each key variant is
+validated statically and the pass detail reports the key count; a live check
+still performs one fetch per provider, with rotation applying as usual.
 
 Repeatable `--provider` filters narrow provider-specific static and live checks;
 top-level config and path checks always run. Static mode never contacts a

@@ -7,6 +7,7 @@ tests intentionally stay self-contained and do not use these helpers.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import httpx2
@@ -45,6 +46,73 @@ class DummyPlugin:
         del config
         self.initialize_calls += 1
         return self._instance
+
+
+class FactoryPlugin:
+    """WeatherPlugin double that builds a fresh instance per initialize call.
+
+    Needed for API-key-pool tests, where the client initializes one instance
+    per configured key.
+    """
+
+    def __init__(
+        self,
+        provider_id: ProviderId,
+        factory: Callable[[dict[str, Any]], Any],
+    ) -> None:
+        self._provider_id = provider_id
+        self._factory = factory
+        self.initialize_calls = 0
+
+    @property
+    def id(self) -> ProviderId:
+        return self._provider_id
+
+    @property
+    def name(self) -> str:
+        return self._provider_id.value
+
+    def validate_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        return config
+
+    async def initialize(self, config: dict[str, Any]) -> Any:
+        self.initialize_calls += 1
+        return self._factory(config)
+
+
+class KeyScriptedInstance:
+    """Records its key per fetch; fails while the key is in ``failing_keys``.
+
+    ``failing_keys`` and ``call_log`` are shared across the instances of one
+    pool, so tests can flip a key's health mid-test and observe the exact
+    key order the client tried.
+    """
+
+    def __init__(
+        self,
+        key: str,
+        failing_keys: set[str],
+        call_log: list[str],
+        code: ErrorCode = ErrorCode.AUTH_FAILED,
+    ) -> None:
+        self.key = key
+        self.failing_keys = failing_keys
+        self.call_log = call_log
+        self.code = code
+
+    def get_capabilities(self) -> PluginCapabilities:
+        return PluginCapabilities(requires_api_key=True)
+
+    async def fetch_forecast(
+        self,
+        params: PluginFetchParams,
+        client: httpx2.AsyncClient,
+    ) -> PluginFetchResult:
+        del params, client
+        self.call_log.append(self.key)
+        if self.key in self.failing_keys:
+            return PluginFetchError(code=self.code, message="scripted key failure")
+        return PluginFetchSuccess(forecasts=[])
 
 
 class CountingInstance:

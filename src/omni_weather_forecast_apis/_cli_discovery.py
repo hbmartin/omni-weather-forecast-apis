@@ -26,8 +26,13 @@ from omni_weather_forecast_apis.types import (
     ProviderError,
     ProviderId,
     ProviderRegistration,
+    WeatherPlugin,
 )
-from omni_weather_forecast_apis.utils import resolve_env_placeholders
+from omni_weather_forecast_apis.utils import (
+    ApiKeyListError,
+    expand_api_key_variants,
+    resolve_env_placeholders,
+)
 
 type CheckStatus = Literal["pass", "warning", "failure"]
 
@@ -298,35 +303,16 @@ def _check_provider_settings(
             )
             state.invalid_providers.add(provider_id)
             continue
-        try:
-            resolved = resolve_env_placeholders(registration.config)
-            plugin.validate_config(resolved)
-        except ValidationError as exc:
+        key_count, failure_detail = _validate_provider_settings(
+            plugin,
+            registration.config,
+        )
+        if failure_detail is not None:
             state.checks.append(
                 DoctorCheck(
                     "failure",
                     f"Provider {provider_id.value}",
-                    _safe_validation_detail(exc),
-                ),
-            )
-            state.invalid_providers.add(provider_id)
-            continue
-        except LookupError:
-            state.checks.append(
-                DoctorCheck(
-                    "failure",
-                    f"Provider {provider_id.value}",
-                    "an environment reference is not set",
-                ),
-            )
-            state.invalid_providers.add(provider_id)
-            continue
-        except (TypeError, ValueError) as exc:
-            state.checks.append(
-                DoctorCheck(
-                    "failure",
-                    f"Provider {provider_id.value}",
-                    f"invalid settings ({type(exc).__name__})",
+                    failure_detail,
                 ),
             )
             state.invalid_providers.add(provider_id)
@@ -346,9 +332,48 @@ def _check_provider_settings(
             )
             state.invalid_providers.add(provider_id)
             continue
-        state.checks.append(
-            DoctorCheck("pass", f"Provider {provider_id.value}", "settings valid"),
+        valid_detail = (
+            f"settings valid ({key_count} API keys)"
+            if key_count > 1
+            else "settings valid"
         )
+        state.checks.append(
+            DoctorCheck("pass", f"Provider {provider_id.value}", valid_detail),
+        )
+
+
+def _validate_provider_settings(
+    plugin: WeatherPlugin,
+    config: Mapping[str, Any],
+) -> tuple[int, str | None]:
+    """Statically validate provider settings, one variant per API key.
+
+    Returns the number of key variants and a safe-to-display failure detail,
+    or None when every variant validates.
+    """
+
+    try:
+        resolved = resolve_env_placeholders(dict(config))
+        variants = expand_api_key_variants(resolved)
+    except ApiKeyListError as exc:
+        return 0, str(exc)
+    except LookupError:
+        return 0, "an environment reference is not set"
+    except (TypeError, ValueError) as exc:
+        return 0, f"invalid settings ({type(exc).__name__})"
+    for key_number, variant in enumerate(variants, start=1):
+        try:
+            plugin.validate_config(variant)
+        except ValidationError as exc:
+            detail = _safe_validation_detail(exc)
+            if len(variants) > 1:
+                detail = f"api key {key_number}: {detail}"
+            return len(variants), detail
+        except LookupError:
+            return len(variants), "an environment reference is not set"
+        except (TypeError, ValueError) as exc:
+            return len(variants), f"invalid settings ({type(exc).__name__})"
+    return len(variants), None
 
 
 def _check_coordinates(checks: list[DoctorCheck], raw: Mapping[str, Any]) -> None:

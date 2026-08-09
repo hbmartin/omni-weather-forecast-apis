@@ -1,3 +1,7 @@
+from omni_weather_forecast_apis.utils.api_keys import (
+    ApiKeyListError,
+    expand_api_key_variants,
+)
 from omni_weather_forecast_apis.utils.env_config import (
     EnvVarNotSetError,
     resolve_env_placeholders,
@@ -19,9 +23,11 @@ from omni_weather_forecast_apis.utils.timezones import (
 )
 
 __all__ = [
+    "ApiKeyListError",
     "EnvVarNotSetError",
     "datetime_from_unix",
     "ensure_utc",
+    "expand_api_key_variants",
     "localize_wall_time",
     "parse_date",
     "parse_datetime",

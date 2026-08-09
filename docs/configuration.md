@@ -79,7 +79,9 @@ max_requests_per_day = 900
 Transient failures — network errors, timeouts, and HTTP 429 rate limits —
 are retried with exponential backoff and jitter. A server-provided
 `Retry-After` header is honored; retries are abandoned when it exceeds 60
-seconds. Non-transient failures such as auth errors are never retried.
+seconds. Non-transient failures such as auth errors are never retried with
+the same key — but they do trigger a fallback to the next configured API
+key when a provider lists several (see [API key rotation](#api-key-rotation)).
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -209,3 +211,45 @@ design. Confirm only in a private terminal and protect the generated file; the
 wizard writes it atomically with mode `0600` and creates new config/data
 directories privately on POSIX. `omni-weather doctor` reports missing
 environment references by name without printing their resolved values.
+
+## API key rotation
+
+Providers that authenticate with a single `api_key` field accept either one
+key or a list of keys. With a list, the client falls back to the next key
+whenever a fetch conclusively fails — keys sometimes fail for reasons that
+are hard to diagnose, and a spare key is often the fastest fix:
+
+```toml
+[[providers]]
+plugin_id = "openweather"
+config = { api_key = ["${OPENWEATHER_KEY_1}", "${OPENWEATHER_KEY_2}"] }
+```
+
+This applies to OpenWeather, WeatherAPI, Tomorrow.io, Visual Crossing,
+Weatherbit, Meteosource, Pirate Weather, Stormglass, Google Weather, Met
+Office, and Open-Meteo. XWeather and WeatherKit use multi-part credentials
+and stay single-credential.
+
+How rotation behaves:
+
+- **Any failure rotates.** Every error kind moves on to the next key —
+  auth failures and quota errors immediately, transient failures (network,
+  timeout, rate limit) after the key's full retry budget is exhausted.
+  Worst case a request makes `keys × max_attempts` fetch attempts, each
+  subject to the per-request `timeout_ms`.
+- **Each key gets the full retry policy.** Backoff, jitter, and
+  `Retry-After` handling apply per key exactly as with a single key.
+- **Promotion is sticky.** Once a fallback key succeeds, later requests
+  start from it; the walk wraps around the list, so an earlier key that
+  recovers is picked up again after the promoted key fails. Rotation state
+  lives on the client instance and is not persisted across processes.
+- **When every key fails**, the provider returns the last key's error with
+  `(all N API keys failed)` appended to the message.
+- **Daily quotas stay provider-scoped.** Every attempt on every key counts
+  against the provider's `max_requests_per_day`; a quota-gate rejection
+  does not rotate, because the next key would be rejected identically.
+
+Each rotation emits a `key_rotated` metric event and an INFO log naming the
+1-based key positions — never key material. See
+[observability](observability.md) for details. `omni-weather doctor`
+validates every key variant statically and reports the key count.

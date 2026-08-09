@@ -22,6 +22,7 @@ Requires **Python 3.13 or newer**.
 - **Resilient by default** — retries with exponential backoff (honoring `Retry-After`), conditional-request HTTP caching (`ETag`/`Last-Modified`/`Expires`), and explicit connection pool limits
 - **Rate limiting and quotas** — global concurrency and RPS limits with per-provider overrides, plus per-provider daily quota caps
 - **Secrets from the environment** — reference API keys as `${ENV_VAR}` placeholders instead of embedding them in config files
+- **API key fallback** — give any `api_key` provider a list of keys (`api_key = ["${KEY_1}", "${KEY_2}"]`) and the client rotates to the next key when one fails, stickily promoting whichever key works ([details](docs/configuration.md#api-key-rotation))
 - **CLI** — loads a TOML config, queries providers, prints a table or JSON, and optionally persists normalized output to SQLite
 - **Replayable raw archives** — SQLite runs store network responses in a unique gzipped JSONL file per invocation
 - **Extensible** — response hooks and a documented SQLite feature view for downstream ensemble/verification projects

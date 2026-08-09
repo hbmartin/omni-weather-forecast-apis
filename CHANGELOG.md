@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **API key rotation.** Providers with an `api_key` field accept a list of
+  keys (`api_key = ["${KEY_1}", "${KEY_2}"]`). The client initializes one
+  instance per key and falls back to the next key when a fetch conclusively
+  fails — immediately for non-transient errors, after the key's full retry
+  budget for transient ones. A key that succeeds is stickily promoted for
+  subsequent requests, with wrap-around so recovered keys are revisited.
+  Rotations emit a new `key_rotated` metric event (and an
+  `omni_weather.key_rotations` OpenTelemetry counter) carrying 1-based key
+  positions only, never key material. `omni-weather doctor` validates each
+  key variant statically and reports the key count. See
+  [API key rotation](docs/configuration.md#api-key-rotation).
+
 ## 1.0.0
 
 Breaking release. The two public event dataclasses — `ProviderLogEvent` and `MetricEvent` —
