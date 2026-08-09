@@ -20,6 +20,7 @@ def create_otel_metrics_hook(meter_provider: Any | None = None) -> MetricsHook:
     - ``omni_weather.requests`` (counter; attrs: provider, outcome)
     - ``omni_weather.request.duration_ms`` (histogram; attrs: provider)
     - ``omni_weather.retries`` (counter; attrs: provider, error_code)
+    - ``omni_weather.key_rotations`` (counter; attrs: provider, error_code)
     - ``omni_weather.cache`` (counter; attrs: outcome)
     - ``omni_weather.quota.consumed`` (counter; attrs: provider)
     - ``omni_weather.quota.exhausted`` (counter; attrs: provider)
@@ -54,6 +55,10 @@ def create_otel_metrics_hook(meter_provider: Any | None = None) -> MetricsHook:
         "omni_weather.retries",
         description="Retry attempts scheduled after transient failures",
     )
+    key_rotations = meter.create_counter(
+        "omni_weather.key_rotations",
+        description="API key rotations after a key conclusively failed",
+    )
     cache = meter.create_counter(
         "omni_weather.cache",
         description="HTTP cache lookups, by outcome",
@@ -79,6 +84,16 @@ def create_otel_metrics_hook(meter_provider: Any | None = None) -> MetricsHook:
                     duration.record(event.latency_ms, _provider_attrs(event))
             case MetricKind.RETRY_SCHEDULED:
                 retries.add(
+                    1,
+                    {
+                        **_provider_attrs(event),
+                        "error_code": (
+                            event.error_code.value if event.error_code else "unknown"
+                        ),
+                    },
+                )
+            case MetricKind.KEY_ROTATED:
+                key_rotations.add(
                     1,
                     {
                         **_provider_attrs(event),

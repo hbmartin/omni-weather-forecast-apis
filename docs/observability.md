@@ -29,17 +29,23 @@ async with await create_omni_weather(config, metrics_hooks=[record]) as client:
     ...
 ```
 
-`MetricKind` has seven members:
+`MetricKind` has eight members:
 
 | Kind | Emitted when |
 |------|--------------|
 | `request_start` | A provider fetch attempt begins |
 | `request_end` | A provider fetch attempt finishes, successfully or not |
 | `retry_scheduled` | A transient failure is about to be retried after backoff |
+| `key_rotated` | An API key conclusively failed and the next key takes over |
 | `cache_hit` | The shared HTTP cache served a response |
 | `cache_miss` | The shared HTTP cache had nothing usable |
 | `quota_consumed` | A request was charged against a provider's daily quota |
 | `quota_exhausted` | A fetch was refused because the daily quota was spent |
+
+`key_rotated` events carry the failed key's `error_code`/`http_status` and an
+`extra` mapping of 1-based positions (`from_key`, `to_key`, `key_count`) —
+never key material. See
+[API key rotation](configuration.md#api-key-rotation).
 
 `MetricEvent` carries `kind`, `provider`, `timestamp`, `attempt`,
 `latency_ms`, `error_code`, `http_status`, `url`, and an `extra` mapping.
@@ -67,8 +73,9 @@ async with await create_omni_weather(
     ...
 ```
 
-The bridge records counters for requests, retries, cache outcomes, and quota
-consumption, plus an `omni_weather.request.duration_ms` histogram. It uses the
+The bridge records counters for requests, retries, API key rotations
+(`omni_weather.key_rotations`), cache outcomes, and quota consumption, plus
+an `omni_weather.request.duration_ms` histogram. It uses the
 globally configured OpenTelemetry meter provider, so configure your exporter
 as usual before creating the client.
 

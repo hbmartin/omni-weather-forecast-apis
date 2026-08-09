@@ -23,6 +23,7 @@ class MetricKind(StrEnum):
     REQUEST_START = "request_start"
     REQUEST_END = "request_end"
     RETRY_SCHEDULED = "retry_scheduled"
+    KEY_ROTATED = "key_rotated"
     CACHE_HIT = "cache_hit"
     CACHE_MISS = "cache_miss"
     QUOTA_CONSUMED = "quota_consumed"

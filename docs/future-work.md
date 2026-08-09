@@ -17,6 +17,18 @@ correctness sweep (see [Data corrections](data-corrections.md)).
   `TimeoutException` before the generic handler that would classify it as
   TIMEOUT. Retryable either way; only logs/metrics are misattributed.
 
+## API key rotation
+
+- **Per-key daily quotas.** The quota tracker is keyed by provider only;
+  every attempt on every key draws from one `max_requests_per_day` budget.
+  Rotating keys to stretch quota would need a key dimension in the tracker
+  and its SQLite schema.
+- **Per-key doctor live checks.** `omni-weather doctor --live` performs one
+  real fetch per provider; with a key list, rotation means a working
+  fallback key passes the check. Probing each key individually would
+  multiply live API calls and quota consumption, so it stays opt-in future
+  work.
+
 ## HTTP cache
 
 - `CachingTransport._response_from_revalidation` mutates the shared cache

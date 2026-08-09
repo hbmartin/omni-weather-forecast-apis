@@ -442,3 +442,88 @@ def test_doctor_live_skips_statically_invalid_provider(
 
     assert exit_code == 1
     assert "no statically valid providers selected" in output
+
+
+def test_doctor_reports_key_count_for_valid_list(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers=(
+            'plugin_id = "openweather"\n'
+            'config = { api_key = ["key-one", "key-two"] }'
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 0
+    assert "settings valid (2 API keys)" in output
+
+
+def test_doctor_flags_invalid_list_entry_by_position(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers=(
+            'plugin_id = "openweather"\nconfig = { api_key = ["good-key", ""] }'
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 1
+    assert "position(s): 2" in output
+    assert "good-key" not in output
+
+
+def test_doctor_prefixes_variant_validation_failures(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers=(
+            'plugin_id = "openweather"\n'
+            'config = { api_key = ["k1", "k2"], bogus = 1 }'
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 1
+    assert "api key 1:" in output
+    assert "bogus" in output
+
+
+def test_doctor_rejects_empty_key_list(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers='plugin_id = "openweather"\nconfig = { api_key = [] }',
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 1
+    assert "api_key list must not be empty" in output
+
+
+def test_doctor_checks_each_env_reference_in_key_list(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("OWFA_DOC_SET", "value")
+    monkeypatch.delenv("OWFA_DOC_UNSET", raising=False)
+    config_path = tmp_path / "config.toml"
+    _write_config(
+        config_path,
+        providers=(
+            'plugin_id = "openweather"\n'
+            'config = { api_key = ["${OWFA_DOC_SET}", "${OWFA_DOC_UNSET}"] }'
+        ),
+    )
+
+    exit_code, output = _doctor_output(config_path)
+
+    assert exit_code == 1
+    assert "OWFA_DOC_SET" in output
+    assert "OWFA_DOC_UNSET" in output
+    assert "not set" in output

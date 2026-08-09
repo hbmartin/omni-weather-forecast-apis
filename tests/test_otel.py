@@ -82,6 +82,14 @@ def test_otel_bridge_records_every_metric_kind(
         ),
     )
     hook(MetricEvent(kind=MetricKind.RETRY_SCHEDULED))
+    hook(
+        MetricEvent(
+            kind=MetricKind.KEY_ROTATED,
+            provider=ProviderId.OPEN_METEO,
+            error_code=ErrorCode.AUTH_FAILED,
+            extra={"from_key": 1, "to_key": 2, "key_count": 2},
+        ),
+    )
     hook(MetricEvent(kind=MetricKind.CACHE_HIT, extra={"outcome": "hit"}))
     hook(MetricEvent(kind=MetricKind.CACHE_MISS))
     hook(
@@ -103,6 +111,9 @@ def test_otel_bridge_records_every_metric_kind(
     assert meter.instruments["omni_weather.retries"].calls == [
         (1, {"provider": "open_meteo", "error_code": "timeout"}),
         (1, {"error_code": "unknown"}),
+    ]
+    assert meter.instruments["omni_weather.key_rotations"].calls == [
+        (1, {"provider": "open_meteo", "error_code": "auth_failed"}),
     ]
     assert meter.instruments["omni_weather.cache"].calls == [
         (1, {"outcome": "hit"}),
