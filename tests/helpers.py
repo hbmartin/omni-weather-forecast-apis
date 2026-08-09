@@ -94,11 +94,13 @@ class KeyScriptedInstance:
         failing_keys: set[str],
         call_log: list[str],
         code: ErrorCode = ErrorCode.AUTH_FAILED,
+        provider_id: ProviderId = ProviderId.OPEN_METEO,
     ) -> None:
         self.key = key
         self.failing_keys = failing_keys
         self.call_log = call_log
         self.code = code
+        self.provider_id = provider_id
 
     def get_capabilities(self) -> PluginCapabilities:
         return PluginCapabilities(requires_api_key=True)
