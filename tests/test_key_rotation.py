@@ -78,9 +78,10 @@ def _rotation_client(
 
 def _single_forecast(client: OmniWeatherClient) -> ProviderResult:
     async def scenario() -> ProviderResult:
-        await client.initialize()
-        response = await client.forecast(ForecastRequest(latitude=34, longitude=-118))
-        await client.close()
+        async with client:
+            response = await client.forecast(
+                ForecastRequest(latitude=34, longitude=-118),
+            )
         return response.results[0]
 
     return asyncio.run(scenario())
@@ -168,17 +169,16 @@ def test_sticky_failure_wraps_around_to_recovered_key() -> None:
     )
 
     async def scenario() -> None:
-        await client.initialize()
-        await client.forecast(ForecastRequest(latitude=34, longitude=-118))
-        assert call_log == ["k1", "k2"]
-        failing_keys.clear()
-        failing_keys.update({"k2", "k3"})
-        call_log.clear()
-        await client.forecast(ForecastRequest(latitude=34, longitude=-118))
-        assert call_log == ["k2", "k3", "k1"]
-        call_log.clear()
-        await client.forecast(ForecastRequest(latitude=34, longitude=-118))
-        await client.close()
+        async with client:
+            await client.forecast(ForecastRequest(latitude=34, longitude=-118))
+            assert call_log == ["k1", "k2"]
+            failing_keys.clear()
+            failing_keys.update({"k2", "k3"})
+            call_log.clear()
+            await client.forecast(ForecastRequest(latitude=34, longitude=-118))
+            assert call_log == ["k2", "k3", "k1"]
+            call_log.clear()
+            await client.forecast(ForecastRequest(latitude=34, longitude=-118))
 
     asyncio.run(scenario())
 
@@ -273,6 +273,29 @@ def test_rotation_events_never_contain_key_material() -> None:
     ]
 
 
+def test_rotation_events_do_not_share_mutable_extra() -> None:
+    log_events: list[ProviderLogEvent] = []
+
+    def mutate_metric_extra(event: MetricEvent) -> None:
+        if event.kind is MetricKind.KEY_ROTATED and isinstance(event.extra, dict):
+            event.extra["from_key"] = 99
+
+    client, _plugin = _rotation_client(
+        ["k1", "k2"],
+        _scripted_factory({"k1"}, []),
+        log_hooks=[log_events.append],
+        metrics_hooks=[mutate_metric_extra],
+    )
+
+    result = _single_forecast(client)
+
+    assert isinstance(result, ProviderSuccess)
+    rotation_logs = [event for event in log_events if "rotating" in event.message]
+    assert [dict(event.extra) for event in rotation_logs] == [
+        {"from_key": 1, "to_key": 2, "key_count": 2},
+    ]
+
+
 def test_quota_gate_rejection_does_not_rotate() -> None:
     call_log: list[str] = []
     metric_events: list[MetricEvent] = []
@@ -297,6 +320,29 @@ def test_quota_gate_rejection_does_not_rotate() -> None:
     assert "API keys failed" not in result.error.message
     assert call_log == ["k1"]
     assert not _rotation_metrics(metric_events)
+
+
+def test_rotation_attempts_consume_shared_provider_quota() -> None:
+    call_log: list[str] = []
+    metric_events: list[MetricEvent] = []
+    client, _plugin = _rotation_client(
+        ["k1", "k2"],
+        _scripted_factory(
+            {"k1", "k2"},
+            call_log,
+            code=ErrorCode.NETWORK,
+        ),
+        metrics_hooks=[metric_events.append],
+        max_requests_per_day=4,
+    )
+
+    result = _single_forecast(client)
+
+    assert result.status == "error"
+    assert result.error.code is ErrorCode.QUOTA_EXCEEDED
+    assert call_log == ["k1", "k1", "k1", "k2"]
+    assert sum(event.kind is MetricKind.QUOTA_CONSUMED for event in metric_events) == 4
+    assert sum(event.kind is MetricKind.QUOTA_EXHAUSTED for event in metric_events) == 1
 
 
 def test_rotation_does_not_count_as_summary_retry() -> None:
@@ -363,15 +409,17 @@ def _real_provider_result(
     )
 
     async def scenario() -> ProviderResult:
-        await client.initialize()
         client._http_client = httpx2.AsyncClient(
             transport=httpx2.MockTransport(handler),
         )
-        response = await client.forecast(
-            ForecastRequest(latitude=34, longitude=-118),
-        )
-        await client.close()
-        return response.results[0]
+        try:
+            await client.initialize()
+            response = await client.forecast(
+                ForecastRequest(latitude=34, longitude=-118),
+            )
+            return response.results[0]
+        finally:
+            await client.close()
 
     return asyncio.run(scenario())
 

@@ -137,7 +137,11 @@ def test_list_placeholders_resolve_into_key_variants(
         plugins=[FactoryPlugin(ProviderId.OPEN_METEO, factory)],
     )
 
-    asyncio.run(client.initialize())
+    async def scenario() -> None:
+        async with client:
+            pass
+
+    asyncio.run(scenario())
 
     assert seen_keys == ["v1", "v2"]
 

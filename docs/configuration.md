@@ -85,7 +85,7 @@ key when a provider lists several (see [API key rotation](#api-key-rotation)).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `max_attempts` | `3` | Total attempts per provider fetch (1 disables retries) |
+| `max_attempts` | `3` | Total attempts per API key (1 disables retries for each key) |
 | `initial_backoff_ms` | `500` | Delay before the first retry |
 | `max_backoff_ms` | `8000` | Backoff ceiling |
 | `backoff_multiplier` | `2.0` | Exponential growth factor |

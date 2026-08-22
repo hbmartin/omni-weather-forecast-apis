@@ -174,7 +174,7 @@ class OmniWeatherClient:
                     await plugin.initialize(plugin.validate_config(variant_config))
                     for variant_config in variant_configs
                 ]
-            except Exception as exc:
+            except (Exception,) as exc:
                 self._initialization_errors[registration.plugin_id] = (
                     f"Failed to initialize provider: {exc}"
                 )
@@ -368,7 +368,7 @@ class OmniWeatherClient:
                 provider=provider_id,
                 error_code=failure.error.code,
                 http_status=failure.error.http_status,
-                extra=extra,
+                extra=extra.copy(),
             )
         )
         self._emit_log(
@@ -383,7 +383,7 @@ class OmniWeatherClient:
                 latency_ms=failure.error.latency_ms,
                 error_code=failure.error.code,
                 http_status=failure.error.http_status,
-                extra=extra,
+                extra=extra.copy(),
             )
         )
 

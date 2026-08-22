@@ -449,8 +449,7 @@ def test_doctor_reports_key_count_for_valid_list(tmp_path: Path) -> None:
     _write_config(
         config_path,
         providers=(
-            'plugin_id = "openweather"\n'
-            'config = { api_key = ["key-one", "key-two"] }'
+            'plugin_id = "openweather"\nconfig = { api_key = ["key-one", "key-two"] }'
         ),
     )
 
@@ -481,8 +480,7 @@ def test_doctor_prefixes_variant_validation_failures(tmp_path: Path) -> None:
     _write_config(
         config_path,
         providers=(
-            'plugin_id = "openweather"\n'
-            'config = { api_key = ["k1", "k2"], bogus = 1 }'
+            'plugin_id = "openweather"\nconfig = { api_key = ["k1", "k2"], bogus = 1 }'
         ),
     )
 
@@ -507,7 +505,7 @@ def test_doctor_rejects_empty_key_list(tmp_path: Path) -> None:
 
 
 def test_doctor_checks_each_env_reference_in_key_list(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("OWFA_DOC_SET", "value")
