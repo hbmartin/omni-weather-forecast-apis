@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx2
 import jwt
@@ -15,6 +17,8 @@ from pydantic import ValidationError
 from omni_weather_forecast_apis.plugins.weatherkit import (
     WeatherKitConfig,
     WeatherKitInstance,
+    _parse_day,
+    _parse_hour,
     weatherkit_plugin,
 )
 from omni_weather_forecast_apis.types import (
@@ -43,7 +47,12 @@ WEATHER_PAYLOAD = {
                 "pressure": 1012.0,
                 "precipitationAmount": 0.3,
                 "precipitationChance": 0.25,
+                "precipitationType": "rain",
+                "snowfallIntensity": 0.0,
                 "cloudCover": 0.8,
+                "cloudCoverLowAltPct": 0.1,
+                "cloudCoverMidAltPct": 0.2,
+                "cloudCoverHighAltPct": 0.5,
                 "visibility": 12000.0,
                 "uvIndex": 7,
                 "conditionCode": "Thunderstorms",
@@ -60,6 +69,7 @@ WEATHER_PAYLOAD = {
                 "temperatureMin": 15.0,
                 "precipitationAmount": 1.5,
                 "precipitationChance": 0.3,
+                "precipitationType": "rain",
                 "snowfallAmount": 0.0,
                 "maxUvIndex": 8,
                 "conditionCode": "MostlyClear",
@@ -175,6 +185,93 @@ class TestWeatherKitConfig:
     def test_rejects_blank_team_id(self, private_key_pem: str) -> None:
         with pytest.raises(ValidationError):
             _config(private_key_pem, team_id="")
+
+
+_UTC_ZONE = ZoneInfo("UTC")
+
+
+def _hour(**fields: Any) -> dict[str, Any]:
+    return {"forecastStart": "2026-01-10T12:00:00Z", **fields}
+
+
+def _day(**fields: Any) -> dict[str, Any]:
+    return {"forecastStart": "2026-01-10T00:00:00Z", **fields}
+
+
+class TestParseHour:
+    @pytest.mark.parametrize(
+        ("fields", "expected"),
+        [
+            ({"snowfallAmount": 2.0, "snowfallIntensity": 1.5}, 2.0),
+            ({"snowfallIntensity": 1.5}, 1.5),
+            ({}, None),
+        ],
+    )
+    def test_snowfall_depth_prefers_amount_over_intensity(
+        self,
+        fields: dict[str, Any],
+        expected: float | None,
+    ) -> None:
+        assert _parse_hour(_hour(**fields)).snowfall_depth == expected
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"precipitationType": "snow", "precipitationAmount": 1.0},
+            {"precipitationType": "mixed", "precipitationAmount": 1.0},
+            {
+                "precipitationType": "rain",
+                "precipitationAmount": 1.0,
+                "snowfallIntensity": 0.4,
+            },
+            {"precipitationAmount": 1.0},
+        ],
+    )
+    def test_rain_requires_rain_type_without_snow(
+        self,
+        fields: dict[str, Any],
+    ) -> None:
+        point = _parse_hour(_hour(**fields))
+        assert point.precipitation == 1.0
+        assert point.rain is None
+
+    def test_missing_cloud_layers_stay_none(self) -> None:
+        point = _parse_hour(_hour(cloudCover=0.5))
+        assert point.cloud_cover == 50.0
+        assert point.cloud_cover_low is None
+        assert point.cloud_cover_mid is None
+        assert point.cloud_cover_high is None
+
+
+class TestParseDay:
+    def test_top_level_wind_fields_override_day_parts(self) -> None:
+        day = _parse_day(
+            _day(
+                windSpeedMax=36.0,
+                windGustSpeedMax=54.0,
+                daytimeForecast={"windSpeed": 72.0},
+            ),
+            _UTC_ZONE,
+        )
+        assert day.wind_speed_max == 10.0
+        assert day.wind_gust_max == 15.0
+
+    def test_rain_typed_day_with_snowfall_has_no_rain_sum(self) -> None:
+        day = _parse_day(
+            _day(
+                precipitationType="rain",
+                precipitationAmount=4.0,
+                snowfallAmount=12.0,
+            ),
+            _UTC_ZONE,
+        )
+        assert day.precipitation_sum == 4.0
+        assert day.snowfall_depth_sum == 12.0
+        assert day.rain_sum is None
+
+    def test_missing_sunset_leaves_daylight_duration_unset(self) -> None:
+        day = _parse_day(_day(sunrise="2026-01-10T07:00:00Z"), _UTC_ZONE)
+        assert day.daylight_duration is None
 
 
 class TestBearerToken:
@@ -308,7 +405,12 @@ class TestWeatherKitInstance:
         assert point.pressure_sea == 1012.0
         assert point.precipitation == 0.3
         assert point.precipitation_probability == 0.25
+        assert point.rain == 0.3
+        assert point.snowfall_depth == 0.0
         assert point.cloud_cover == 80.0
+        assert point.cloud_cover_low == 10.0
+        assert point.cloud_cover_mid == 20.0
+        assert point.cloud_cover_high == 50.0
         assert point.visibility == 12.0
         assert point.uv_index == 7.0
         assert point.condition == WeatherCondition.THUNDERSTORM
@@ -320,8 +422,10 @@ class TestWeatherKitInstance:
         assert day.temperature_max == 28.0
         assert day.temperature_min == 15.0
         assert day.wind_speed_max == 5.0
+        assert day.wind_gust_max is None
         assert day.wind_direction_dominant == 260.0
         assert day.precipitation_sum == 1.5
+        assert day.rain_sum == 1.5
         assert day.precipitation_probability_max == 0.3
         assert day.snowfall_depth_sum == 0.0
         assert day.cloud_cover_mean == 30.0
@@ -330,6 +434,7 @@ class TestWeatherKitInstance:
         assert day.condition == WeatherCondition.MOSTLY_CLEAR
         assert day.moon_phase == 0.5
         assert day.sunrise is not None
+        assert day.daylight_duration == 50_760.0
 
         minute = forecast.minutely[0]
         assert minute.precipitation_intensity == 0.4

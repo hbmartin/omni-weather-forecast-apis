@@ -28,6 +28,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_minutely_point,
     build_source_forecast,
+    daylight_duration_seconds,
     fallback_condition,
     first_present,
     normalize_percent,
@@ -114,23 +115,47 @@ def _condition(entry: dict[str, Any]) -> WeatherCondition | None:
     return fallback_condition(mapped, _CAMEL_BOUNDARY.sub(" ", code))
 
 
+def _ms_from_kmh_value(value: Any) -> float | None:
+    return safe_convert(as_float(value), ms_from_kmh)
+
+
+def _snowfall_depth(entry: dict[str, Any]) -> float | None:
+    """New-snow depth in mm; an hourly mm/h rate equals the hour's depth."""
+
+    return as_float(first_present(entry, "snowfallAmount", "snowfallIntensity"))
+
+
+def _rain_amount(entry: dict[str, Any], snowfall: float | None) -> float | None:
+    """Precipitation counts as rain only for rain-typed periods without snow."""
+
+    if entry.get("precipitationType") != "rain" or snowfall:
+        return None
+    return as_float(entry.get("precipitationAmount"))
+
+
 def _parse_hour(entry: dict[str, Any]) -> WeatherDataPoint:
     daylight = entry.get("daylight")
+    snowfall_depth = _snowfall_depth(entry)
     return build_hourly_point(
         entry["forecastStart"],
         temperature=as_float(entry.get("temperature")),
         apparent_temperature=as_float(entry.get("temperatureApparent")),
         dew_point=as_float(entry.get("temperatureDewPoint")),
         humidity=normalize_percent(entry.get("humidity")),
-        wind_speed=safe_convert(as_float(entry.get("windSpeed")), ms_from_kmh),
-        wind_gust=safe_convert(as_float(entry.get("windGust")), ms_from_kmh),
+        wind_speed=_ms_from_kmh_value(entry.get("windSpeed")),
+        wind_gust=_ms_from_kmh_value(entry.get("windGust")),
         wind_direction=as_float(entry.get("windDirection")),
         pressure_sea=as_float(entry.get("pressure")),
         precipitation=as_float(entry.get("precipitationAmount")),
         precipitation_probability=probability_from_fraction(
             entry.get("precipitationChance"),
         ),
+        rain=_rain_amount(entry, snowfall_depth),
+        snowfall_depth=snowfall_depth,
         cloud_cover=normalize_percent(entry.get("cloudCover")),
+        cloud_cover_low=normalize_percent(entry.get("cloudCoverLowAltPct")),
+        cloud_cover_mid=normalize_percent(entry.get("cloudCoverMidAltPct")),
+        cloud_cover_high=normalize_percent(entry.get("cloudCoverHighAltPct")),
         visibility=safe_convert(as_float(entry.get("visibility")), km_from_meters),
         uv_index=as_float(entry.get("uvIndex")),
         condition=_condition(entry),
@@ -144,6 +169,19 @@ def _day_part(entry: dict[str, Any], key: str) -> dict[str, Any]:
     return part if isinstance(part, dict) else {}
 
 
+def _daily_wind_speed_max(
+    entry: dict[str, Any],
+    day_part: dict[str, Any],
+    night_part: dict[str, Any],
+) -> float | None:
+    if (wind_speed_max := _ms_from_kmh_value(entry.get("windSpeedMax"))) is not None:
+        return wind_speed_max
+    return optional_max(
+        _ms_from_kmh_value(day_part.get("windSpeed")),
+        _ms_from_kmh_value(night_part.get("windSpeed")),
+    )
+
+
 def _parse_day(
     entry: dict[str, Any],
     location_timezone: ZoneInfo,
@@ -153,20 +191,20 @@ def _parse_day(
     day_part = _day_part(entry, "daytimeForecast")
     night_part = _day_part(entry, "overnightForecast")
     moon_phase = entry.get("moonPhase")
+    snowfall_depth = as_float(entry.get("snowfallAmount"))
     return build_daily_point(
         local_date,
         temperature_max=as_float(entry.get("temperatureMax")),
         temperature_min=as_float(entry.get("temperatureMin")),
-        wind_speed_max=optional_max(
-            safe_convert(as_float(day_part.get("windSpeed")), ms_from_kmh),
-            safe_convert(as_float(night_part.get("windSpeed")), ms_from_kmh),
-        ),
+        wind_speed_max=_daily_wind_speed_max(entry, day_part, night_part),
+        wind_gust_max=_ms_from_kmh_value(entry.get("windGustSpeedMax")),
         wind_direction_dominant=as_float(day_part.get("windDirection")),
         precipitation_sum=as_float(entry.get("precipitationAmount")),
         precipitation_probability_max=probability_from_fraction(
             entry.get("precipitationChance"),
         ),
-        snowfall_depth_sum=as_float(entry.get("snowfallAmount")),
+        rain_sum=_rain_amount(entry, snowfall_depth),
+        snowfall_depth_sum=snowfall_depth,
         cloud_cover_mean=optional_mean(
             normalize_percent(day_part.get("cloudCover")),
             normalize_percent(night_part.get("cloudCover")),
@@ -183,6 +221,10 @@ def _parse_day(
         moonset=entry.get("moonset"),
         moon_phase=(
             _MOON_PHASE_MAP.get(moon_phase) if isinstance(moon_phase, str) else None
+        ),
+        daylight_duration=daylight_duration_seconds(
+            entry.get("sunrise"),
+            entry.get("sunset"),
         ),
     )
 

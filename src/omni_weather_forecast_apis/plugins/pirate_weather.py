@@ -23,6 +23,7 @@ from omni_weather_forecast_apis.plugins._base import (
     build_hourly_point,
     build_minutely_point,
     build_source_forecast,
+    daylight_duration_seconds,
     local_date_from_epoch,
     probability_from_fraction,
 )
@@ -36,7 +37,6 @@ from omni_weather_forecast_apis.types import (
     ProviderId,
 )
 from omni_weather_forecast_apis.types.plugin import ProviderConfigModel
-from omni_weather_forecast_apis.utils import parse_datetime
 
 
 class PirateWeatherConfig(ProviderConfigModel):
@@ -88,14 +88,6 @@ def _rain_mm(row: dict[str, Any]) -> float | None:
     """Return rain-specific accumulation only when the provider labels rain."""
 
     return _liquid_precip_mm(row) if row.get("precipType") == "rain" else None
-
-
-def _daylight_duration(entry: dict[str, Any]) -> float | None:
-    sunrise = parse_datetime(entry.get("sunriseTime"))
-    sunset = parse_datetime(entry.get("sunsetTime"))
-    if sunrise is None or sunset is None:
-        return None
-    return (sunset - sunrise).total_seconds()
 
 
 def _sender_name(alert: dict[str, Any]) -> str:
@@ -318,7 +310,10 @@ class PirateWeatherInstance(BasePluginInstance[PirateWeatherConfig]):
                     moonrise=row.get("moonriseTime"),
                     moonset=row.get("moonsetTime"),
                     moon_phase=as_float(row.get("moonPhase")),
-                    daylight_duration=_daylight_duration(row),
+                    daylight_duration=daylight_duration_seconds(
+                        row.get("sunriseTime"),
+                        row.get("sunsetTime"),
+                    ),
                 ),
             )
         return points
