@@ -161,6 +161,14 @@ service identifier, and a `.p8` signing key (Key ID + private key).
 - The API requires an IANA `timezone` query parameter for daily rollups, so
   the plugin resolves one from the request or the keyless Open-Meteo
   lookup.
+- Beyond the documented fields, the plugin reads fields WeatherKit returns
+  but does not document whenever they are present: hourly `snowfallAmount`
+  and `cloudCoverLowAltPct` / `cloudCoverMidAltPct` / `cloudCoverHighAltPct`
+  (→ `snowfall_depth`, `cloud_cover_low/mid/high`), and daily `windSpeedMax`
+  / `windGustSpeedMax` (→ `wind_speed_max`, `wind_gust_max`; without
+  `windSpeedMax` the daily max falls back to the faster of the daytime and
+  overnight wind speeds). Daily `daylight_duration` is derived from
+  `sunrise` and `sunset`.
 
 ## Unit and semantics notes
 
@@ -174,7 +182,8 @@ history behind these rules):
   `snowfall_water_equivalent`); `snowfall_depth` / `snowfall_depth_sum`
   hold new-snow depth in millimetres (Open-Meteo `snowfall`, Pirate
   Weather `snowAccumulation`, Xweather `snowCM`, WeatherKit
-  `snowfallAmount`). No 10:1 conversion is ever guessed between the two.
+  `snowfallAmount`, with hourly rows falling back to the `snowfallIntensity`
+  mm/h rate). No 10:1 conversion is ever guessed between the two.
 - **Pirate Weather liquid amounts** come from `liquidAccumulation`
   (cm→mm), falling back to `precipAccumulation` only for rain-typed rows —
   when snowing, `precipAccumulation` reports snow depth and is not a
@@ -198,6 +207,8 @@ history behind these rules):
 - **Generic precipitation is not automatically rain.** Weatherbit leaves
   `rain` unset because it exposes only a generic amount. WeatherAPI populates
   `rain` only when its rain/snow indicators identify rain without snow.
+  WeatherKit populates `rain` / `rain_sum` only when `precipitationType` is
+  `rain` and the period reports no snowfall.
 - **WeatherAPI daily rows have no feels-like or minimum visibility** —
   `apparent_temperature_max/min` and `visibility_min` are `None` rather
   than approximations (the API only offers air temps and a daily average

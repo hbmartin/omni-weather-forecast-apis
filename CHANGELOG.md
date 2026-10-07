@@ -16,6 +16,16 @@
   key variant statically and reports the key count. See
   [API key rotation](docs/configuration.md#api-key-rotation).
 
+### Changed
+
+- **Apple WeatherKit fills more normalized fields.** Hourly rows now carry
+  `rain` (rain-typed periods without snow only), `snowfall_depth` (from
+  `snowfallAmount`, falling back to `snowfallIntensity`), and
+  `cloud_cover_low/mid/high`. Daily rows now carry `rain_sum`,
+  `wind_gust_max`, `daylight_duration`, and prefer WeatherKit's day-level
+  `windSpeedMax` for `wind_speed_max`. Fields WeatherKit omits stay `None`.
+  See [Apple WeatherKit](docs/providers.md#apple-weatherkit).
+
 ## 1.0.0
 
 Breaking release. The two public event dataclasses — `ProviderLogEvent` and `MetricEvent` —

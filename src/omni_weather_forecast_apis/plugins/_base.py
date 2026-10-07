@@ -109,6 +109,16 @@ def optional_sum(*values: float | None) -> float | None:
     return sum(present) if present else None
 
 
+def daylight_duration_seconds(sunrise: object, sunset: object) -> float | None:
+    """Seconds between sunrise and sunset, or None when either is absent."""
+
+    start = parse_datetime(_coerce_datetime_input(sunrise))
+    end = parse_datetime(_coerce_datetime_input(sunset))
+    if start is None or end is None:
+        return None
+    return (end - start).total_seconds()
+
+
 def probability_from_percent_value(value: Any) -> float | None:
     """Normalize a percent-scale (0-100) probability into the 0..1 range.
 
